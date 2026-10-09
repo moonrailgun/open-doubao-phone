@@ -8,8 +8,9 @@ import android.speech.tts.*
 import java.io.File
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.Executors
 
-/** The separate TTS UID only writes a seekable file; playback belongs to our foreground service. */
+/** The separate TTS UID synthesizes; PCM playback belongs to our foreground service. */
 class FileSpeech(private val context: Context, private val unlockPrompt: Boolean = false, private val finished: (String?) -> Unit) {
     private val handler = Handler(Looper.getMainLooper())
     private val audio = context.getSystemService(AudioManager::class.java)
@@ -18,9 +19,11 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
         .setAudioAttributes(attributes).setOnAudioFocusChangeListener { if (it < 0) stop() }.build()
     private var tts: TextToSpeech? = null
-    private var player: MediaPlayer? = null
+    private val playback = Executors.newSingleThreadExecutor()
+    private var player: AudioTrack? = null
+    private var writtenFrames = 0L // Only accessed on the playback worker.
     private var file: File? = null
-    private var active: String? = null
+    @Volatile private var active: String? = null
 
     fun speak(text: String) {
         check(active == null)
@@ -34,7 +37,35 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
             if (engine.setLanguage(Locale.SIMPLIFIED_CHINESE) < 0) { stop("播报引擎不支持中文"); return@post }
             engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = Unit
-                override fun onDone(utteranceId: String?) { handler.post { if (active == utteranceId) play() } }
+                override fun onBeginSynthesis(utteranceId: String?, sampleRateInHz: Int, audioFormat: Int, channelCount: Int) {
+                    handler.post { if (active == id && utteranceId == id) startPlayback(sampleRateInHz, audioFormat, channelCount) }
+                }
+                override fun onAudioAvailable(utteranceId: String?, buffer: ByteArray) {
+                    handler.post {
+                        if (active != id || utteranceId != id) return@post
+                        val track = player ?: return@post
+                        playback.execute {
+                            try {
+                                var offset = 0
+                                while (active == id && offset < buffer.size) {
+                                    val count = track.write(buffer, offset, buffer.size - offset, AudioTrack.WRITE_BLOCKING)
+                                    check(count > 0) { "播放失败" }
+                                    offset += count
+                                    writtenFrames += count / 2
+                                }
+                            } catch (e: Exception) { handler.post { if (active == id) stop(e.message ?: "播放失败") } }
+                        }
+                    }
+                }
+                override fun onDone(utteranceId: String?) {
+                    handler.post {
+                        if (active != id || utteranceId != id) return@post
+                        playback.execute {
+                            val frames = writtenFrames
+                            handler.post { if (active == id) awaitPlayback(id, frames) }
+                        }
+                    }
+                }
                 @Deprecated("Platform callback")
                 override fun onError(utteranceId: String?) { handler.post { if (active == utteranceId) stop("本地合成失败，请在播报引擎设置中重试") } }
             })
@@ -47,20 +78,27 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
         } }, "com.openodoubao.tts")
     }
 
-    private fun play() {
-        val id = active ?: return
+    private fun startPlayback(sampleRate: Int, format: Int, channels: Int) {
         if (!canPlay()) { stop(); return }
         if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) { stop("系统暂不允许播报"); return }
         try {
-            player = MediaPlayer().apply {
-                setAudioAttributes(attributes)
-                setDataSource(file!!.absolutePath)
-                setOnCompletionListener { this@FileSpeech.stop() }
-                setOnErrorListener { _, _, _ -> this@FileSpeech.stop("播放失败"); true }
-                setOnPreparedListener { if (active == id && canPlay()) it.start() else this@FileSpeech.stop() }
-                prepareAsync()
-            }
+            check(format == AudioFormat.ENCODING_PCM_16BIT && channels == 1 && sampleRate > 0) { "不支持的语音格式" }
+            val minimum = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, format)
+            check(minimum > 0) { "无法创建播放器" }
+            player = AudioTrack.Builder().setAudioAttributes(attributes)
+                .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(format)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                .setBufferSizeInBytes(maxOf(minimum, sampleRate)).setTransferMode(AudioTrack.MODE_STREAM).build()
+            player!!.play()
         } catch (e: Exception) { stop(e.message ?: "播放失败") }
+    }
+
+    private fun awaitPlayback(id: String, frames: Long) {
+        val track = player
+        if (track == null || frames == 0L) { stop("本地合成未返回音频"); return }
+        // Synthesis completion can precede the last audible sample; only then may listening resume.
+        if ((track.playbackHeadPosition.toLong() and 0xffffffffL) >= frames) stop()
+        else handler.postDelayed({ if (active == id) awaitPlayback(id, frames) }, 25)
     }
 
     private fun canPlay() = unlockPrompt || (context.getSystemService(PowerManager::class.java).isInteractive &&
@@ -71,7 +109,13 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
         active = null
         handler.removeCallbacksAndMessages(null)
         tts?.stop(); tts?.shutdown(); tts = null
-        player?.release(); player = null
+        player?.let { track ->
+            // Pause unblocks an in-flight write before the worker releases the track.
+            track.pause(); track.flush()
+            playback.execute { track.release() }
+        }
+        player = null
+        playback.shutdown()
         audio.abandonAudioFocusRequest(focus)
         file?.delete(); file = null
         finished(error)

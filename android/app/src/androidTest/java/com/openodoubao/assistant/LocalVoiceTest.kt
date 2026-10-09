@@ -6,6 +6,8 @@ import android.app.ActivityManager
 import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioManager
 import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.SpeechRecognizer
@@ -30,6 +32,50 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
 class LocalVoiceTest {
+    @Test fun playbackStartsBeforeTheWholeUtteranceIsSynthesized() {
+        val instrument = InstrumentationRegistry.getInstrumentation()
+        val context = instrument.targetContext
+        val audio = context.getSystemService(AudioManager::class.java)
+        val wasEnabled = context.getSharedPreferences("voice", 0).getBoolean("wake_enabled", false)
+        val activity = instrument.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        instrument.runOnMainSync {
+            activity.setTurnScreenOn(true)
+            context.getSystemService(KeyguardManager::class.java).requestDismissKeyguard(activity, null)
+            VoiceRuntime.setEnabled(context, false)
+        }
+        try {
+            await("Device must be unlocked") { !context.getSystemService(KeyguardManager::class.java).isKeyguardLocked }
+            await("Previous voice request did not finish") { VoiceRuntime.state.value == "空闲" }
+            val existingCache = context.cacheDir.listFiles().orEmpty().toSet()
+            instrument.runOnMainSync {
+                assertTrue(VoiceRuntime.speak(context, "我在！你好呀，我是豆馅。今天也一起加油吧！有什么想做的，告诉我就好。"))
+            }
+            await("Playback waited for the complete WAV instead of starting with the first audio", 30_000) {
+                val file = context.cacheDir.listFiles().orEmpty().firstOrNull { it.name.startsWith("speech-") && it !in existingCache }
+                // Android fills in the RIFF header only when file synthesis finishes.
+                file != null && file.length() > 44 && file.inputStream().use { input ->
+                    val header = ByteArray(4)
+                    input.read(header) == 4 && header.all { it == 0.toByte() }
+                } &&
+                    audio.activePlaybackConfigurations.any { it.audioAttributes.usage == AudioAttributes.USAGE_ASSISTANT }
+            }
+            assertEquals("正在播报", VoiceRuntime.state.value)
+            instrument.runOnMainSync { VoiceRuntime.cancel() }
+            await("Cancel did not stop playback") {
+                VoiceRuntime.state.value == "空闲" &&
+                    audio.activePlaybackConfigurations.none { it.audioAttributes.usage == AudioAttributes.USAGE_ASSISTANT }
+            }
+            assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("speech-") && it !in existingCache })
+        } finally {
+            instrument.runOnMainSync {
+                VoiceRuntime.cancel()
+                VoiceRuntime.setEnabled(context, wasEnabled)
+                activity.finish()
+            }
+        }
+    }
+
     @Test fun wakeReplyFinishesBeforeListeningAndCancellationStopsTheChain() {
         val instrument = InstrumentationRegistry.getInstrumentation()
         val context = instrument.targetContext
