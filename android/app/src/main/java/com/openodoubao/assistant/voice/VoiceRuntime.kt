@@ -77,9 +77,9 @@ object VoiceRuntime {
     }
     private fun begin(context: Context, type: Int, status: String): Long? {
         val id = requests.begin() ?: return null
+        active = id
         interruptWake()
         this.context = context.applicationContext
-        active = id
         stopRequested = false
         mutableError.value = ""
         try { foreground(context, type, status) }
@@ -90,11 +90,12 @@ object VoiceRuntime {
         }
         return id
     }
-    private fun finish(id: Long): Boolean {
+    private fun finish(id: Long, after: (() -> Unit)? = null): Boolean {
         val deliver = requests.finish(id)
         if (active == id) {
             active = null
-            mutableState.value = "空闲"
+            if (deliver) after?.invoke()
+            if (active == null) mutableState.value = "空闲"
             startWake()
         }
         return deliver
@@ -150,7 +151,7 @@ object VoiceRuntime {
                     val text = result.getOrNull()
                     if (text == "") continue
                     wakeJob = null
-                    if (text == null) speakUnlock(context) else dispatch(context, text)
+                    if (text == null) speakUnlock(context) else respondToWake(context, text)
                     startWake()
                     return@launch
                 }
@@ -200,6 +201,12 @@ object VoiceRuntime {
             if (finish(id)) result.fold({ dispatch(context, it) }, { mutableError.value = it.message ?: "识别失败" })
         }
     }
+    internal fun respondToWake(context: Context, text: String) {
+        speak(context, "我在", false) {
+            if (parseVoiceCommand(text) == VoiceCommand.Empty) listenForTask(context)
+            else dispatch(context, text)
+        }
+    }
     private fun dispatch(context: Context, text: String) {
         if (!screenAvailable(context)) { speakUnlock(context); return }
         val command = parseVoiceCommand(text)
@@ -229,7 +236,7 @@ object VoiceRuntime {
 
     fun speak(context: Context, text: String) = speak(context, text, false)
     private fun speakUnlock(context: Context) = speak(context, "请先点亮并解锁手机，然后重新下达指令。", true)
-    private fun speak(context: Context, text: String, unlockPrompt: Boolean): Boolean {
+    private fun speak(context: Context, text: String, unlockPrompt: Boolean, after: (() -> Unit)? = null): Boolean {
         if (!unlockPrompt && !screenAvailable(context)) return false
         if (context.packageManager.queryIntentServices(Intent("android.intent.action.TTS_SERVICE")
                 .setPackage("com.openodoubao.tts"), 0).isEmpty()) {
@@ -244,7 +251,7 @@ object VoiceRuntime {
                 speech = FileSpeech(context.applicationContext, unlockPrompt) { error ->
                     speech = null
                     if (error != null) mutableError.value = error
-                    finish(id)
+                    finish(id, if (error == null) after else null)
                 }.also { it.speak(text) }
             } catch (e: Exception) { mutableError.value = e.message ?: "播报失败"; finish(id) }
         }

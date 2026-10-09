@@ -55,15 +55,12 @@ class LocalSpeechEngine(private val context: Context) {
                     stream.acceptWaveform(samples, 16000)
                     while (spotter.isReady(stream)) {
                         spotter.decode(stream)
-                        if (spotter.getResult(stream).keyword.isNotEmpty()) {
+                        val keyword = spotter.getResult(stream).keyword
+                        if (keyword.isNotEmpty()) {
                             detected()
                             if (!canTakeCommand()) return@recording null
-                            var text = capture(record, keepGoing, { false })
-                            if (keepGoing() && parseVoiceCommand(text) == VoiceCommand.Empty) {
-                                vad.reset()
-                                text = capture(record, keepGoing, { false })
-                            }
-                            return@recording text
+                            // Preserve a continuous command, then close the recorder before the wake reply.
+                            return@recording capture(record, keepGoing, { false }).ifBlank { keyword }
                         }
                     }
                     // Discard speech without a wake word; never submit it to the task model.

@@ -34,6 +34,8 @@ Only ARM64 speech binaries are built. The regular app uses Android 11+ public AP
 
 Install both APKs. In the assistant's voice settings, choose 豆馅 as the default digital assistant, grant microphone permission, and enable wake listening. Enable its accessibility service to execute tasks. Say 豆馅你好, 你好豆馅, 豆馅同志, or 同志你好 followed by the task; 停止/停止任务 stops it, and 继续/继续任务 resumes a paused task. The microphone button still only fills the input field. After reboot, listening starts after the first unlock. Playback pauses listening; locking the screen stops private result playback. A locked wake only asks for an unlock and discards the command. The notification's close action disables listening until enabled again.
 
+On an unlocked screen, the assistant replies 我在 after the wake utterance, then listens for the task. A task spoken in the same utterance as the wake phrase is retained and runs after the reply. Recording pauses during the reply; cancelling playback also cancels this continuation.
+
 ### Device checks (Pixel 6 Pro, AOSP 17)
 
 Unit tests, Android Lint and both APK builds passed. Instrumentation passed real Chinese ASR, all three KWS phrases using synthesized audio, file-based TTS, playback completion, microphone cancellation, background listening, mute/resume and listening after playback. A reboot with both the default assistant and default recognition service selected started microphone capture without launching the app; `dumpsys audio` reported active capture with `silenced:false`.

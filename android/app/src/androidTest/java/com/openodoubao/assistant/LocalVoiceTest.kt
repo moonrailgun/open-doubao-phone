@@ -28,6 +28,51 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
 class LocalVoiceTest {
+    @Test fun wakeReplyFinishesBeforeListeningAndCancellationStopsTheChain() {
+        val instrument = InstrumentationRegistry.getInstrumentation()
+        val context = instrument.targetContext
+        val wasEnabled = context.getSharedPreferences("voice", 0).getBoolean("wake_enabled", false)
+        instrument.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
+        val activity = instrument.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        instrument.runOnMainSync {
+            activity.setTurnScreenOn(true)
+            context.getSystemService(KeyguardManager::class.java).requestDismissKeyguard(activity, null)
+            VoiceRuntime.setEnabled(context, false)
+        }
+        try {
+            await("Device must be unlocked for playback") {
+                !context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
+            }
+            instrument.runOnMainSync {
+                VoiceRuntime.respondToWake(context, "同志你好。")
+                assertEquals("正在播报", VoiceRuntime.state.value)
+                assertEquals(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, VoiceRuntime.foregroundType)
+            }
+            await("Wake reply did not continue into listening: ${VoiceRuntime.error.value}", 30_000) {
+                VoiceRuntime.state.value == "正在听，请说话"
+            }
+            assertEquals("", VoiceRuntime.error.value)
+            assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("speech-") })
+            instrument.runOnMainSync { VoiceRuntime.cancel() }
+            await("Cancel did not release microphone") { VoiceRuntime.state.value == "空闲" }
+            instrument.runOnMainSync { VoiceRuntime.respondToWake(context, "同志你好。") }
+            await("Reply did not create its playback file", 15_000) {
+                context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("speech-") }
+            }
+            instrument.runOnMainSync { VoiceRuntime.cancel() }
+            await("Cancelled reply did not finish") { VoiceRuntime.state.value == "空闲" }
+            SystemClock.sleep(1_000)
+            assertEquals("Cancelled reply must not start recording", "空闲", VoiceRuntime.state.value)
+        } finally {
+            instrument.runOnMainSync {
+                VoiceRuntime.cancel()
+                VoiceRuntime.setEnabled(context, wasEnabled)
+                activity.finish()
+            }
+        }
+    }
+
     @Test fun foregroundPlaybackAndMicrophoneCancelReleaseTheRuntime() {
         val instrument = InstrumentationRegistry.getInstrumentation()
         val context = instrument.targetContext
