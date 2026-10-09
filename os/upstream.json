@@ -1,0 +1,17 @@
+{
+  "device": "raven",
+  "description": "Official unmodified AOSP ARM64 GSI without Google apps",
+  "android_version": "17 QPR1",
+  "build_id": "CP3A.260905.010",
+  "build_number": "16176746",
+  "build_type": "user",
+  "security_patch": "2026-09-05",
+  "source_url": "https://dl.google.com/developers/android/cinnamonbun/images/gsi/aosp_arm64-exp-CP3A.260905.010-16176746-4a869a69.zip",
+  "release_notes_url": "https://developer.android.com/topic/generic-system-image/releases#android-17-qpr1",
+  "archive_sha256": "4a869a6959a50fee15ff871ce378853ced4485f2aa456eb64dbdbf7a2c0408aa",
+  "files": {
+    "system.img": "e5db44e3365f9e542ee3f6d4caf88ece554a460e2987086b8bf21f6c440a25ec",
+    "vbmeta.img": "b3281c527ecf2a6a743b37f5b9e118f492d2038e0a82e6777d292d1c5b42601a",
+    "build.prop": "6f84089e35e93e4e09db758ac0f0f6d0f2e1842043ed0db6c51831261f3ffe35"
+  }
+}
