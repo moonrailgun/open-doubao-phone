@@ -2,6 +2,7 @@ package com.openodoubao.assistant
 
 import android.os.Bundle
 import android.Manifest
+import android.app.ActivityManager
 import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Intent
@@ -15,6 +16,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.openodoubao.assistant.voice.LocalSpeechEngine
 import com.openodoubao.assistant.voice.LocalRecognitionService
 import com.openodoubao.assistant.voice.VoiceRuntime
+import com.openodoubao.assistant.voice.VoiceService
 import com.openodoubao.assistant.voice.createKeywordSpotter
 import com.openodoubao.assistant.voice.wakePhrases
 import org.junit.Assert.*
@@ -32,6 +34,11 @@ class LocalVoiceTest {
         val instrument = InstrumentationRegistry.getInstrumentation()
         val context = instrument.targetContext
         val wasEnabled = context.getSharedPreferences("voice", 0).getBoolean("wake_enabled", false)
+        // Kotlin internal names differ between the debug test target and the installed system variant.
+        val respondToWake = VoiceRuntime::class.java.methods.single { it.name.startsWith("respondToWake\$") }
+        @Suppress("DEPRECATION")
+        fun serviceStopped() = context.getSystemService(ActivityManager::class.java).getRunningServices(Int.MAX_VALUE)
+            .none { it.service.className == VoiceService::class.java.name }
         instrument.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
         val activity = instrument.startActivitySync(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -44,21 +51,27 @@ class LocalVoiceTest {
             await("Device must be unlocked for playback") {
                 !context.getSystemService(KeyguardManager::class.java).isKeyguardLocked
             }
+            await("Previous voice service did not stop", condition = ::serviceStopped)
+            val existingCache = context.cacheDir.listFiles().orEmpty().toSet()
             instrument.runOnMainSync {
-                VoiceRuntime.respondToWake(context, "同志你好。")
+                respondToWake.invoke(VoiceRuntime, context, "同志你好。")
                 assertEquals("正在播报", VoiceRuntime.state.value)
                 assertEquals(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, VoiceRuntime.foregroundType)
             }
             await("Wake reply did not continue into listening: ${VoiceRuntime.error.value}", 30_000) {
                 VoiceRuntime.state.value == "正在听，请说话"
             }
+            SystemClock.sleep(2_000)
+            assertEquals("Wake reply must keep waiting for the task", "正在听，请说话", VoiceRuntime.state.value)
             assertEquals("", VoiceRuntime.error.value)
-            assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("speech-") })
+            assertFalse("Reply left a playback file", context.cacheDir.listFiles().orEmpty()
+                .any { it.name.startsWith("speech-") && it !in existingCache })
             instrument.runOnMainSync { VoiceRuntime.cancel() }
             await("Cancel did not release microphone") { VoiceRuntime.state.value == "空闲" }
-            instrument.runOnMainSync { VoiceRuntime.respondToWake(context, "同志你好。") }
+            await("Cancelled voice service did not stop", condition = ::serviceStopped)
+            instrument.runOnMainSync { respondToWake.invoke(VoiceRuntime, context, "同志你好。") }
             await("Reply did not create its playback file", 15_000) {
-                context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("speech-") }
+                context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("speech-") && it !in existingCache }
             }
             instrument.runOnMainSync { VoiceRuntime.cancel() }
             await("Cancelled reply did not finish") { VoiceRuntime.state.value == "空闲" }
