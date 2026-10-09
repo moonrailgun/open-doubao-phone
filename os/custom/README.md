@@ -13,12 +13,14 @@ cd android
 
 ## 构建镜像副本
 
-需要 Docker、Python 3.11+、Pillow（本次使用 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 40 GB 可用空间。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
+需要 Docker、Python 3.12+、Pillow（本次使用 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 40 GB 可用空间。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
 
 ```sh
 export DOUXIAN_OUTPUT=/path/with/40GB/free/douxian-v1
+python3 android/tools/prepare_voice.py --assets-only --source-bundle
 python3 -B os/custom/test_boot_animation.py
 python3 os/custom/prepare_payload.py "$DOUXIAN_OUTPUT"
+cp android/.voice/voice-corresponding-source.tar.gz "$DOUXIAN_OUTPUT/"
 docker build -t douxian-image-tools os/custom
 docker run --rm -v "$PWD":/work:ro -w /work/os/custom \
   douxian-image-tools python3 -B test_image.py
@@ -29,6 +31,8 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
 配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入两个 APK、省电豁免和开机动画。原有文件及其权限、xattrs 不经过解包重打包；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
 
 输出包括 `system.img`、`payload.json`、`manifest.json` 和 `avb-info.txt`。使用无签名 AVB 元数据，只适用于当前已解锁且关闭验证的开发设备；不能重新锁定 Bootloader。容量限制使用当前 Pixel 6 Pro 的 dynamic partition group 与其他分区实际尺寸，不能直接套用到其他手机。
+
+发布镜像或 TTS APK 时，同时提供 `voice-corresponding-source.tar.gz`。该包包含当前 Android 源码、构建脚本、原生依赖源码及许可证；每次代码变更后重新生成，不包含本地签名密钥和构建缓存。模型条款与来源见 [语音依赖说明](../../android/third_party/sherpa-onnx/README.md)。
 
 小型 ext4 测试已覆盖文件写入、权限和 SELinux 标签、拒绝覆盖、真实共享块展开、文件内容保留、缩容、AVB 校验及容量边界。完整 GSI 的尺寸、启动、SELinux AVC 和数据保留尚未验证；空间不足时构建会在复制原始镜像前退出。脚本不会自动刷机。刷写前保留上一份可启动镜像，沿用 `os/flash-plan.md` 的已验证路径，升级不得使用 `-w`、清数据或卸载应用。
 
