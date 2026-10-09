@@ -36,6 +36,22 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
 
 小型 ext4 测试已覆盖文件写入、权限和 SELinux 标签、拒绝覆盖、真实共享块展开、文件内容保留、缩容、AVB 校验及容量边界。完整 GSI 的尺寸、启动、SELinux AVC 和数据保留尚未验证；空间不足时构建会在复制原始镜像前退出。脚本不会自动刷机。刷写前保留上一份可启动镜像，沿用 `os/flash-plan.md` 的已验证路径，升级不得使用 `-w`、清数据或卸载应用。
 
+## 不清数据升级检查
+
+`SystemUpgradeTest` 使用与目标 APK 同签名的 instrumentation APK，先在旧版应用上运行 `prepare`，刷入 v1 镜像后运行 `verify`。不传参数时跳过，避免普通测试套件创建升级基线。以下命令需明确指定目标手机，不能混用模拟器。
+
+```sh
+adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
+  -e class com.openodoubao.assistant.SystemUpgradeTest -e upgradePhase prepare \
+  com.openodoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
+# 不清数据刷入同签名 v1 镜像，启动后再运行：
+adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
+  -e class com.openodoubao.assistant.SystemUpgradeTest -e upgradePhase verify \
+  com.openodoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+检查保留的 UID、实际配置文件密文摘要、语音设置、系统应用标记及版本号，并用原有 Keystore alias 加密的独立测试配置验证解密能力。不会覆盖实际配置或输出凭据；基线保存在应用的 `no_backup/system-upgrade-check/`，重复 `prepare` 会拒绝覆盖。Instrumentation 会重启目标进程，完成后应重启手机并单独确认默认助手绑定和后台录音。
+
 ## 开机动画
 
 `boot_animation.py` 直接使用现有应用 Logo，生成 Android 原生 `ZIP_STORED` 归档：1440×3120 黑底、居中的 512×512 Logo、30 fps，先淡入 0.8 秒，再循环 2 秒的轻微亮度变化，系统就绪时可立即结束。PNG 使用 `trim.txt` 定位，避免为每帧保存整块黑色背景。格式遵循 [AOSP bootanimation 规范](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/FORMAT.md)。
