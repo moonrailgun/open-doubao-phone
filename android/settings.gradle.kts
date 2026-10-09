@@ -7,3 +7,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "OpenOdoubao"
 include(":app")
+include(":tts")
