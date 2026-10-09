@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import androidx.test.platform.app.InstrumentationRegistry
 import com.openodoubao.assistant.phone.AssistantService
 import org.junit.Assert.*
@@ -21,7 +22,16 @@ class SystemDefaultsTest {
         val originalServices = Settings.Secure.getString(resolver, servicesKey)
         val originalEnabled = Settings.Secure.getString(resolver, enabledKey)
         val own = ComponentName(app, AssistantService::class.java)
-        val other = "com.example.reader/.AccessibilityService"
+        // The framework removes service names that do not belong to an installed service.
+        val other = app.getSystemService(AccessibilityManager::class.java).installedAccessibilityServiceList
+            .map { ComponentName(it.resolveInfo.serviceInfo.packageName, it.resolveInfo.serviceInfo.name) }
+            .first { it != own }.flattenToString()
+        fun assertServices() {
+            val components = Settings.Secure.getString(resolver, servicesKey).split(':')
+                .map { ComponentName.unflattenFromString(it) }
+            assertEquals(setOf(ComponentName.unflattenFromString(other), own), components.toSet())
+            assertEquals(2, components.size)
+        }
         fun write(services: String?, enabled: String?) {
             instrumentation.uiAutomation.adoptShellPermissionIdentity("android.permission.WRITE_SECURE_SETTINGS")
             try {
@@ -32,7 +42,7 @@ class SystemDefaultsTest {
         try {
             write(other, "0")
             instrumentation.runOnMainSync { app.onCreate() }
-            assertEquals("$other:${own.flattenToShortString()}", Settings.Secure.getString(resolver, servicesKey))
+            assertServices()
             assertEquals(1, Settings.Secure.getInt(resolver, enabledKey))
             assertEquals(PackageManager.PERMISSION_GRANTED, app.checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS"))
 
@@ -40,7 +50,7 @@ class SystemDefaultsTest {
             val full = "$other:${own.flattenToString()}"
             write(full, "1")
             repeat(2) { instrumentation.runOnMainSync { app.onCreate() } }
-            assertEquals(full, Settings.Secure.getString(resolver, servicesKey))
+            assertServices()
         } finally { write(originalServices, originalEnabled) }
     }
 }
