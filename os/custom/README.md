@@ -91,6 +91,21 @@ adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
 python3 android/tools/test_wake_recovery.py --serial "$DOUXIAN_SERIAL"
 ```
 
+## 离线与麦克风竞争检查
+
+`OfflineTaskTest` 必须显式传入 `offlineCheck=true`，并确认手机已断开所有网络；它只检查当前网络状态，不修改网络设置。测试通过真实网络请求验证失败消息和零手机操作，使用内存临时配置，不覆盖实际账户配置。
+
+```sh
+adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
+  -e class com.openodoubao.assistant.OfflineTaskTest -e offlineCheck true \
+  com.openodoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
+adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
+  -e class 'com.openodoubao.assistant.WakeLifecycleTest#wakeListeningSurvivesPlaybackMuteAndBackground' \
+  com.openodoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+生命周期测试需要已设置默认助手，会播放测试语音、切换麦克风静音，并启动独立 UID 的测试 Activity 占用麦克风十秒，检查暂停及恢复；不读取或保存音频。测试结束会关闭监听，重新开启监听并重启手机后再确认后台录音。
+
 ## 开机动画
 
 `boot_animation.py` 直接使用现有应用 Logo，生成 Android 原生 `ZIP_STORED` 归档：1440×3120 白底、居中的 512×512 Logo、30 fps，先从纯白淡入 0.8 秒，再循环 2 秒的轻微透明度变化，系统就绪时可立即结束。PNG 使用 `trim.txt` 定位，避免为每帧保存整块白色背景。格式遵循 [AOSP bootanimation 规范](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/FORMAT.md)。
