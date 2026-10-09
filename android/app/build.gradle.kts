@@ -16,6 +16,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
+    buildTypes {
+        create("system") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
     sourceSets.getByName("main") {
         java.srcDir("../third_party/sherpa-onnx/recognition")
         assets.srcDir("../.voice/assistant-assets")
@@ -29,6 +35,13 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+}
+
+androidComponents.onVariants(androidComponents.selector().withBuildType("system")) { variant ->
+    variant.outputs.forEach {
+        it.versionCode.set(1001)
+        it.versionName.set("0.1.0-os.1")
+    }
 }
 
 tasks.named("preBuild") {

@@ -22,6 +22,12 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+    buildTypes {
+        create("system") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
     sourceSets.getByName("main") {
         java.srcDir("../third_party/sherpa-onnx/tts")
         assets.srcDir("../.voice/tts-assets")
@@ -36,5 +42,12 @@ android {
         jvmTarget = "17"
         // sherpa JNI looks up the concrete invoke(float[]): Integer callback method.
         freeCompilerArgs += "-Xlambdas=class"
+    }
+}
+
+androidComponents.onVariants(androidComponents.selector().withBuildType("system")) { variant ->
+    variant.outputs.forEach {
+        it.versionCode.set(1001)
+        it.versionName.set("0.1.0-os.1")
     }
 }
