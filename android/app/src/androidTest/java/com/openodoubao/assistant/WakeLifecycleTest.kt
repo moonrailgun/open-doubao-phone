@@ -52,7 +52,7 @@ class WakeLifecycleTest {
             awaitState("麦克风暂停，等待恢复")
             audio.isMicrophoneMute = false
             awaitState("等待唤醒词")
-            instrument.runOnMainSync { activity.finish() }
+            instrument.runOnMainSync { activity.finishAndRemoveTask() }
             SystemClock.sleep(1_000)
             assertEquals("等待唤醒词", VoiceRuntime.state.value)
             repeat(3) {
