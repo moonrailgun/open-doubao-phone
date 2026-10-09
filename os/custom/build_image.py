@@ -79,7 +79,7 @@ def main(output):
     if sha256(original) != upstream['files']['system.img']:
         raise RuntimeError('Original GSI checksum mismatch')
     payload = json.loads((output / 'payload.json').read_text())
-    for name in ('assistant.apk', 'tts.apk'):
+    for name in ('assistant.apk', 'tts.apk', 'bootanimation.zip'):
         if sha256(output / name) != payload[name]['sha256']:
             raise RuntimeError(f'Payload changed after APK verification: {name}')
     image = output / 'system.img'
@@ -99,6 +99,7 @@ def main(output):
     install(image, output / 'assistant.apk', '/system/app/Douxian/Douxian.apk')
     install(image, output / 'tts.apk', '/system/app/DouxianTts/DouxianTts.apk')
     install(image, ROOT / 'os/custom/douxian.xml', '/system/etc/sysconfig/douxian.xml')
+    install(image, output / 'bootanimation.zip', '/system/media/bootanimation.zip')
     run('e2fsck', '-fy', image, codes=(0, 1))
     run('resize2fs', '-M', image)
     run('e2fsck', '-fn', image)

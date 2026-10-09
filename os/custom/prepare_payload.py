@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+from boot_animation import create as create_boot_animation
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -44,6 +45,10 @@ def main(output):
         with system.open('rb') as stream:
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
         report[name] = dict(sha256=digest, certificate_sha256=system_cert, version_code=version)
+    animation = output / 'bootanimation.zip'
+    create_boot_animation(animation)
+    with animation.open('rb') as stream:
+        report[animation.name] = dict(sha256=hashlib.file_digest(stream, 'sha256').hexdigest())
     (output / 'payload.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
 
