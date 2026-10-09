@@ -42,7 +42,8 @@ object VoiceRuntime {
         private set
 
     fun serviceReady() { ready.complete(Unit) }
-    fun serviceStopped() { interruptWake(); cancel() }
+    // A previous service can finish stopping after the user has enabled wake listening again.
+    fun serviceStopped() { interruptWake(); cancel(); startWake() }
     fun assistantReady(context: Context, ready: Boolean) {
         this.context = context.applicationContext
         assistantReady = ready

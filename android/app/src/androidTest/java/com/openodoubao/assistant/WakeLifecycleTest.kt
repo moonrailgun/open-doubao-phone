@@ -55,10 +55,12 @@ class WakeLifecycleTest {
             instrument.runOnMainSync { activity.finish() }
             SystemClock.sleep(1_000)
             assertEquals("等待唤醒词", VoiceRuntime.state.value)
-            instrument.runOnMainSync { VoiceRuntime.setEnabled(context, false) }
-            awaitState("空闲")
-            instrument.runOnMainSync { VoiceRuntime.setEnabled(context, true) }
-            awaitState("等待唤醒词")
+            repeat(3) {
+                instrument.runOnMainSync { VoiceRuntime.setEnabled(context, false) }
+                awaitState("空闲")
+                instrument.runOnMainSync { VoiceRuntime.setEnabled(context, true) }
+                awaitState("等待唤醒词")
+            }
         } finally {
             audio.isMicrophoneMute = wasMuted
             instrument.uiAutomation.dropShellPermissionIdentity()
