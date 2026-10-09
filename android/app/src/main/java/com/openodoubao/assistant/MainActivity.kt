@@ -173,6 +173,8 @@ class MainActivity : ComponentActivity() {
         fun attempt(action: () -> Unit) {
             try { action() } catch (e: Exception) { message = e.message ?: "操作失败" }
         }
+        val remoteConfigVersion by AssistantService.remoteConfigVersion.collectAsState()
+        LaunchedEffect(remoteConfigVersion) { attempt { config = vault.read().config } }
         LaunchedEffect(refresh, task.status) { attempt { records = vault.read().records } }
         DisposableEffect(tab) {
             if (tab == 2) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)

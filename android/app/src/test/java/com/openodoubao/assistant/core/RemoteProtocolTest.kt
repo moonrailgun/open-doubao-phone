@@ -1,6 +1,7 @@
 package com.openodoubao.assistant.core
 
 import com.openodoubao.assistant.data.Record
+import com.openodoubao.assistant.model.ModelConfig
 import com.openodoubao.assistant.remote.*
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -32,6 +33,15 @@ class RemoteProtocolTest {
         val saved = mutableListOf<Record>()
         var starts = 0
         var stops = 0
+        var config = ModelConfig(jevKey = "existing-jev-secret", chatEndpoint = "https://chat.example/v1", chatModel = "chat", chatKey = "existing-chat-secret")
+        var configWrites = 0
+        var failSave = false
+        override fun config() = config
+        override fun saveConfig(config: ModelConfig) {
+            check(!failSave) { "保存失败" }
+            this.config = config
+            configWrites++
+        }
         override fun snapshot() = current
         override fun records() = saved.toList()
         override fun start(goal: String, taskId: String): String {
@@ -87,7 +97,7 @@ class RemoteProtocolTest {
     @Test fun strictMethodTypesAndFrameBoundsRejectUntrustedCommands() {
         val phone = Phone()
         val commands = RemoteCommands(phone)
-        listOf(request("config.get"), request("task.start", JSONObject().put("goal", 42)),
+        listOf(request("settings.get"), request("task.start", JSONObject().put("goal", 42)),
             request("task.start", JSONObject().put("goal", " ")),
             request("task.start", JSONObject().put("goal", "x".repeat(4001))),
             request("task.start", JSONObject().put("goal", "hello").put("apps", "all")),
@@ -99,6 +109,60 @@ class RemoteProtocolTest {
             assertThrows(IllegalArgumentException::class.java) { commands.handle(it) }
         }
         assertEquals(0, phone.starts)
+    }
+
+    private fun configParams(config: ModelConfig) = JSONObject().put("jevEndpoint", config.jevEndpoint)
+        .put("jevModel", config.jevModel).put("chatEndpoint", config.chatEndpoint).put("chatModel", config.chatModel)
+        .put("language", config.language).put("jevKey", JSONObject.NULL).put("chatKey", JSONObject.NULL)
+
+    @Test fun modelConfigReadsAndWritesNeverReturnKeysAndNullKeepsExistingKeys() {
+        val phone = Phone()
+        val commands = RemoteCommands(phone)
+        val read = commands.handle(request("config.get"))
+        assertTrue(read.toString(), read.getBoolean("ok"))
+        val data = read.getJSONObject("data")
+        assertTrue(data.getBoolean("hasJevKey"))
+        assertTrue(data.getBoolean("hasChatKey"))
+        assertFalse(data.has("jevKey"))
+        assertFalse(data.has("chatKey"))
+        assertFalse(read.toString().contains("secret"))
+        val params = configParams(phone.config).put("chatModel", "new-model").put("language", "zh-CN")
+        val saved = commands.handle(request("config.set", params))
+        assertTrue(saved.toString(), saved.getBoolean("ok"))
+        assertFalse(saved.toString().contains("secret"))
+        assertEquals("existing-chat-secret", phone.config.chatKey)
+        assertEquals("new-model", phone.config.chatModel)
+        assertEquals("zh-CN", phone.config.language)
+        assertEquals(1, phone.configWrites)
+        val replaced = commands.handle(request("config.set", configParams(phone.config)
+            .put("jevEndpoint", "https://other.example/v1").put("jevKey", "new-secret")))
+        assertTrue(replaced.toString(), replaced.getBoolean("ok"))
+        assertEquals("new-secret", phone.config.jevKey)
+        assertFalse(replaced.toString().contains("secret"))
+    }
+
+    @Test fun invalidOrBusyConfigWritesLeaveSavedSettingsUntouched() {
+        val phone = Phone()
+        val before = phone.config
+        val commands = RemoteCommands(phone)
+        listOf(configParams(before).put("chatEndpoint", "https://elsewhere.example/v1"),
+            configParams(before).put("jevKey", 3), configParams(before).put("jevKey", "bad key"),
+            configParams(before).put("chatEndpoint", "http://insecure.example").put("chatKey", "new"),
+            configParams(before).put("chatModel", ""), configParams(before).put("jevModel", "x".repeat(201)),
+            configParams(before).put("language", "x".repeat(65)), configParams(before).put("apps", "all"),
+            configParams(before).also { it.remove("jevKey") }).forEach {
+            assertFalse(commands.handle(request("config.set", it)).getBoolean("ok"))
+        }
+        for (status in listOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) {
+            phone.current = RemoteSnapshot(id, TaskState(status = status))
+            assertFalse(commands.handle(request("config.set", configParams(before))).getBoolean("ok"))
+        }
+        assertEquals(before, phone.config)
+        assertEquals(0, phone.configWrites)
+        phone.current = RemoteSnapshot()
+        phone.failSave = true
+        assertFalse(commands.handle(request("config.set", configParams(before))).getBoolean("ok"))
+        assertEquals(before, phone.config)
     }
 
     @Test fun historyListsAreBoundedWhileDetailAndLiveStateKeepDiagnostics() {

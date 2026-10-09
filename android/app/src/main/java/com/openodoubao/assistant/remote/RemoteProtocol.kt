@@ -3,6 +3,7 @@ package com.openodoubao.assistant.remote
 import com.openodoubao.assistant.core.TaskState
 import com.openodoubao.assistant.core.TaskStatus
 import com.openodoubao.assistant.data.Record
+import com.openodoubao.assistant.model.ModelConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -73,6 +74,8 @@ interface RemoteTasks {
     fun records(): List<Record>
     fun start(goal: String, taskId: String): String
     fun stop(taskId: String)
+    fun config(): ModelConfig
+    fun saveConfig(config: ModelConfig)
 }
 
 class RemoteCommands(private val tasks: RemoteTasks) {
@@ -116,6 +119,28 @@ class RemoteCommands(private val tasks: RemoteTasks) {
                     (tasks.records().firstOrNull { it.id == taskId } ?: error("未找到任务记录")).json()
                 }
                 "status.get" -> { params.exactFields(); tasks.snapshot().json() }
+                "config.get" -> { params.exactFields(); tasks.config().remoteJson() }
+                "config.set" -> {
+                    params.exactFields("jevEndpoint", "jevModel", "jevKey", "chatEndpoint", "chatModel", "chatKey", "language")
+                    check(tasks.snapshot().task.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改模型配置" }
+                    val old = tasks.config()
+                    fun field(name: String, limit: Int): String = params.string(name).also {
+                        require(it.length <= limit) { "字段 $name 过长" }
+                    }.trim()
+                    val jevEndpoint = field("jevEndpoint", 2048)
+                    val chatEndpoint = field("chatEndpoint", 2048)
+                    fun key(name: String, endpoint: String, previousEndpoint: String, previousKey: String): String {
+                        if (!params.isNull(name)) return field(name, 8192)
+                        // Never forward an existing secret to a remotely changed endpoint.
+                        require(endpoint == previousEndpoint) { "修改接口地址时请填写新的 API Key" }
+                        return previousKey
+                    }
+                    val config = ModelConfig(jevEndpoint, field("jevModel", 200), key("jevKey", jevEndpoint, old.jevEndpoint, old.jevKey),
+                        chatEndpoint, field("chatModel", 200), key("chatKey", chatEndpoint, old.chatEndpoint, old.chatKey), field("language", 64))
+                    config.validate()
+                    tasks.saveConfig(config)
+                    config.remoteJson()
+                }
                 else -> error("不支持的远程方法")
             }
             response.put("ok", true).put("data", data)
@@ -124,6 +149,10 @@ class RemoteCommands(private val tasks: RemoteTasks) {
         }
     }
 }
+
+private fun ModelConfig.remoteJson(): JSONObject = JSONObject().put("jevEndpoint", jevEndpoint).put("jevModel", jevModel)
+    .put("chatEndpoint", chatEndpoint).put("chatModel", chatModel).put("language", language)
+    .put("hasJevKey", jevKey.isNotBlank()).put("hasChatKey", chatKey.isNotBlank())
 
 private fun Record.json(preview: Boolean = false): JSONObject = JSONObject().put("id", id).put("time", time)
     .put("goal", if (preview) goal.take(240) else goal).put("status", status)

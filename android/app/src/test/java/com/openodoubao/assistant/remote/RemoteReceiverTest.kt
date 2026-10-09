@@ -154,6 +154,8 @@ class RemoteReceiverTest {
 
     private class Tasks : RemoteTasks {
         var starts = 0
+        override fun config() = com.openodoubao.assistant.model.ModelConfig()
+        override fun saveConfig(config: com.openodoubao.assistant.model.ModelConfig) = Unit
         override fun snapshot() = RemoteSnapshot()
         override fun records() = emptyList<Record>()
         override fun start(goal: String, taskId: String): String { starts++; return taskId }

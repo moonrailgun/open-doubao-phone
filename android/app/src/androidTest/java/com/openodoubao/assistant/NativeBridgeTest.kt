@@ -37,6 +37,8 @@ import com.openodoubao.assistant.data.Vault
 import com.openodoubao.assistant.model.ModelConfig
 import com.openodoubao.assistant.model.CloudModels
 import com.openodoubao.assistant.model.HttpTransport
+import com.openodoubao.assistant.remote.RemoteCommands
+import com.openodoubao.assistant.remote.RemoteReceiver
 import com.openodoubao.assistant.phone.AssistantService
 import com.openodoubao.assistant.phone.catalogSelection
 import com.openodoubao.assistant.phone.loadAppCatalog
@@ -60,6 +62,47 @@ import androidx.test.runner.lifecycle.Stage
 class NativeBridgeTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
+
+    @Test fun remoteModelConfigPersistsAndRefreshesTheOpenPhonePage() = runBlocking {
+        val service = fixture()
+        val vault = Vault(context)
+        val before = withContext(Dispatchers.Main) { vault.read() }
+        val device = androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
+        try {
+            withContext(Dispatchers.Main) {
+                vault.write(before.copy(config = ModelConfig()))
+                context.startActivity(Intent(context, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            }
+            assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(
+                androidx.test.uiautomator.By.text("还没有设置模型")), 5000))
+            withContext(Dispatchers.Main) {
+                // Exercise the service's real persistence callback without opening a network listener.
+                val commands = RemoteReceiver::class.java.getDeclaredField("commands")
+                    .apply { isAccessible = true }.get(service.remote) as RemoteCommands
+                val config = ModelConfig(jevKey = "integration-jev-secret", chatEndpoint = "https://example.com/v1",
+                    chatModel = "integration-model", chatKey = "integration-chat-secret", language = "zh-CN")
+                val params = JSONObject().put("jevEndpoint", config.jevEndpoint).put("jevModel", config.jevModel)
+                    .put("jevKey", config.jevKey).put("chatEndpoint", config.chatEndpoint)
+                    .put("chatModel", config.chatModel).put("chatKey", config.chatKey).put("language", config.language)
+                val response = commands.handle(JSONObject().put("type", "request").put("id", java.util.UUID.randomUUID().toString())
+                    .put("method", "config.set").put("params", params).toString())
+                assertTrue(response.toString(), response.getBoolean("ok"))
+                assertFalse(response.toString().contains("secret"))
+                assertEquals(before.copy(config = config), vault.read())
+                val encrypted = File(context.noBackupFilesDir, "assistant.enc").readBytes().toString(Charsets.ISO_8859_1)
+                assertFalse(encrypted.contains(config.jevKey))
+                assertFalse(encrypted.contains(config.chatKey))
+            }
+            assertTrue("Open page must observe the remotely saved configuration", device.wait(
+                androidx.test.uiautomator.Until.gone(androidx.test.uiautomator.By.text("还没有设置模型")), 5000))
+        } finally {
+            withContext(Dispatchers.Main) {
+                ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).forEach { it.finish() }
+                vault.write(before)
+            }
+        }
+    }
 
     private suspend fun fixture(secure: Boolean = false, canvas: Boolean = false): AssistantService {
         check(context.getSharedPreferences("fixture", Context.MODE_PRIVATE).edit().clear().commit())

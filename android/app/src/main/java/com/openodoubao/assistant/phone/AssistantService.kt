@@ -43,6 +43,7 @@ import com.openodoubao.assistant.core.*
 import com.openodoubao.assistant.data.Record
 import com.openodoubao.assistant.data.Vault
 import com.openodoubao.assistant.model.CloudModels
+import com.openodoubao.assistant.model.ModelConfig
 import com.openodoubao.assistant.remote.RemoteProtocol
 import com.openodoubao.assistant.remote.RemoteReceiver
 import com.openodoubao.assistant.remote.RemoteSnapshot
@@ -58,6 +59,8 @@ class AssistantService : AccessibilityService() {
     companion object {
         private val connection = MutableStateFlow<AssistantService?>(null)
         val connected = connection.asStateFlow()
+        private val configVersion = MutableStateFlow(0)
+        val remoteConfigVersion = configVersion.asStateFlow()
         init {
             // A crash mid-task would otherwise leave its record stuck at RUNNING with no reason.
             val previous = Thread.getDefaultUncaughtExceptionHandler()
@@ -128,6 +131,12 @@ class AssistantService : AccessibilityService() {
                 object : RemoteTasks {
                     override fun snapshot() = remoteSnapshot.value
                     override fun records() = vault.read().records
+                    override fun config() = vault.read().config
+                    override fun saveConfig(config: ModelConfig) {
+                        check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改模型配置" }
+                        vault.write(vault.read().copy(config = config))
+                        configVersion.value++
+                    }
                     override fun start(goal: String, taskId: String): String {
                         return startTask(goal, taskId)
                     }
