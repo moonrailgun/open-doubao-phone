@@ -11,7 +11,7 @@
 | 刷写目录 | `prepared-gsi-CP3A.260905.010/`，通过符号链接引用以上原始文件 |
 | 刷写清单 | 本目录的 `fastboot-info.txt`；刷写目录中的同名链接指向 `../fastboot-info.txt` |
 
-这是本地组合的刷写目录，不是 Google 发布的完整 AOSP 整机包。原始镜像未修改；尚未验证组合后的实际启动和硬件功能。
+这是本地组合的刷写目录，不是 Google 发布的完整 AOSP 整机包。原始镜像未修改；实际启动和 ADB 已验证，硬件功能尚未测试。
 
 ## 副槽位处理
 
@@ -50,7 +50,7 @@
   ```
 
 - fastboot 将动态分区合并为 29 个 sparse 数据块直接写入 `super`，全部返回 `OKAY`，命令以状态 `0` 结束，用时约 198 秒。
-- 用户数据与 metadata 已清除。设备报告文件系统类型为 `raw`，fastboot 未在主机端格式化；启动后的初始化结果仍需验证。
+- 用户数据与 metadata 已清除。设备报告文件系统类型为 `raw`，fastboot 未在主机端格式化；后续 Recovery 初始化与实机验证见下文。
 - 再次重启 Bootloader 后，实机读取的分区大小与本地镜像逐一相同：
 
   | 分区 | 字节数 |
@@ -61,4 +61,25 @@
   | `vendor_b` | 651,722,752 |
   | `vendor_dlkm_b` | 55,853,056 |
 
-- 保持 `unlocked=yes`、目标槽位 `b`，已发出系统重启命令。尚待确认进入桌面、系统版本和 ADB；未测试基本硬件，也未进行整分区二进制回读校验。
+- 保持 `unlocked=yes`、目标槽位 `b`。未进行整分区二进制回读校验。
+
+## 首次启动与 Recovery 初始化
+
+首次启动出现黑屏，但 Fastboot 和 Recovery 均能进入。Recovery 中 ADB 可连接，普通 shell 无权读取恢复日志，未取得能直接解释黑屏的启动日志。
+
+在此前已同意清空数据的范围内，用户从 Recovery 执行 `Wipe data/factory reset` → `Factory data reset`，完成后选择 `Reboot system now`，随后确认已进入桌面或初始设置。该操作后的结果表明 Recovery 初始化解决了本次启动阻塞；不能仅凭此确定具体失败原因。
+
+若进入 Recovery 后显示机器人或 `No command`，按住电源键，短按音量上键，然后同时松开即可打开菜单，见 [Google 恢复出厂设置说明](https://support.google.com/pixelphone/answer/16493042?hl=zh-Hans)。初始化会清空用户数据。
+
+## 实机启动验证
+
+用户开启 USB 调试并授权电脑后，已从这台 Pixel 6 Pro 读取并确认：
+
+- ADB 状态为 `device`；`sys.boot_completed=1`。
+- 系统指纹为 `Android/generic_system/generic:17/CP3A.260905.010/16176746:user/release-keys`，Android 17 / SDK 37。
+- vendor 指纹为 `google/raven/raven:17/CP3A.261005.002.A1/16269273:user/release-keys`，设备为 `raven`。
+- 槽位为 `_b`，`ro.boot.flash.locked=0`，`ro.treble.enabled=true`。
+- `/data` 可用，默认桌面为 `com.android.launcher3/.uioverrides.QuickstepLauncher`。
+- 再执行一次 `adb reboot` 后，ADB 自动重连，读取到 `sys.boot_completed=1`，当时系统 uptime 为 `8.78` 秒，USB 调试授权已保留。
+
+该 GSI 为 `user` 构建，`ro.debuggable=0`，不提供 `adb root`。尚未测试相机、通话、Wi-Fi、蓝牙等硬件功能，也尚未集成 AI 助手。

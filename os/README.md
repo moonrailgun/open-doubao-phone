@@ -37,6 +37,7 @@ Google 原厂 Pixel 6 Pro Android 17：`CP3A.261005.002.A1`。
 - Bootloader 模式通信正常；fastbootd 模式出现 `usb_write failed with status e00002ed`。更新 Platform Tools、切换 arm64/x86_64 和暂时停止 ADB 服务均未解决，尚不能确定是线缆、Mac USB 通信还是手机 fastbootd 的问题。
 - 曾尝试 [官方 Flash Tool 的同一 AOSP 构建](https://flash.android.com/build/16176746?target=aosp_arm64-user&signed=true&wipe=true)。其 GSI 流程要求正常系统中的 ADB 授权，而原系统设置向导被旧 PIN 或 Google 账号验证阻挡；ADB 虽能列出设备，执行 `shell getprop` 仍返回 `error: closed`。
 - 已按 [Bootloader 整包刷写方案与记录](flash-plan.md) 完成刷写：原厂固件与 AOSP GSI 组合，使用本地 `fastboot-info.txt` 排除副槽位 system 指令，通过 Bootloader 直接写入 `super`。官方原始文件保持不变。
-- 修正后的 29 个 `super` 数据块全部写入成功；重启 Bootloader 后，五个动态分区的大小均与镜像相同。用户数据已清除，已重启系统，尚待确认桌面、版本、ADB 和硬件功能。
+- 修正后的 29 个 `super` 数据块全部写入成功；重启 Bootloader 后，五个动态分区的大小均与镜像相同。首次启动黑屏，执行 Recovery 恢复出厂设置后恢复启动。
+- 已通过真机 ADB 核验：AOSP Android 17 / `CP3A.260905.010`，`sys.boot_completed=1`，`raven` vendor 为 `CP3A.261005.002.A1`，数据分区可用、默认桌面为 AOSP Launcher3。再次正常重启后仍能完成启动并连接 ADB。相机、通话、Wi-Fi 和蓝牙等硬件功能尚未测试，详见刷写记录。
 
 刷写会清空用户数据。不要对开发镜像执行 `fastboot flashing lock`，也不要在未核对防回滚限制时刷入旧版 Bootloader。
