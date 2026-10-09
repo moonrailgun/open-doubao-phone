@@ -1,0 +1,130 @@
+package com.openodoubao.assistant.remote
+
+import com.openodoubao.assistant.core.TaskState
+import com.openodoubao.assistant.core.TaskStatus
+import com.openodoubao.assistant.data.Record
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.URI
+
+data class Pairing(val host: String, val port: Int, val fingerprint: String, val token: String) {
+    fun json(): JSONObject = JSONObject().put("host", host).put("port", port).put("fingerprint", fingerprint).put("token", token)
+
+    companion object {
+        fun parse(code: String): Pairing {
+            require(code.length <= 2048) { "设备码过长" }
+            val uri = try { URI(code.trim()) } catch (_: Exception) { throw IllegalArgumentException("设备码格式无效") }
+            require(uri.scheme == "odoubao" && uri.rawAuthority == "pair" && uri.rawPath.isNullOrEmpty() && uri.rawFragment == null) { "请粘贴桌面端的完整设备码" }
+            val values = mutableMapOf<String, String>()
+            for (entry in uri.rawQuery.orEmpty().split('&')) {
+                val part = entry.split('=', limit = 2)
+                require(part.size == 2 && values.put(part[0], part[1]) == null) { "设备码字段无效或重复" }
+            }
+            require(values.keys == setOf("v", "host", "port", "fingerprint", "token") && values["v"] == "1") { "不支持的设备码版本或字段" }
+            return validate(values.getValue("host"), values.getValue("port"), values.getValue("fingerprint"), values.getValue("token"))
+        }
+
+        fun fromJson(json: JSONObject): Pairing {
+            json.exactFields("host", "port", "fingerprint", "token")
+            val port = json.opt("port")
+            require(port is Int || port is Long) { "端口无效" }
+            return validate(json.string("host"), port.toString(), json.string("fingerprint"), json.string("token"))
+        }
+
+        private fun validate(host: String, portText: String, fingerprint: String, token: String): Pairing {
+            val parts = host.split('.')
+            require(parts.size == 4 && parts.all { it.matches(Regex("0|[1-9][0-9]{0,2}")) && it.toInt() in 0..255 }) { "仅支持局域网 IPv4 地址" }
+            val ip = parts.map(String::toInt)
+            require(ip[0] == 10 || ip[0] == 172 && ip[1] in 16..31 || ip[0] == 192 && ip[1] == 168 || ip[0] == 169 && ip[1] == 254) { "仅支持局域网 IPv4 地址" }
+            require(portText.matches(Regex("[1-9][0-9]{0,4}")) && portText.toInt() <= 65535) { "端口无效" }
+            require(listOf(fingerprint, token).all { it.matches(Regex("[0-9a-fA-F]{64}")) }) { "设备码指纹或凭证无效" }
+            return Pairing(host, portText.toInt(), fingerprint.lowercase(), token.lowercase())
+        }
+    }
+}
+
+data class RemoteConfig(val deviceId: String = "", val binding: Pairing? = null, val enabled: Boolean = false)
+data class RemoteSnapshot(val taskId: String? = null, val task: TaskState = TaskState()) {
+    fun json(): JSONObject = JSONObject().put("taskId", taskId ?: JSONObject.NULL).put("status", task.status.name)
+        .put("goal", task.goal.take(4000)).put("message", task.message.take(4000)).put("result", task.result.take(6000)).put("steps", task.steps)
+        .put("log", JSONArray(task.trace))
+}
+
+object RemoteProtocol {
+    const val MAX_FRAME_BYTES = 256 * 1024
+    fun json(text: String): JSONObject {
+        require(text.toByteArray(Charsets.UTF_8).size <= MAX_FRAME_BYTES) { "消息超过 256 KiB" }
+        return try { JSONObject(text) } catch (_: Exception) { throw IllegalArgumentException("消息必须是 JSON 对象") }
+    }
+    fun uuid(value: String): String {
+        require(value.matches(Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))) { "任务或请求 ID 无效" }
+        return value
+    }
+}
+
+internal fun JSONObject.string(key: String): String = (opt(key) as? String)
+    ?: throw IllegalArgumentException("字段 $key 必须是字符串")
+internal fun JSONObject.exactFields(vararg names: String) {
+    require(keys().asSequence().toSet() == names.toSet()) { "消息字段不完整或包含未知字段" }
+}
+
+interface RemoteTasks {
+    fun snapshot(): RemoteSnapshot
+    fun records(): List<Record>
+    fun start(goal: String, taskId: String): String
+    fun stop(taskId: String)
+}
+
+class RemoteCommands(private val tasks: RemoteTasks) {
+    fun handle(text: String): JSONObject {
+        val request = RemoteProtocol.json(text)
+        request.exactFields("type", "id", "method", "params")
+        require(request.string("type") == "request") { "不支持的消息类型" }
+        val id = RemoteProtocol.uuid(request.string("id"))
+        val response = JSONObject().put("type", "response").put("id", id)
+        return try {
+            val params = request.opt("params") as? JSONObject ?: throw IllegalArgumentException("params 必须是对象")
+            val data: Any = when (request.string("method")) {
+                "task.start" -> {
+                    params.exactFields("goal")
+                    val rawGoal = params.string("goal")
+                    require(rawGoal.isNotBlank() && rawGoal.length <= 4000) { "请填写 1–4000 字的任务" }
+                    val goal = rawGoal.trim()
+                    val existing = tasks.records().firstOrNull { it.id == id }
+                    if (existing != null) require(existing.goal == goal) { "请求 ID 已用于其他任务" }
+                    else {
+                        val status = tasks.snapshot().task.status
+                        check(status != TaskStatus.RUNNING && status != TaskStatus.PAUSED) { "请先停止当前任务" }
+                        check(tasks.start(goal, id) == id) { "任务 ID 不一致" }
+                    }
+                    JSONObject().put("taskId", id)
+                }
+                "task.stop" -> {
+                    params.exactFields("taskId")
+                    val taskId = RemoteProtocol.uuid(params.string("taskId"))
+                    check(tasks.snapshot().taskId == taskId) { "该任务不是当前任务" }
+                    tasks.stop(taskId)
+                    JSONObject().put("taskId", taskId)
+                }
+                "records.list" -> {
+                    params.exactFields()
+                    JSONArray(tasks.records().take(30).map { it.json(preview = true) })
+                }
+                "records.get" -> {
+                    params.exactFields("taskId")
+                    val taskId = RemoteProtocol.uuid(params.string("taskId"))
+                    (tasks.records().firstOrNull { it.id == taskId } ?: error("未找到任务记录")).json()
+                }
+                "status.get" -> { params.exactFields(); tasks.snapshot().json() }
+                else -> error("不支持的远程方法")
+            }
+            response.put("ok", true).put("data", data)
+        } catch (e: Exception) {
+            response.put("ok", false).put("error", e.message?.take(500) ?: "请求失败")
+        }
+    }
+}
+
+private fun Record.json(preview: Boolean = false): JSONObject = JSONObject().put("id", id).put("time", time)
+    .put("goal", if (preview) goal.take(240) else goal).put("status", status)
+    .put("result", if (preview) result.take(500) else result).also { if (!preview) it.put("log", JSONArray(log)) }

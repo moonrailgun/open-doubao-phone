@@ -1,0 +1,7 @@
+<resources>
+    <item name="fixture_note" type="id" />
+    <item name="fixture_apply" type="id" />
+    <item name="fixture_status" type="id" />
+    <item name="fixture_setting" type="id" />
+    <item name="fixture_canvas" type="id" />
+</resources>

@@ -1,0 +1,31 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Users authorize arbitrary installed components; fixed queries cannot enumerate that selection. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
+    </queries>
+    <application android:theme="@style/AppTheme" android:label="Open Odoubao" android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".remote.PairingCaptureActivity" android:exported="false"
+            android:screenOrientation="portrait" android:theme="@style/zxing_CaptureTheme"
+            android:windowSoftInputMode="stateAlwaysHidden" />
+        <service android:name=".phone.AssistantService" android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service" />
+        </service>
+    </application>
+</manifest>

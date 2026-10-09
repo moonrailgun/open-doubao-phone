@@ -1,0 +1,12 @@
+<!-- Lucide "minimize-2" v1.53.0 (ISC, https://lucide.dev/license); tinted at use. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="m14 10 7-7"
+        android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M20 10h-6V4"
+        android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="m3 21 7-7"
+        android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M4 14h6v6"
+        android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

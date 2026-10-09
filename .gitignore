@@ -1,0 +1,16 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+.superpowers/
+artifacts/
+.env
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/test-results/
+desktop/playwright-report/

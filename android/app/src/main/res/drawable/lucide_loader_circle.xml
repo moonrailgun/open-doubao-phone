@@ -1,0 +1,6 @@
+<!-- Lucide "loader-circle" v1.53.0 (ISC, https://lucide.dev/license); tinted at use. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M21 12a9 9 0 1 1-6.219-8.56"
+        android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>
