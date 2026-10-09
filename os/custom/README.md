@@ -106,6 +106,12 @@ adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
 
 生命周期测试需要已设置默认助手，会播放测试语音、切换麦克风静音，并启动独立 UID 的测试 Activity 占用麦克风十秒，检查暂停及恢复；不读取或保存音频。测试结束会关闭监听，重新开启监听并重启手机后再确认后台录音。
 
+## 桌面远程模型配置
+
+桌面连接已配对的手机后，点击侧栏“模型配置”，可修改 Jev 与通用模型的地址、模型名、API Key 和总结语言。保存后写入手机的加密配置，后续任务使用新配置，手机已打开的配置页也会刷新。
+
+已有 Key 不会回传桌面；Key 留空表示保留，修改模型地址时必须重新填写对应 Key。运行或暂停中的任务需要先结束才能修改；断开连接会清空桌面表单。
+
 ## 开机动画
 
 `boot_animation.py` 直接使用现有应用 Logo，生成 Android 原生 `ZIP_STORED` 归档：1440×3120 白底、居中的 512×512 Logo、30 fps，先从纯白淡入 0.8 秒，再循环 2 秒的轻微透明度变化，系统就绪时可立即结束。PNG 使用 `trim.txt` 定位，避免为每帧保存整块白色背景。格式遵循 [AOSP bootanimation 规范](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/FORMAT.md)。
