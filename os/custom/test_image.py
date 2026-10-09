@@ -20,15 +20,15 @@ class ImageRecipeTest(unittest.TestCase):
             run('mke2fs', '-q', '-t', 'ext4', '-b', '4096', '-O', '^extent,^64bit', '-F', image)
             source = root / 'payload with space'
             source.write_bytes(b'test payload\n')
-            install(image, source, '/system/app/Douxian/Douxian.apk')
-            self.assertIn('Mode:  0644', debugfs(image, 'stat /system/app/Douxian/Douxian.apk'))
-            self.assertIn('security.selinux (26)', debugfs(image, 'ea_list /system/app/Douxian/Douxian.apk'))
-            self.assertIn('test payload', debugfs(image, 'cat /system/app/Douxian/Douxian.apk'))
+            install(image, source, '/system/priv-app/Douxian/Douxian.apk')
+            self.assertIn('Mode:  0644', debugfs(image, 'stat /system/priv-app/Douxian/Douxian.apk'))
+            self.assertIn('security.selinux (26)', debugfs(image, 'ea_list /system/priv-app/Douxian/Douxian.apk'))
+            self.assertIn('test payload', debugfs(image, 'cat /system/priv-app/Douxian/Douxian.apk'))
             with self.assertRaises(RuntimeError):
-                install(image, source, '/system/app/Douxian/Douxian.apk')
+                install(image, source, '/system/priv-app/Douxian/Douxian.apk')
             run('e2fsck', '-fn', image)
             # Two distinct inodes must share a real block to exercise unsharing.
-            block = debugfs(image, 'bmap /system/app/Douxian/Douxian.apk 0').splitlines()[-1]
+            block = debugfs(image, 'bmap /system/priv-app/Douxian/Douxian.apk 0').splitlines()[-1]
             empty = root / 'empty'
             empty.touch()
             debugfs(image, f'write {empty} /shared', True)
@@ -41,7 +41,7 @@ class ImageRecipeTest(unittest.TestCase):
             run('e2fsck', '-fy', '-E', 'unshare_blocks', image, codes=(0, 1))
             self.assertNotIn('shared_blocks', run('dumpe2fs', '-h', image))
             self.assertIn('test payload', debugfs(image, 'cat /shared'))
-            self.assertIn('test payload', debugfs(image, 'cat /system/app/Douxian/Douxian.apk'))
+            self.assertIn('test payload', debugfs(image, 'cat /system/priv-app/Douxian/Douxian.apk'))
             run('resize2fs', '-M', image)
             run('e2fsck', '-fn', image)
             run(*AVB, 'add_hashtree_footer', '--image', image, '--partition_name', 'system',

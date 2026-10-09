@@ -96,8 +96,10 @@ def main(output):
         raise RuntimeError('Shared blocks were not removed')
     if 'Inode:' not in debugfs(image, 'stat /system/build.prop'):
         raise RuntimeError('Unexpected GSI directory layout')
-    install(image, output / 'assistant.apk', '/system/app/Douxian/Douxian.apk')
+    install(image, output / 'assistant.apk', '/system/priv-app/Douxian/Douxian.apk')
     install(image, output / 'tts.apk', '/system/app/DouxianTts/DouxianTts.apk')
+    install(image, ROOT / 'os/custom/privapp-permissions-douxian.xml',
+            '/system/etc/permissions/privapp-permissions-douxian.xml')
     install(image, ROOT / 'os/custom/douxian.xml', '/system/etc/sysconfig/douxian.xml')
     install(image, output / 'bootanimation.zip', '/system/media/bootanimation.zip')
     run('e2fsck', '-fy', image, codes=(0, 1))
