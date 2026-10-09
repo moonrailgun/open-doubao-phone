@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Users authorize arbitrary installed components; fixed queries cannot enumerate that selection. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -9,7 +15,8 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
-        <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
+        <package android:name="com.openodoubao.tts" />
+        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
     </queries>
     <application android:theme="@style/AppTheme" android:label="Open Odoubao" android:icon="@mipmap/ic_launcher"
         android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
@@ -27,5 +34,11 @@
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
             <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service" />
         </service>
+        <service android:name=".voice.LocalRecognitionService" android:exported="true"
+            android:permission="android.permission.BIND_SPEECH_RECOGNITION_SERVICE">
+            <intent-filter><action android:name="android.speech.RecognitionService" /></intent-filter>
+        </service>
+        <service android:name=".voice.VoiceService" android:exported="false"
+            android:foregroundServiceType="microphone|mediaPlayback" />
     </application>
 </manifest>

@@ -16,12 +16,28 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
+    sourceSets.getByName("main") {
+        java.srcDir("../third_party/sherpa-onnx/recognition")
+        assets.srcDir("../.voice/assistant-assets")
+        jniLibs.srcDir("../.voice/assistant-jni")
+    }
+    androidResources { noCompress += listOf("onnx", "bin") }
+    sourceSets.getByName("androidTest").assets.srcDir("../.voice/test-assets")
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+}
+
+tasks.named("preBuild") {
+    doFirst {
+        for (path in listOf("assistant-assets/voice/asr/model.int8.onnx", "assistant-assets/voice/silero_vad.onnx",
+            "assistant-jni/arm64-v8a/libsherpa-onnx-jni.so", "assistant-jni/arm64-v8a/libonnxruntime.so")) {
+            check(file("../.voice/$path").isFile) { "Missing $path; run python3 tools/prepare_voice.py from android/" }
+        }
+    }
 }
 
 dependencies {

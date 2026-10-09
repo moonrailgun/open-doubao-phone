@@ -5,7 +5,6 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
-import android.speech.RecognizerIntent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -70,6 +69,8 @@ import com.openodoubao.assistant.phone.catalogSelection
 import com.openodoubao.assistant.phone.loadAppCatalog
 import com.openodoubao.assistant.phone.visibleAppCatalog
 import com.openodoubao.assistant.remote.RemoteControls
+import com.openodoubao.assistant.voice.rememberVoiceInput
+import com.openodoubao.assistant.voice.VoiceControls
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -178,9 +179,7 @@ class MainActivity : ComponentActivity() {
             else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
         }
-        val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK) result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { goal = it.take(4000) }
-        }
+        val voice = rememberVoiceInput({ goal = it.take(4000) }, { message = it })
         val colors = MaterialTheme.colorScheme
         val notice = @Composable {
             if (message.isNotEmpty()) Surface(color = colors.secondaryContainer, shape = RoundedCornerShape(18.dp)) {
@@ -238,10 +237,7 @@ class MainActivity : ComponentActivity() {
                                             focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
                                     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                         FilledTonalIconButton({ attempt {
-                                            voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                                                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-                                                .putExtra(RecognizerIntent.EXTRA_PROMPT, "说出你想让手机做的事"))
+                                            voice()
                                         } }) { Icon(painterResource(R.drawable.lucide_mic), "语音输入") }
                                         Spacer(Modifier.weight(1f))
                                         TextButton({ choosingApps = true }, Modifier.semantics { contentDescription = appsLabel },
@@ -350,6 +346,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Text("测试连接会向两个服务各发一次请求，可能产生少量费用。密钥经 Android Keystore 加密后只存在本机，不写入日志和备份。",
                             Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
+                        VoiceControls()
                         RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     }
                 }
