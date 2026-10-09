@@ -4,17 +4,17 @@
 
 ## 当前产物
 
-本地输出目录：`os/custom/out/v1.6/`，未纳入 Git。保留原始镜像以及先前可启动的 `v1/` 至 `v1.5/` 输出。`manifest.json` 记录完整 payload、签名和容量数据。
+本地输出目录：`os/custom/out/v1.7/`，未纳入 Git。保留原始镜像以及先前可启动的 `v1/` 至 `v1.6/` 输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
 | 产物 | SHA-256 |
 |---|---|
-| `system.img` | `88179e6496113134c91696df2525b4d2aa691f5e99bb57169f70486b8871b877` |
-| `assistant.apk` | `b7e12d1023d293ec2fd6f7386d83847d569f40fd06b73f9e0d98339a3bbdda09` |
+| `system.img` | `e8c81d7779beec8f894b9b1426dfd0fdb8c8cdc89795ea7fe873352c07377ebc` |
+| `assistant.apk` | `e4e07acc1dc7cd9ac5188a9a9bf35845c4b54387b43d988f4fef17cb23fd4ba7` |
 | `tts.apk` | `7506d6c265ae3252501d13271734c07c763f4f49c50c6a22d94165c3c0dfe6bd` |
 | `bootanimation.zip` | `ab7130e8d416016c77eb9561d589fa6413941b0784a8a479813f865fe284d31d` |
-| `voice-corresponding-source.tar.gz` | `1caefd8f1fd0118b295fd65d147b08bb913e20e229d12060d499a67cc2cdf204` |
+| `voice-corresponding-source.tar.gz` | `4c580391c199b278619e2d4849c4b95e0d219c5bb7ff03fed4673e8b36dec68c` |
 
-`system.img` 为 2,572,283,904 字节；动态分区合计 8,038,842,368 字节，低于 group 上限 8,527,020,032 字节，余量 488,177,664 字节。两份系统 APK 版本号均为 1001，证书与先前开发 APK 相同：`f73c285679b81382e5bdd814fdfab042620f86824798f7ac949e799d62e63578`。
+`system.img` 为 2,572,296,192 字节；动态分区合计 8,038,854,656 字节，低于 group 上限 8,527,020,032 字节，余量 488,165,376 字节。两份系统 APK 版本号均为 1001，证书与先前开发 APK 相同：`f73c285679b81382e5bdd814fdfab042620f86824798f7ac949e799d62e63578`。
 
 ## 已取得的证据
 
@@ -68,6 +68,18 @@ Debug/System 构建、Lint 和各 104 项单元测试通过。模拟器四项本
 真机首次运行没有收到 TTS 音频，两项测试超时；通过现有引擎设置的“重试初始化”入口恢复后，同两项测试通过（14.964 秒），见 `v1.6/streaming-device-test.log`、`streaming-device-retry.log`。检查点包括完整 WAV 的 RIFF 头尚未写入时已有音频数据与活动的助手播放器、取消后停止播放并删除缓存，以及回应播完后继续收音。本次未修改 TTS 初始化中断保护。
 
 v1.6 已完成不清数据刷写，见 `v1.6/flash.log`、`partition-check.txt`。测试后恢复默认助手绑定，确认监听就绪再重启，25.6 秒取得未被静音的后台录音，全程未打开 Activity；两份预装 APK 与开机动画摘要均与 manifest 一致，助手 UID、系统持久标记、默认助手角色、前台录音及省电豁免检查通过，见 `v1.6/final-reboot.log`、`final-reboot-audio.txt`。
+
+## 系统桌面与启动默认项
+
+v1.7 将助手放入系统特权应用目录，仅增加 `WRITE_SECURE_SETTINGS` 权限白名单。系统版进程启动时自动启用自己的无障碍服务，保留其他已启用服务，并避免短名称与完整名称重复；现有无障碍服务负责创建悬浮窗，锁屏隐藏规则保持不变。普通 APK 不启用这些系统默认行为。
+
+新桌面采用 Launcher3 的 partner 默认布局，在 5×5 网格的首页第 3 行、第 3 列放置助手，保留原有 Dock 与图库图标。真机临时用户的全新桌面已验证 `screen=0 cell(2,2)` 及其余五个快捷方式，见 `v1.7/fresh-layout-check.log`、`fresh-user-launcher.txt`、`fresh-user-home.png`；验证后已删除该临时用户。已有用户布局不被默认模板覆盖；当前手机通过拖放补入居中图标，确认原有五个图标未移动，见 `owner-layout-check.log`、`owner-launcher-after.txt`。
+
+Debug/System 构建、Lint 和单元测试通过，镜像构建通过文件系统、容量、读回摘要和 AVB 检查，见 `v1.7/gradle-accessibility.log`、`gradle-launcher.log`、`build.log`。真机启动设置测试通过，覆盖保留另一已安装的无障碍服务、重复启动去重及实际权限授予，见 `defaults-device-retry.log`；原测试使用的虚构服务会被系统清理，已改为真实已安装服务。测试 APK 最终重新构建通过，见 `gradle-test-final.log`。
+
+v1.7 已完成不清数据刷写，见 `flash.log`、`partition-check.txt`。测试前主动删除助手的无障碍启用项并将总开关设为 0，重启后自动恢复为已启用且已绑定，悬浮窗显示，首页居中图标保留，全程未打开助手 Activity。后台监听在 23.8 秒就绪，设备上两份 APK 与开机动画摘要和 manifest 一致，UID、系统持久标记、默认助手角色、前台录音与省电豁免检查通过；见 `accessibility-before-reboot.txt`、`final-reboot.log`、`final-accessibility.txt`、`final-windows.txt`、`final-defaults-check.log`、`final-home.png`。
+
+本次升级数据比较未通过：此前基线记录实际配置不存在，而手机随后已经保存模型配置、配对信息和任务记录，该基线已过时。保留严格比较逻辑，当前配置仍可解密，但本次缺少刷写前的最新配置摘要，不能声称完成了配置逐字节保留验证。对应源码包已更新，共 18,166 个条目，包含的 151 个已跟踪 Android 文件与镜像对应的源码提交 `8d27c94` 逐字节一致，见 `source-check.txt`；生产 APK 与镜像摘要不变。
 
 ## 桌面远程模型配置
 
