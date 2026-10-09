@@ -1,6 +1,6 @@
 package com.openodoubao.assistant.voice
 
-val wakePhrases = listOf("豆馅你好", "你好豆馅", "豆馅同志")
+val wakePhrases = listOf("豆馅你好", "你好豆馅", "豆馅同志", "同志你好")
 
 sealed interface VoiceCommand {
     data object Stop : VoiceCommand

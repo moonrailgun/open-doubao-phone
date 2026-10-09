@@ -45,7 +45,7 @@ fun VoiceControls() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("本地语音", style = MaterialTheme.typography.titleMedium)
             Text("识别和播报在本机运行。麦克风按钮填写输入框；唤醒后可直接下达任务。")
-            Text("唤醒词：豆馅你好、你好豆馅、豆馅同志。说“停止任务”或“继续任务”可控制当前任务。")
+            Text("唤醒词：${wakePhrases.joinToString("、")}。说“停止任务”或“继续任务”可控制当前任务。")
             TextButton({ context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }) {
                 Text(if (selected) "已设为默认助手 · 查看设置" else "第一步：设为默认数字助手")
             }

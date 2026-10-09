@@ -79,7 +79,7 @@ def stage_assets():
         pronunciation, phrase = line.split('@')
         assert set(pronunciation.split()) <= tokens, 'Unknown KWS token: ' + line
         phrases.add(phrase)
-    assert len(keywords) == 3 and phrases == {'豆馅你好', '你好豆馅', '豆馅同志'}
+    assert len(keywords) == 4 and phrases == {'豆馅你好', '你好豆馅', '豆馅同志', '同志你好'}
     tts = CACHE / 'kokoro-int8-multi-lang-v1_1'
     for name in ('model.int8.onnx', 'voices.bin', 'tokens.txt', 'lexicon-zh.txt', 'lexicon-us-en.txt', 'espeak-ng-data', 'LICENSE', 'date-zh.fst', 'number-zh.fst', 'phone-zh.fst'):
         copy(tts / name, CACHE / 'tts-assets/kokoro' / name)

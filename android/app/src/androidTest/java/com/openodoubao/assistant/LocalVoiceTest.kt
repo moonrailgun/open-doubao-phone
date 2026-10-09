@@ -100,7 +100,6 @@ class LocalVoiceTest {
         assertTrue("Recognized: $text", text.count { it in '\u4e00'..'\u9fff' } >= 6)
 
         val initialized = CountDownLatch(1)
-        val completed = CountDownLatch(1)
         var status = -1
         var synthesisError = false
         lateinit var tts: TextToSpeech
@@ -112,47 +111,50 @@ class LocalVoiceTest {
             assertTrue("TTS bind timed out", initialized.await(15, TimeUnit.SECONDS))
             assertEquals(TextToSpeech.SUCCESS, status)
             assertTrue(tts.setLanguage(Locale.SIMPLIFIED_CHINESE) >= 0)
-            tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) = Unit
-                override fun onDone(utteranceId: String?) { completed.countDown() }
-                @Deprecated("Platform callback")
-                override fun onError(utteranceId: String?) { synthesisError = true; completed.countDown() }
-            })
-            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_TRUNCATE).use {
-                assertEquals(TextToSpeech.SUCCESS, tts.synthesizeToFile("豆馅你好。你好豆馅。豆馅同志。", Bundle(), it, "local-test"))
-            }
-            assertTrue("Synthesis timed out", completed.await(120, TimeUnit.SECONDS))
-            assertFalse("Synthesis failed", synthesisError)
-            val audio = file.readBytes()
-            assertTrue("Empty WAV", audio.size > 48000)
-            assertEquals("RIFF", String(audio, 0, 4, Charsets.US_ASCII))
-            assertTrue("Silent WAV", audio.drop(44).any { abs(it.toInt()) > 20 })
-            val pcm = ByteBuffer.wrap(audio).order(ByteOrder.LITTLE_ENDIAN)
-            var chunk = 12
-            var sampleRate = 0
-            while (String(audio, chunk, 4, Charsets.US_ASCII) != "data") {
-                if (String(audio, chunk, 4, Charsets.US_ASCII) == "fmt ") sampleRate = pcm.getInt(chunk + 12)
-                val length = pcm.getInt(chunk + 4)
-                chunk += 8 + length + (length % 2)
-            }
-            assertTrue(sampleRate > 0)
-            val count = pcm.getInt(chunk + 4) / 2
-            val spoken = FloatArray(count + sampleRate) { if (it < count) pcm.getShort(chunk + 8 + it * 2) / 32768f else 0f }
-            val spotter = createKeywordSpotter(context)
-            val stream = spotter.createStream()
-            val found = mutableSetOf<String>()
-            try {
-                spoken.asList().chunked(1024).forEach { frame ->
-                    stream.acceptWaveform(frame.toFloatArray(), sampleRate)
-                    while (spotter.isReady(stream)) {
-                        spotter.decode(stream)
-                        spotter.getResult(stream).keyword.takeIf { it.isNotEmpty() }?.let {
-                            found += it; spotter.reset(stream)
+            for (phrase in wakePhrases) {
+                val completed = CountDownLatch(1)
+                tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
+                    override fun onDone(utteranceId: String?) { completed.countDown() }
+                    @Deprecated("Platform callback")
+                    override fun onError(utteranceId: String?) { synthesisError = true; completed.countDown() }
+                })
+                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_TRUNCATE).use {
+                    assertEquals(TextToSpeech.SUCCESS, tts.synthesizeToFile("$phrase。", Bundle(), it, "local-test"))
+                }
+                assertTrue("Synthesis timed out", completed.await(120, TimeUnit.SECONDS))
+                assertFalse("Synthesis failed", synthesisError)
+                val audio = file.readBytes()
+                assertTrue("Empty WAV", audio.size > 48000)
+                assertEquals("RIFF", String(audio, 0, 4, Charsets.US_ASCII))
+                assertTrue("Silent WAV", audio.drop(44).any { abs(it.toInt()) > 20 })
+                val pcm = ByteBuffer.wrap(audio).order(ByteOrder.LITTLE_ENDIAN)
+                var chunk = 12
+                var sampleRate = 0
+                while (String(audio, chunk, 4, Charsets.US_ASCII) != "data") {
+                    if (String(audio, chunk, 4, Charsets.US_ASCII) == "fmt ") sampleRate = pcm.getInt(chunk + 12)
+                    val length = pcm.getInt(chunk + 4)
+                    chunk += 8 + length + (length % 2)
+                }
+                assertTrue(sampleRate > 0)
+                val count = pcm.getInt(chunk + 4) / 2
+                val spoken = FloatArray(count + sampleRate) { if (it < count) pcm.getShort(chunk + 8 + it * 2) / 32768f else 0f }
+                val spotter = createKeywordSpotter(context)
+                val stream = spotter.createStream()
+                val found = mutableSetOf<String>()
+                try {
+                    spoken.asList().chunked(1024).forEach { frame ->
+                        stream.acceptWaveform(frame.toFloatArray(), sampleRate)
+                        while (spotter.isReady(stream)) {
+                            spotter.decode(stream)
+                            spotter.getResult(stream).keyword.takeIf { it.isNotEmpty() }?.let {
+                                found += it; spotter.reset(stream)
+                            }
                         }
                     }
-                }
-                assertEquals("Synthetic voice keyword detections", wakePhrases.toSet(), found)
-            } finally { stream.release(); spotter.release() }
+                    assertEquals("Synthetic voice keyword detection: $phrase", setOf(phrase), found)
+                } finally { stream.release(); spotter.release() }
+            }
         } finally { tts.shutdown(); file.delete() }
     }
 }

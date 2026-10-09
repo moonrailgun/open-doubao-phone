@@ -30,9 +30,9 @@ Only ARM64 speech binaries are built. The regular app uses Android 11+ public AP
 
 ## Wake words
 
-`app/src/main/assets/voice/kws/keywords.txt` contains the three fixed phrases. They were generated with the pinned v1.13.8 `sherpa_onnx.utils.text2token` function, `tokens_type="ppinyin"`, `pypinyin==0.55.0` and `sentencepiece==0.2.1`. Asset preparation validates every token against the downloaded model vocabulary. `LocalVoiceTest` also feeds synthesized Chinese audio through the real keyword model and checks all three detections.
+`app/src/main/assets/voice/kws/keywords.txt` contains the four fixed phrases. They were generated with the pinned v1.13.8 `sherpa_onnx.utils.text2token` function, `tokens_type="ppinyin"`, `pypinyin==0.55.0` and `sentencepiece==0.2.1`. Asset preparation validates every token against the downloaded model vocabulary. `LocalVoiceTest` also feeds synthesized Chinese audio through the real keyword model and checks all four detections.
 
-Install both APKs. In the assistant's voice settings, choose 豆馅 as the default digital assistant, grant microphone permission, and enable wake listening. Enable its accessibility service to execute tasks. Say 豆馅你好, 你好豆馅, or 豆馅同志 followed by the task; 停止/停止任务 stops it, and 继续/继续任务 resumes a paused task. The microphone button still only fills the input field. After reboot, listening starts after the first unlock. Playback pauses listening; locking the screen stops private result playback. A locked wake only asks for an unlock and discards the command. The notification's close action disables listening until enabled again.
+Install both APKs. In the assistant's voice settings, choose 豆馅 as the default digital assistant, grant microphone permission, and enable wake listening. Enable its accessibility service to execute tasks. Say 豆馅你好, 你好豆馅, 豆馅同志, or 同志你好 followed by the task; 停止/停止任务 stops it, and 继续/继续任务 resumes a paused task. The microphone button still only fills the input field. After reboot, listening starts after the first unlock. Playback pauses listening; locking the screen stops private result playback. A locked wake only asks for an unlock and discards the command. The notification's close action disables listening until enabled again.
 
 ### Device checks (Pixel 6 Pro, AOSP 17)
 

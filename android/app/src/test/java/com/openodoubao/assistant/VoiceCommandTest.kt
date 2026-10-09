@@ -15,6 +15,12 @@ class VoiceCommandTest {
         assertEquals(VoiceCommand.Empty, parseVoiceCommand("你好豆馅。"))
     }
 
+    @Test fun comradeGreetingCanWakeAndPrefixCommands() {
+        assertEquals(VoiceCommand.Empty, parseVoiceCommand("同志你好。"))
+        assertEquals(VoiceCommand.Task("打开日历"), parseVoiceCommand("同志你好，打开日历。"))
+        assertEquals(VoiceCommand.Stop, parseVoiceCommand("同志你好，停止任务。"))
+    }
+
     @Test fun lockedOrDarkScreensNeverAllowTaskExecution() {
         assertTrue(taskScreenAvailable(interactive = true, locked = false))
         assertFalse(taskScreenAvailable(interactive = false, locked = false))
