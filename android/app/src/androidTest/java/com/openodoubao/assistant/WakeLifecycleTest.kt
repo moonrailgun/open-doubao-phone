@@ -9,6 +9,9 @@ import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.service.voice.VoiceInteractionService
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import com.openodoubao.assistant.voice.DouxianInteractionService
 import com.openodoubao.assistant.voice.VoiceRuntime
 import org.junit.Assert.*
@@ -51,6 +54,15 @@ class WakeLifecycleTest {
             assertTrue("The platform must actually mute the microphone", audio.isMicrophoneMute)
             awaitState("麦克风暂停，等待恢复")
             audio.isMicrophoneMute = false
+            awaitState("等待唤醒词")
+            instrument.uiAutomation.grantRuntimePermission(instrument.context.packageName, Manifest.permission.RECORD_AUDIO)
+            context.startActivity(Intent().setClassName(instrument.context.packageName,
+                ConcurrentRecordingActivity::class.java.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val device = UiDevice.getInstance(instrument)
+            assertTrue(device.wait(Until.hasObject(By.text("Microphone competition test (10 seconds)")), 5_000))
+            awaitState("麦克风暂停，等待恢复")
+            assertEquals("麦克风被系统暂停", VoiceRuntime.error.value)
+            assertTrue(device.wait(Until.gone(By.pkg(instrument.context.packageName)), 15_000))
             awaitState("等待唤醒词")
             instrument.runOnMainSync { activity.finishAndRemoveTask() }
             SystemClock.sleep(1_000)
