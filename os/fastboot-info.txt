@@ -1,0 +1,18 @@
+# fastboot-info for raven
+version 1
+flash boot
+flash dtbo
+flash pvmfw
+flash vendor_boot
+flash --apply-vbmeta vbmeta
+flash vbmeta_system
+flash vbmeta_vendor
+reboot fastboot
+update-super
+flash system
+flash system_ext
+flash product
+flash vendor
+flash vendor_dlkm
+if-wipe erase userdata
+if-wipe erase metadata

@@ -9,8 +9,15 @@
 | `system.img`、`vbmeta.img` | `upstream.json` 中的 AOSP GSI `CP3A.260905.010` |
 | Bootloader、基带、内核、vendor 及其余整机分区 | `firmware.json` 中的 Google Pixel 原厂包 `CP3A.261005.002.A1` |
 | 刷写目录 | `prepared-gsi-CP3A.260905.010/`，通过符号链接引用以上原始文件 |
+| 刷写清单 | 本目录的 `fastboot-info.txt`；刷写目录中的同名链接指向 `../fastboot-info.txt` |
 
 这是本地组合的刷写目录，不是 Google 发布的完整 AOSP 整机包。原始镜像未修改；尚未验证组合后的实际启动和硬件功能。
+
+## 副槽位处理
+
+本地清单仅从原厂清单删除 `flash --slot-other system system_other.img`，其余指令保持一致。SDK Platform Tools 37.0.1 首次执行时，虽然设置了 `--skip-secondary`，该指令仍导致优化器将 `system_b` 从 `2,072,014,848` 缩小到 `143,958,016` 字节。该次写入后没有启动系统。
+
+不能仅依赖 `--skip-secondary` 跳过该清单指令；删除后重新刷写，并在重启 Bootloader 刷新分区信息后核对 `system_b` 大小。
 
 ## 执行范围
 
