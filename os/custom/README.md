@@ -9,7 +9,7 @@ cd android
 
 两个变体均使用当前开发机的 debug 签名，匹配这台开发手机已有应用。请保留这份本地签名密钥，不能换机重新生成后直接替换；密钥不纳入 Git。系统更新不得卸载旧应用或清除数据。版本号必须高于手机已安装版本；镜像构建前需核对两份系统 APK 与已有开发 APK 的证书一致。
 
-目前已验证系统变体的构建、Lint、单元测试、签名及 Manifest。尚未刷入定制系统，因此常驻标记、无数据丢失升级和 Keystore 保留仍需真机验收。
+定制镜像已在 Pixel 6 Pro 上不清数据刷入并启动，系统常驻标记、应用 UID、语音设置及原 Keystore 密钥解密能力已通过真机检查。具体镜像、证据和未完成的验收项见 [验收记录](acceptance.md)。
 
 ## 构建镜像副本
 
@@ -34,7 +34,40 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
 
 发布镜像或 TTS APK 时，同时提供 `voice-corresponding-source.tar.gz`。该包包含当前 Android 源码、构建脚本、原生依赖源码及许可证；每次代码变更后重新生成，不包含本地签名密钥和构建缓存。模型条款与来源见 [语音依赖说明](../../android/third_party/sherpa-onnx/README.md)。
 
-小型 ext4 测试已覆盖文件写入、权限和 SELinux 标签、拒绝覆盖、真实共享块展开、文件内容保留、缩容、AVB 校验及容量边界。完整 GSI 的尺寸、启动、SELinux AVC 和数据保留尚未验证；空间不足时构建会在复制原始镜像前退出。脚本不会自动刷机。刷写前保留上一份可启动镜像，沿用 `os/flash-plan.md` 的已验证路径，升级不得使用 `-w`、清数据或卸载应用。
+小型 ext4 测试已覆盖文件写入、权限和 SELinux 标签、拒绝覆盖、真实共享块展开、文件内容保留、缩容、AVB 校验及容量边界。完整 GSI 也已完成文件系统、容量、AVB 和启动检查；空间不足时构建会在复制原始镜像前退出。脚本不会自动刷机。刷写前保留上一份可启动镜像，使用下方的不清数据升级命令，不要复制 `os/flash-plan.md` 中首次安装所用的 `-w` 命令。
+
+## 不清数据刷写
+
+以下命令仅适用于上述已经验证的 Pixel 6 Pro / `b` 槽位组合。先检查当前槽位、解锁状态和无进行中的 snapshot 更新；若与此记录不同，应先核实分区布局。保留原始 GSI 和上一个可启动定制输出目录。
+
+```sh
+export DOUXIAN_SERIAL=YOUR_DEVICE_SERIAL
+# DOUXIAN_OUTPUT 指向刚构建并验证的输出目录；flash 子目录必须尚不存在。
+python3 - <<'PYTHON'
+import os
+from pathlib import Path
+root = Path.cwd()
+output = Path(os.environ['DOUXIAN_OUTPUT']).resolve()
+flash = output / 'flash'
+flash.mkdir()
+for source in (root / 'os/prepared-gsi-CP3A.260905.010').iterdir():
+    target = output / 'system.img' if source.name == 'system.img' else source.resolve(strict=True)
+    (flash / source.name).symlink_to(target)
+PYTHON
+adb -s "$DOUXIAN_SERIAL" reboot bootloader
+os/tools/platform-tools/fastboot -s "$DOUXIAN_SERIAL" getvar current-slot
+os/tools/platform-tools/fastboot -s "$DOUXIAN_SERIAL" getvar unlocked
+os/tools/platform-tools/fastboot -s "$DOUXIAN_SERIAL" getvar snapshot-update-status
+# 确认为 b / yes / none 后执行：
+ANDROID_PRODUCT_OUT="$DOUXIAN_OUTPUT/flash" os/tools/platform-tools/fastboot \
+  -s "$DOUXIAN_SERIAL" --slot=b --skip-secondary --skip-reboot --disable-verification flashall
+os/tools/platform-tools/fastboot -s "$DOUXIAN_SERIAL" reboot bootloader
+os/tools/platform-tools/fastboot -s "$DOUXIAN_SERIAL" getvar partition-size:system_b
+# 与 manifest.json 的 system_bytes 一致后启动：
+os/tools/platform-tools/fastboot -s "$DOUXIAN_SERIAL" reboot
+```
+
+这里不使用 `-w`，不擦除 userdata 或 metadata，不卸载旧应用，不重新锁定 Bootloader。
 
 ## 不清数据升级检查
 
@@ -52,10 +85,16 @@ adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
 
 检查保留的 UID、实际配置文件密文摘要、语音设置、系统应用标记及版本号，并用原有 Keystore alias 加密的独立测试配置验证解密能力。不会覆盖实际配置或输出凭据；基线保存在应用的 `no_backup/system-upgrade-check/`，重复 `prepare` 会拒绝覆盖。Instrumentation 会重启目标进程，完成后应重启手机并单独确认默认助手绑定和后台录音。
 
+启用监听并确认麦克风实际录音后，以下检查会主动让开发手机的助手进程崩溃，要求系统在 30 秒内恢复新进程和未被静音的录音。请在没有进行中任务时运行；检查不会重新下达任务。
+
+```sh
+python3 android/tools/test_wake_recovery.py --serial "$DOUXIAN_SERIAL"
+```
+
 ## 开机动画
 
 `boot_animation.py` 直接使用现有应用 Logo，生成 Android 原生 `ZIP_STORED` 归档：1440×3120 白底、居中的 512×512 Logo、30 fps，先从纯白淡入 0.8 秒，再循环 2 秒的轻微透明度变化，系统就绪时可立即结束。PNG 使用 `trim.txt` 定位，避免为每帧保存整块白色背景。格式遵循 [AOSP bootanimation 规范](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/FORMAT.md)。
 
 动画随 payload 一起生成、校验 SHA-256，并写入 `/system/media/bootanimation.zip`，不修改 Bootloader 解锁提示。当前目标机未发现 APEX、product 或 OEM 的覆盖动画；更换系统基线后需要重新检查 [AOSP 的加载顺序](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/BootAnimation.cpp)。
 
-已验证归档 CRC、无压缩格式、帧数与顺序、PNG 尺寸、定位及原 Logo 保留，并检查了合成预览。实际开机播放仍需刷入镜像后验收。
+已验证归档 CRC、无压缩格式、帧数与顺序、PNG 尺寸、定位及原 Logo 保留，并确认了真机开机时的白底 Logo 动画。系统播放的是 PNG 帧序列；目前没有接入 AI 生成视频。
