@@ -44,6 +44,11 @@ class SystemUpgradeTest {
             assertEquals(before.getString("vault"), after.getString("vault"))
             val voice = before.getJSONObject("voice")
             val currentVoice = after.getJSONObject("voice")
+            // Retrying initialization removes false guards; missing guards also default to false.
+            listOf("initializing", "initializing_asr", "initializing_vad", "initializing_kws").forEach { key ->
+                if (!voice.optBoolean(key, false)) voice.remove(key)
+                if (!currentVoice.optBoolean(key, false)) currentVoice.remove(key)
+            }
             assertEquals(voice.length(), currentVoice.length())
             voice.keys().forEach { assertEquals("Voice preference $it", voice.get(it), currentVoice.get(it)) }
             assertEquals(sentinel, Vault(isolated).read())
