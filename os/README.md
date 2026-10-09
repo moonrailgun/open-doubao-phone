@@ -33,10 +33,10 @@ Google 原厂 Pixel 6 Pro Android 17：`CP3A.261005.002.A1`。
 
 - `tools/platform-tools/`：官方 macOS SDK Platform Tools 37.0.1。
 - [官方 GSI 刷写步骤](https://source.android.com/docs/core/tests/vts/gsi#flashing-gsis)。
-- Bootloader 已解锁。AOSP 包已下载并校验；系统分区尚未刷写。
+- Bootloader 已解锁。AOSP 包已下载、校验并刷入槽位 `b`；Bootloader 和基带已升级到 `firmware.json` 对应的 Android 17 版本。
 - Bootloader 模式通信正常；fastbootd 模式出现 `usb_write failed with status e00002ed`。更新 Platform Tools、切换 arm64/x86_64 和暂时停止 ADB 服务均未解决，尚不能确定是线缆、Mac USB 通信还是手机 fastbootd 的问题。
-- 已尝试 [官方 Flash Tool 的同一 AOSP 构建](https://flash.android.com/build/16176746?target=aosp_arm64-user&signed=true&wipe=true)，核对目标为 `aosp_arm64-user (signed)`、清除数据、保持 Bootloader 解锁。GSI 流程要求先在正常系统中通过 ADB 读取版本；当前停在连接授权阶段，尚未确认系统镜像写入。
-- 手机可启动原系统设置向导，但旧 PIN 或 Google 账号验证阻止完成设置。本机 ADB 35.0.1 与 37.0.1 均能列出设备，但执行 `shell getprop` 均返回 `error: closed`；尚未读取到当前系统版本。网页 GSI 流程在此受阻，已解锁 Bootloader 的直接刷写路径不要求先完成系统设置。
-- 已准备 [Bootloader 整包刷写方案](flash-plan.md)，使用 `firmware.json` 记录的原厂固件和 `upstream.json` 记录的 AOSP GSI。该方案会升级底层固件，目前仅完成离线检查，尚未执行。
+- 曾尝试 [官方 Flash Tool 的同一 AOSP 构建](https://flash.android.com/build/16176746?target=aosp_arm64-user&signed=true&wipe=true)。其 GSI 流程要求正常系统中的 ADB 授权，而原系统设置向导被旧 PIN 或 Google 账号验证阻挡；ADB 虽能列出设备，执行 `shell getprop` 仍返回 `error: closed`。
+- 已按 [Bootloader 整包刷写方案与记录](flash-plan.md) 完成刷写：原厂固件与 AOSP GSI 组合，使用本地 `fastboot-info.txt` 排除副槽位 system 指令，通过 Bootloader 直接写入 `super`。官方原始文件保持不变。
+- 修正后的 29 个 `super` 数据块全部写入成功；重启 Bootloader 后，五个动态分区的大小均与镜像相同。用户数据已清除，已重启系统，尚待确认桌面、版本、ADB 和硬件功能。
 
 刷写会清空用户数据。不要对开发镜像执行 `fastboot flashing lock`，也不要在未核对防回滚限制时刷入旧版 Bootloader。

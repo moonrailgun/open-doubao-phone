@@ -1,6 +1,6 @@
-# Bootloader 整包刷写方案（待确认，尚未执行）
+# Bootloader 整包刷写方案与记录
 
-设备为 Pixel 6 Pro（`raven`），Bootloader 已解锁，当前槽位为 `b`。原系统设置向导要求旧 PIN 或 Google 账号，无法完成网页 GSI 流程所需的 USB 调试授权。
+设备为 Pixel 6 Pro（`raven`），Bootloader 已解锁，当前槽位为 `b`。刷写前，原系统设置向导要求旧 PIN 或 Google 账号，无法完成网页 GSI 流程所需的 USB 调试授权。
 
 ## 镜像组合
 
@@ -26,7 +26,7 @@
 3. 用上述目录执行官方 fastboot `flashall`，目标槽位 `b`，清除用户数据、关闭验证、跳过副槽位并暂不自动重启。保持 Bootloader 解锁。
 4. 检查写入结果，再启动系统并验证版本、ADB 和基本硬件功能。
 
-本方案增加了底层固件升级，不能保证此后可以降回旧版。执行前需要确认该范围；失败时可能需要使用已保存的原厂包恢复。
+本方案增加了底层固件升级，不能保证此后可以降回旧版。用户已明确同意升级底层固件并刷入 AOSP；失败时可能需要使用已保存的原厂包恢复。
 
 ## 已完成的检查
 
@@ -36,4 +36,29 @@
 - `super_empty.img` 的头部和表格校验和通过；其单一 `super` 设备、只读分区、空 extents 满足官方优化实现的条件。
 - 实机 `super` 容量与镜像元数据一致，均为 `8,531,214,336` 字节。组合后的动态分区为 `7,538,573,312` 字节，低于分区组上限 `8,527,020,032` 字节。
 
-以上为离线检查和只读设备查询。fastboot 没有提供本次刷写的 dry-run；尚不能把这些检查当作实刷成功的证明。
+以上检查在刷写前完成，fastboot 没有提供本次刷写的 dry-run。
+
+## 实刷结果（2026-10-09）
+
+- Bootloader 和基带均写入成功，重启 Bootloader 后读取到上述目标版本。
+- 使用修正后的本地清单执行以下命令（在项目根目录运行）：
+
+  ```sh
+  ANDROID_PRODUCT_OUT="$PWD/os/prepared-gsi-CP3A.260905.010" \
+    os/tools/platform-tools/fastboot -s YOUR_DEVICE_SERIAL \
+    --slot=b --skip-secondary --skip-reboot --disable-verification -w flashall
+  ```
+
+- fastboot 将动态分区合并为 29 个 sparse 数据块直接写入 `super`，全部返回 `OKAY`，命令以状态 `0` 结束，用时约 198 秒。
+- 用户数据与 metadata 已清除。设备报告文件系统类型为 `raw`，fastboot 未在主机端格式化；启动后的初始化结果仍需验证。
+- 再次重启 Bootloader 后，实机读取的分区大小与本地镜像逐一相同：
+
+  | 分区 | 字节数 |
+  | --- | ---: |
+  | `system_b` | 2,072,014,848 |
+  | `system_ext_b` | 443,674,624 |
+  | `product_b` | 4,315,308,032 |
+  | `vendor_b` | 651,722,752 |
+  | `vendor_dlkm_b` | 55,853,056 |
+
+- 保持 `unlocked=yes`、目标槽位 `b`，已发出系统重启命令。尚待确认进入桌面、系统版本和 ADB；未测试基本硬件，也未进行整分区二进制回读校验。
