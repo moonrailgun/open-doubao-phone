@@ -19,7 +19,7 @@
     xmlns:tools="http://schemas.android.com/tools" tools:ignore="ResAuto">
 
     <!-- Hotseat (We use the screen as the position of the item in the hotseat) -->
-    <!-- Dialer, Messaging, [Maps/Music], Browser, Camera -->
+    <!-- Dialer, Messaging, Douxian, Browser, Camera -->
     <resolve
         launcher:container="-101"
         launcher:screen="0"
@@ -42,14 +42,13 @@
         <favorite launcher:uri="mmsto:" />
     </resolve>
 
-    <resolve
+    <favorite
+        launcher:packageName="com.openodoubao.assistant"
+        launcher:className="com.openodoubao.assistant.MainActivity"
         launcher:container="-101"
         launcher:screen="2"
         launcher:x="2"
-        launcher:y="0" >
-        <favorite launcher:uri="#Intent;action=android.intent.action.MAIN;category=android.intent.category.APP_MAPS;end" />
-        <favorite launcher:uri="#Intent;action=android.intent.action.MAIN;category=android.intent.category.APP_MUSIC;end" />
-    </resolve>
+        launcher:y="0" />
 
     <resolve
         launcher:container="-101"
@@ -96,13 +95,5 @@
         <favorite launcher:uri="#Intent;action=android.intent.action.MAIN;category=android.intent.category.APP_MARKET;end" />
         <favorite launcher:uri="market://details?id=com.android.launcher" />
     </resolve>
-
-    <!-- Center of the Pixel 6 Pro's default 5 x 5 workspace. -->
-    <favorite
-        launcher:packageName="com.openodoubao.assistant"
-        launcher:className="com.openodoubao.assistant.MainActivity"
-        launcher:screen="0"
-        launcher:x="2"
-        launcher:y="2" />
 
 </favorites>
