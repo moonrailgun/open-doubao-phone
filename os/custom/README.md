@@ -95,9 +95,11 @@ python3 android/tools/test_wake_recovery.py --serial "$DOUXIAN_SERIAL"
 
 `OfflineTaskTest` 必须显式传入 `offlineCheck=true`，并确认手机已断开所有网络；它只检查当前网络状态，不修改网络设置。测试通过真实网络请求验证失败消息和零手机操作，使用内存临时配置，不覆盖实际账户配置。
 
+追加 `offlineUiCheck=true` 可验证真实任务服务的错误同时显示在手机页面。此项仅用于没有进行中任务、已解锁且无 PIN 的开发手机：临时写入测试模型配置并启用无障碍服务，结束后恢复原有配置密文和无障碍设置。Instrumentation 会重启目标进程，完成后须重新绑定默认助手并确认后台录音。
+
 ```sh
 adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
-  -e class com.openodoubao.assistant.OfflineTaskTest -e offlineCheck true \
+  -e class com.openodoubao.assistant.OfflineTaskTest -e offlineCheck true -e offlineUiCheck true \
   com.openodoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
 adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
   -e class 'com.openodoubao.assistant.WakeLifecycleTest#wakeListeningSurvivesPlaybackMuteAndBackground' \
