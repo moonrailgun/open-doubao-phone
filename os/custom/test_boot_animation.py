@@ -17,7 +17,7 @@ class BootAnimationTest(unittest.TestCase):
                 self.assertIsNone(archive.testzip())
                 self.assertTrue(all(item.compress_type == zipfile.ZIP_STORED for item in archive.infolist()))
                 self.assertEqual(archive.read('desc.txt').decode(),
-                                 '1440 3120 30\np 1 0 part0 #000000\np 0 0 part1 #000000\n')
+                                 '1440 3120 30\np 1 0 part0 #FFFFFF\np 0 0 part1 #FFFFFF\n')
                 for part, count in [('part0', 24), ('part1', 60)]:
                     frames = [name for name in archive.namelist() if name.startswith(part + '/') and name.endswith('.png')]
                     self.assertEqual(frames, [f'{part}/{frame:03}.png' for frame in range(count)])
@@ -30,7 +30,8 @@ class BootAnimationTest(unittest.TestCase):
                 logo = Image.open(ROOT / 'android/app/src/main/res/drawable-nodpi/app_logo.png').convert('RGB')
                 final = Image.open(BytesIO(archive.read('part0/023.png')))
                 self.assertIsNone(ImageChops.difference(logo, final).getbbox())
-                self.assertIsNone(Image.open(BytesIO(archive.read('part0/000.png'))).getbbox())
+                first = Image.open(BytesIO(archive.read('part0/000.png')))
+                self.assertIsNone(ImageChops.difference(first, Image.new('RGB', first.size, 'white')).getbbox())
                 self.assertEqual((POSITION[0] * 2 + LOGO_SIZE, POSITION[1] * 2 + LOGO_SIZE), (WIDTH, HEIGHT))
             with self.assertRaises(FileExistsError):
                 create(output)

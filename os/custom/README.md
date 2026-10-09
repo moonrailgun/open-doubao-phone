@@ -54,7 +54,7 @@ adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
 
 ## 开机动画
 
-`boot_animation.py` 直接使用现有应用 Logo，生成 Android 原生 `ZIP_STORED` 归档：1440×3120 黑底、居中的 512×512 Logo、30 fps，先淡入 0.8 秒，再循环 2 秒的轻微亮度变化，系统就绪时可立即结束。PNG 使用 `trim.txt` 定位，避免为每帧保存整块黑色背景。格式遵循 [AOSP bootanimation 规范](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/FORMAT.md)。
+`boot_animation.py` 直接使用现有应用 Logo，生成 Android 原生 `ZIP_STORED` 归档：1440×3120 白底、居中的 512×512 Logo、30 fps，先从纯白淡入 0.8 秒，再循环 2 秒的轻微透明度变化，系统就绪时可立即结束。PNG 使用 `trim.txt` 定位，避免为每帧保存整块白色背景。格式遵循 [AOSP bootanimation 规范](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/FORMAT.md)。
 
 动画随 payload 一起生成、校验 SHA-256，并写入 `/system/media/bootanimation.zip`，不修改 Bootloader 解锁提示。当前目标机未发现 APEX、product 或 OEM 的覆盖动画；更换系统基线后需要重新检查 [AOSP 的加载顺序](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/BootAnimation.cpp)。
 

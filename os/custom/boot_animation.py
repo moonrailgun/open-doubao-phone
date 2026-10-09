@@ -17,18 +17,18 @@ def create(output):
     logo = Image.open(ROOT / 'android/app/src/main/res/drawable-nodpi/app_logo.png').convert('RGB')
     if logo.size != (LOGO_SIZE, LOGO_SIZE):
         raise RuntimeError('Review boot animation layout after changing logo dimensions')
-    black = Image.new('RGB', logo.size)
+    background = Image.new('RGB', logo.size, 'white')
     with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_STORED) as archive:
         def write(name, content):
             info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
             info.external_attr = 0o100644 << 16
             archive.writestr(info, content)
-        write('desc.txt', f'{WIDTH} {HEIGHT} {FPS}\np 1 0 part0 #000000\np 0 0 part1 #000000\n')
+        write('desc.txt', f'{WIDTH} {HEIGHT} {FPS}\np 1 0 part0 #FFFFFF\np 0 0 part1 #FFFFFF\n')
         for part, count in [('part0', 24), ('part1', 60)]:
             for frame in range(count):
                 brightness = frame / (count - 1) if part == 'part0' else 0.96 + 0.04 * math.cos(2 * math.pi * frame / count)
                 buffer = BytesIO()
-                Image.blend(black, logo, brightness).save(buffer, format='PNG')
+                Image.blend(background, logo, brightness).save(buffer, format='PNG')
                 write(f'{part}/{frame:03}.png', buffer.getvalue())
             write(f'{part}/trim.txt', f'{LOGO_SIZE}x{LOGO_SIZE}+{POSITION[0]}+{POSITION[1]}\n' * count)
 
