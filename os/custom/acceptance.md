@@ -4,17 +4,17 @@
 
 ## 当前产物
 
-本地输出目录：`os/custom/out/v1.5/`，未纳入 Git。保留原始镜像以及先前可启动的 `v1/` 至 `v1.4/` 输出。`manifest.json` 记录完整 payload、签名和容量数据。
+本地输出目录：`os/custom/out/v1.6/`，未纳入 Git。保留原始镜像以及先前可启动的 `v1/` 至 `v1.5/` 输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
 | 产物 | SHA-256 |
 |---|---|
-| `system.img` | `9409630a4e44c7c686847f3b828e892961681a18b94cd43aa22fe0f5070fe154` |
-| `assistant.apk` | `3ebee922ca5981064b1af92f1f5a37827ab05ec5367451b2468d3c3d14bb2212` |
+| `system.img` | `88179e6496113134c91696df2525b4d2aa691f5e99bb57169f70486b8871b877` |
+| `assistant.apk` | `b7e12d1023d293ec2fd6f7386d83847d569f40fd06b73f9e0d98339a3bbdda09` |
 | `tts.apk` | `7506d6c265ae3252501d13271734c07c763f4f49c50c6a22d94165c3c0dfe6bd` |
 | `bootanimation.zip` | `ab7130e8d416016c77eb9561d589fa6413941b0784a8a479813f865fe284d31d` |
-| `voice-corresponding-source.tar.gz` | `e952ee27e89507ec1030def544735dfd93182e46877a188a78ba66af963d24d3` |
+| `voice-corresponding-source.tar.gz` | `1caefd8f1fd0118b295fd65d147b08bb913e20e229d12060d499a67cc2cdf204` |
 
-`system.img` 为 2,572,279,808 字节；动态分区合计 8,038,838,272 字节，低于 group 上限 8,527,020,032 字节，余量 488,181,760 字节。两份系统 APK 版本号均为 1001，证书与先前开发 APK 相同：`f73c285679b81382e5bdd814fdfab042620f86824798f7ac949e799d62e63578`。
+`system.img` 为 2,572,283,904 字节；动态分区合计 8,038,842,368 字节，低于 group 上限 8,527,020,032 字节，余量 488,177,664 字节。两份系统 APK 版本号均为 1001，证书与先前开发 APK 相同：`f73c285679b81382e5bdd814fdfab042620f86824798f7ac949e799d62e63578`。
 
 ## 已取得的证据
 
@@ -46,6 +46,28 @@ v1.5 新增“同志你好”，保留原有三个唤醒词。解锁状态下，
 最终测试适配 Debug/System 变体的方法名，并隔离测试前残留的语音缓存与服务退出过程。真机两项测试通过（30.682 秒）：四词分别使用合成音频命中 KWS，实际播完“我在”后进入任务录音并持续等待至少两秒，取消回应后不再开启任务录音；见 `v1.5/voice-test-final.log`。同一回应测试在模拟器再次通过（11.946 秒），见 `v1.5/wake-reply-variant-emulator.log`；最终测试 APK 构建与 Debug Lint 通过，见 `v1.5/gradle-wake-reply-variant-test.log`。这些结果不替代真人声学测试。
 
 v1.5 已完成不清数据刷写，见 `v1.5/flash.log`。测试后恢复默认助手绑定并开启监听，最终重启在 23.7 秒取得未被静音的后台录音，全程未打开 Activity；设备上的两份 APK、开机动画摘要均与本版 manifest 一致，助手 UID、系统持久标记、默认助手角色、前台录音及省电豁免检查通过，见 `v1.5/final-reboot.log`、`final-reboot-audio.txt`。三份预装文件仍为 root:root/0644，SELinux 标签为 `system_file`，见 `v1.5/device-files.txt`。
+
+## 分段语音播放
+
+v1.6 在独立 TTS 引擎返回 PCM 音频时立即交给助手 UID 的 `AudioTrack` 播放，不再等待完整 WAV 合成。保留原有音色、INT8 模型和两线程配置；全部音频实际播放结束后才恢复任务收音，取消时释放播放器并清理临时文件。
+
+Pixel 6 Pro 上用同一模型、音色和测试长句直接测量合成回调：
+
+| CPU 线程 | 首段音频 | 完整合成 |
+|---|---|---|
+| 1 | 2.297 秒 | 12.169 秒 |
+| 2 | 1.807 秒 | 9.772 秒 |
+| 4 | 1.881 秒 | 10.325 秒 |
+
+测试长句为“我在！你好呀，我是豆馅。今天也一起加油吧！有什么想做的，告诉我就好。”，基准程序为 `android/.voice/tts-bench/TtsBench.java`。上述时间不含模型加载、服务连接和播放缓冲；两线程模型加载另需约 1.921 秒。这是一次设备测量，优化首次开口等待，不代表总合成耗时下降；生成速度跟不上播放时仍可能出现句间停顿。
+
+Debug/System 构建、Lint 和各 104 项单元测试通过。模拟器四项本地语音测试通过（62.461 秒），覆盖真实 ASR/TTS、提前播放、取消和回应后收音。最终测试兼容性调整后，提前播放测试再次通过（12.297 秒），见 `v1.6/streaming-emulator-retry.log`；此前一次运行被测试环境遗留的 TTS 初始化中断标记阻止，重置该测试状态后重跑，失败日志保留在 `streaming-emulator-test.log`。
+
+完整镜像通过文件系统、容量、读回文件摘要及 AVB 检查，见 `v1.6/build.log`、`avb-info.txt`。对应源码包包含 18,156 个条目，本次播放实现和测试与工作区源码逐字节一致，见 `v1.6/source-check.txt`。镜像沿用 v1.5 的开机动画归档。
+
+真机首次运行没有收到 TTS 音频，两项测试超时；通过现有引擎设置的“重试初始化”入口恢复后，同两项测试通过（14.964 秒），见 `v1.6/streaming-device-test.log`、`streaming-device-retry.log`。检查点包括完整 WAV 的 RIFF 头尚未写入时已有音频数据与活动的助手播放器、取消后停止播放并删除缓存，以及回应播完后继续收音。本次未修改 TTS 初始化中断保护。
+
+v1.6 已完成不清数据刷写，见 `v1.6/flash.log`、`partition-check.txt`。测试后恢复默认助手绑定，确认监听就绪再重启，25.6 秒取得未被静音的后台录音，全程未打开 Activity；两份预装 APK 与开机动画摘要均与 manifest 一致，助手 UID、系统持久标记、默认助手角色、前台录音及省电豁免检查通过，见 `v1.6/final-reboot.log`、`final-reboot-audio.txt`。
 
 ## 桌面远程模型配置
 
