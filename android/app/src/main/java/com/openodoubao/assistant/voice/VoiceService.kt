@@ -5,6 +5,7 @@ import android.app.*
 import android.content.*
 import android.os.IBinder
 import android.os.PowerManager
+import android.service.voice.VoiceInteractionService
 import com.openodoubao.assistant.MainActivity
 import com.openodoubao.assistant.R
 import kotlinx.coroutines.*
@@ -29,6 +30,9 @@ class VoiceService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         latestStart = startId
+        // A sticky restart can arrive before VoiceInteractionService.onReady().
+        if (intent == null) VoiceRuntime.assistantReady(this, VoiceInteractionService.isActiveService(
+            this, ComponentName(this, DouxianInteractionService::class.java)))
         startForeground(42, notification(VoiceRuntime.state.value), VoiceRuntime.foregroundType)
         VoiceRuntime.serviceReady()
         if (intent?.action == "stop") { VoiceRuntime.setEnabled(this, false); VoiceRuntime.cancel() }
@@ -39,7 +43,7 @@ class VoiceService : Service() {
                 else getSystemService(NotificationManager::class.java).notify(42, notification(state))
             }
         }
-        return START_NOT_STICKY
+        return if (VoiceRuntime.enabled.value) START_STICKY else START_NOT_STICKY
     }
     @SuppressLint("WakelockTimeout") // Continuous listening owns the lease; privacy/call pauses and destruction release it.
     private fun updateWakeLock(state: String) {
