@@ -1,0 +1,5 @@
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.openodoubao.assistant.voice.DouxianSessionService"
+    android:recognitionService="com.openodoubao.assistant.voice.LocalRecognitionService"
+    android:settingsActivity="com.openodoubao.assistant.MainActivity"
+    android:supportsAssist="true" />

@@ -10,7 +10,7 @@ import java.util.Locale
 import java.util.UUID
 
 /** The separate TTS UID only writes a seekable file; playback belongs to our foreground service. */
-class FileSpeech(private val context: Context, private val finished: (String?) -> Unit) {
+class FileSpeech(private val context: Context, private val unlockPrompt: Boolean = false, private val finished: (String?) -> Unit) {
     private val handler = Handler(Looper.getMainLooper())
     private val audio = context.getSystemService(AudioManager::class.java)
     private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -49,7 +49,7 @@ class FileSpeech(private val context: Context, private val finished: (String?) -
 
     private fun play() {
         val id = active ?: return
-        if (context.getSystemService(KeyguardManager::class.java).isKeyguardLocked) { stop(); return }
+        if (!canPlay()) { stop(); return }
         if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) { stop("系统暂不允许播报"); return }
         try {
             player = MediaPlayer().apply {
@@ -57,11 +57,14 @@ class FileSpeech(private val context: Context, private val finished: (String?) -
                 setDataSource(file!!.absolutePath)
                 setOnCompletionListener { this@FileSpeech.stop() }
                 setOnErrorListener { _, _, _ -> this@FileSpeech.stop("播放失败"); true }
-                setOnPreparedListener { if (active == id) it.start() }
+                setOnPreparedListener { if (active == id && canPlay()) it.start() else this@FileSpeech.stop() }
                 prepareAsync()
             }
         } catch (e: Exception) { stop(e.message ?: "播放失败") }
     }
+
+    private fun canPlay() = unlockPrompt || (context.getSystemService(PowerManager::class.java).isInteractive &&
+        !context.getSystemService(KeyguardManager::class.java).isKeyguardLocked)
 
     fun stop(error: String? = null) {
         if (active == null) return

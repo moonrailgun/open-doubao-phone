@@ -37,8 +37,16 @@
         <service android:name=".voice.LocalRecognitionService" android:exported="true"
             android:permission="android.permission.BIND_SPEECH_RECOGNITION_SERVICE">
             <intent-filter><action android:name="android.speech.RecognitionService" /></intent-filter>
+            <meta-data android:name="android.speech" android:resource="@xml/recognition_service" />
         </service>
         <service android:name=".voice.VoiceService" android:exported="false"
             android:foregroundServiceType="microphone|mediaPlayback" />
+        <service android:name=".voice.DouxianInteractionService" android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter><action android:name="android.service.voice.VoiceInteractionService" /></intent-filter>
+            <meta-data android:name="android.voice_interaction" android:resource="@xml/voice_interaction" />
+        </service>
+        <service android:name=".voice.DouxianSessionService" android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
     </application>
 </manifest>

@@ -225,7 +225,7 @@ class MainActivity : ComponentActivity() {
                         if (!configReady && !busy) Banner("还没有设置模型", "填好两个模型服务的地址和密钥后才能开始任务。") { tab = 2 }
                         if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = {
                             moveTaskToBack(true)
-                            scope.launch { delay(300); service?.resume() }
+                            scope.launch { delay(300); attempt { service?.resume() } }
                         }, onStop = { service?.stop() })
                         if (!busy) {
                             Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, colors.outlineVariant)) {

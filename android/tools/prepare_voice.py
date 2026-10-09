@@ -72,6 +72,14 @@ def stage_assets():
     for name in ('encoder', 'decoder', 'joiner'):
         copy(kws / f'{name}-epoch-12-avg-2-chunk-16-left-64.int8.onnx', assistant / 'kws' / (name + '.onnx'))
     copy(kws / 'tokens.txt', assistant / 'kws/tokens.txt')
+    tokens = {line.split()[0] for line in (kws / 'tokens.txt').read_text().splitlines()}
+    keywords = (ROOT / 'app/src/main/assets/voice/kws/keywords.txt').read_text().splitlines()
+    phrases = set()
+    for line in keywords:
+        pronunciation, phrase = line.split('@')
+        assert set(pronunciation.split()) <= tokens, 'Unknown KWS token: ' + line
+        phrases.add(phrase)
+    assert len(keywords) == 3 and phrases == {'豆馅你好', '你好豆馅', '豆馅同志'}
     tts = CACHE / 'kokoro-int8-multi-lang-v1_1'
     for name in ('model.int8.onnx', 'voices.bin', 'tokens.txt', 'lexicon-zh.txt', 'lexicon-us-en.txt', 'espeak-ng-data', 'LICENSE', 'date-zh.fst', 'number-zh.fst', 'phone-zh.fst'):
         copy(tts / name, CACHE / 'tts-assets/kokoro' / name)

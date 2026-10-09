@@ -21,6 +21,7 @@ import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.text.method.ScrollingMovementMethod
 import android.os.SystemClock
+import android.os.PowerManager
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -47,6 +48,7 @@ import com.openodoubao.assistant.remote.RemoteReceiver
 import com.openodoubao.assistant.remote.RemoteSnapshot
 import com.openodoubao.assistant.remote.RemoteTasks
 import com.openodoubao.assistant.statusStyle
+import com.openodoubao.assistant.voice.taskScreenAvailable
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -127,7 +129,6 @@ class AssistantService : AccessibilityService() {
                     override fun snapshot() = remoteSnapshot.value
                     override fun records() = vault.read().records
                     override fun start(goal: String, taskId: String): String {
-                        check(!getSystemService(KeyguardManager::class.java).isKeyguardLocked) { "请先解锁手机" }
                         return startTask(goal, taskId)
                     }
                     override fun stop(taskId: String) {
@@ -147,6 +148,7 @@ class AssistantService : AccessibilityService() {
     }
 
     fun startTask(goal: String, taskId: String = UUID.randomUUID().toString()): String {
+        requireUnlockedScreen()
         require(goal.isNotBlank() && goal.length <= 4000) { "请填写 1–4000 字的任务" }
         RemoteProtocol.uuid(taskId)
         check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务" }
@@ -199,9 +201,15 @@ class AssistantService : AccessibilityService() {
     fun stop() = controller?.stop()
 
     fun resume() {
+        requireUnlockedScreen()
         if (controller?.state?.value?.status != TaskStatus.PAUSED) return
         collapse()
         controller?.resume()
+    }
+
+    private fun requireUnlockedScreen() {
+        check(taskScreenAvailable(getSystemService(PowerManager::class.java).isInteractive,
+            getSystemService(KeyguardManager::class.java).isKeyguardLocked)) { "请先点亮并解锁手机" }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -358,7 +366,7 @@ class AssistantService : AccessibilityService() {
             setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
             background = rounded(Color.rgb(47, 166, 114), 14)
             stateListAnimator = null
-            setOnClickListener { resume() }
+            setOnClickListener { runCatching { resume() }.onFailure { statusText?.text = it.message } }
         }
         card.addView(resumeButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { bottomMargin = dp(8) })
         stopButton = Button(this).apply {

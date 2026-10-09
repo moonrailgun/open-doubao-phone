@@ -18,13 +18,12 @@ class VoiceService : Service() {
         override fun onReceive(context: Context, intent: Intent) { VoiceRuntime.cancel() }
     }
 
-    @SuppressLint("WakelockTimeout") // Released with the service; continuous wake listening needs an unbounded lease.
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("voice", "本地语音", NotificationManager.IMPORTANCE_LOW))
         wakeLock = getSystemService(PowerManager::class.java).newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK, "$packageName:voice").apply { acquire() }
+            PowerManager.PARTIAL_WAKE_LOCK, "$packageName:voice")
         registerReceiver(screen, IntentFilter(Intent.ACTION_SCREEN_OFF))
     }
 
@@ -32,14 +31,22 @@ class VoiceService : Service() {
         latestStart = startId
         startForeground(42, notification(VoiceRuntime.state.value), VoiceRuntime.foregroundType)
         VoiceRuntime.serviceReady()
-        if (intent?.action == "stop") VoiceRuntime.cancel()
+        if (intent?.action == "stop") { VoiceRuntime.setEnabled(this, false); VoiceRuntime.cancel() }
         if (observing == null) observing = scope.launch {
             VoiceRuntime.state.collect { state ->
+                updateWakeLock(state)
                 if (state == "空闲") stopSelfResult(latestStart)
                 else getSystemService(NotificationManager::class.java).notify(42, notification(state))
             }
         }
         return START_NOT_STICKY
+    }
+    @SuppressLint("WakelockTimeout") // Continuous listening owns the lease; privacy/call pauses and destruction release it.
+    private fun updateWakeLock(state: String) {
+        val lock = wakeLock ?: return
+        val needed = state != "空闲" && !state.startsWith("麦克风暂停")
+        if (needed && !lock.isHeld) lock.acquire()
+        else if (!needed && lock.isHeld) lock.release()
     }
     private fun notification(state: String): Notification = Notification.Builder(this, "voice")
         .setSmallIcon(R.drawable.lucide_mic).setContentTitle("豆馅本地语音").setContentText(state)
