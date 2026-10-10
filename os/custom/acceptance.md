@@ -124,6 +124,23 @@ Debug/System 各 108 项单元测试通过，System Lint 无错误，Debug/Syste
 
 镜像为 2,818,867,200 字节，动态分区合计 8,285,425,664 字节，距上限余 241,594,368 字节。小型 ext4 测试、完整构建的读回摘要与 AVB 校验通过；另从镜像导出 APK 复核摘要、root:root/0644 与 `system_file` 标签，见 `build.log`、`artifact-check.txt`。v1.10 尚未刷写，Dao 作为系统应用的启动和默认浏览器设置尚未真机验证。
 
+## v1.11 候选镜像：已提交源码与 Dao 浏览器
+
+由提交 `0e54fe5` 构建，工作区与提交一致。相对 v1.9 新增：Dao 浏览器；唤醒词谐音不再作为任务（`2d76eae`）；视觉回复格式错误重试一次（`25144f2`）；Jev 不可用时改用视觉模型（`de7c65d`）；KWS `maxActivePaths=8`（`e03827c`、`3b6bcad`）；语音输入接续、自动发送及悬浮窗麦克风；本地 TTS 改为 Piper xiao_ya；挥手招呼开机动画；系统版默认运行时权限。
+
+| 产物 | SHA-256 |
+|---|---|
+| `system.img` | `c1b0bd80f6a1eec882dceea90c9b41e9912a0379053bc5c735e5e056eee17817` |
+| `assistant.apk` | `5754f92e965746ace2258869beb59bb95f0e3204c55cf19b00e1443b06512ad6` |
+| `tts.apk` | `5e7be9269b669124a87167f2a384975697eabed208213619915638827d2bda0c` |
+| `dao.apk` | `2645fa9570d8de423ccfa9642e4b604e6ed98b3d46d4eec2344c79f0240856e6` |
+| `bootanimation.zip` | `9cbcf00435e88c34525ce14ac3067076bbfdcf173cd561dc03eab730346a93ec` |
+| `voice-corresponding-source.tar.gz` | `b8a6f37e12623858d6fcd6fc812f1d7ebaf279281e763c83a2dd6ae6e910f139` |
+
+镜像为 2,708,021,248 字节，动态分区合计 8,174,579,712 字节，距上限余 352,440,320 字节。Debug/System 各 112 项单元测试通过，三项 Lint 均无错误，见 `gradle.log`；开机动画测试、小型 ext4 测试、完整构建的读回摘要与 AVB 校验通过，见 `image-test.log`、`build.log`。另从镜像导出五个写入文件复核摘要、0644 与 `system_file` 标签，见 `artifact-check.txt`；源码包中 162 个已跟踪 Android 文件与提交一致，见 `source-check.txt`。
+
+v1.11 尚未刷写。刷写后待验：Dao 作为系统应用启动；`pm grant` 补齐默认权限（沿用 GSI fingerprint，不清数据升级不会自动应用）；挥手开机动画；手机数据分区已有 TTS 更新包，需核对实际运行版本；xiao_ya 的真机 TTS 测试此前超时未解决；Dao 搜索写入笔记任务重跑三次；真人唤醒率及误唤醒计数。
+
 ## 唤醒失效反馈跟进
 
 用户反馈在亮屏解锁时说“同志你好”没有响应。该词已包含在 v1.7 关键词配置中。现场诊断发现同期 instrumentation 测试结束时杀掉了助手进程，随后默认助手绑定没有实际服务连接，活动录音为空。重新绑定默认助手后，录音恢复为未被系统静音，通知显示“等待唤醒词”；这只证明监听恢复，尚未取得真人再次唤醒成功的确认，不能将反馈记为已解决。
