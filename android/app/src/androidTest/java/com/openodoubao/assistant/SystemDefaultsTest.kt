@@ -1,5 +1,6 @@
 package com.openodoubao.assistant
 
+import android.Manifest
 import android.app.Application
 import android.content.ComponentName
 import android.content.pm.PackageManager
@@ -12,6 +13,13 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class SystemDefaultsTest {
+    @Test fun systemImageGrantsRuntimePermissions() {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+        assumeTrue(app.javaClass.name == "com.openodoubao.assistant.SystemApplication")
+        for (permission in listOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA, Manifest.permission.POST_NOTIFICATIONS))
+            assertEquals(permission, PackageManager.PERMISSION_GRANTED, app.checkSelfPermission(permission))
+    }
+
     @Test fun startupEnablesAccessibilityWithoutReplacingOtherServices() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = instrumentation.targetContext.applicationContext as Application

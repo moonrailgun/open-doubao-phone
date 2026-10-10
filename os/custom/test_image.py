@@ -2,7 +2,8 @@
 from pathlib import Path
 import tempfile
 import unittest
-from build_image import AVB, GROUP_SIZE, OTHER_PARTITIONS, check_capacity, debugfs, install, run
+import xml.etree.ElementTree as ET
+from build_image import AVB, ROOT, GROUP_SIZE, OTHER_PARTITIONS, check_capacity, debugfs, install, run
 
 
 class ImageRecipeTest(unittest.TestCase):
@@ -10,6 +11,17 @@ class ImageRecipeTest(unittest.TestCase):
         check_capacity(GROUP_SIZE - OTHER_PARTITIONS)
         with self.assertRaises(RuntimeError):
             check_capacity(GROUP_SIZE - OTHER_PARTITIONS + 1)
+
+    def test_default_permissions(self):
+        # Only the ROM grants runtime permissions up front; a standalone install still asks in the app.
+        (exception,) = ET.parse(ROOT / 'os/custom/default-permissions-douxian.xml').getroot()
+        self.assertEqual('com.openodoubao.assistant', exception.get('package'))
+        granted = {permission.get('name'): permission.get('fixed') for permission in exception}
+        self.assertEqual(dict.fromkeys(['android.permission.RECORD_AUDIO', 'android.permission.CAMERA',
+                                        'android.permission.POST_NOTIFICATIONS'], 'false'), granted)
+        manifest = ET.parse(ROOT / 'android/app/src/main/AndroidManifest.xml').getroot()
+        declared = {node.get('{http://schemas.android.com/apk/res/android}name') for node in manifest.iter('uses-permission')}
+        self.assertLessEqual(set(granted), declared)
 
     def test_write_and_preserve(self):
         with tempfile.TemporaryDirectory() as folder:

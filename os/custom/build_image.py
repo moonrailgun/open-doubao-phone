@@ -101,6 +101,8 @@ def main(output):
     install(image, ROOT / 'os/custom/privapp-permissions-douxian.xml',
             '/system/etc/permissions/privapp-permissions-douxian.xml')
     install(image, ROOT / 'os/custom/douxian.xml', '/system/etc/sysconfig/douxian.xml')
+    install(image, ROOT / 'os/custom/default-permissions-douxian.xml',
+            '/system/etc/default-permissions/default-permissions-douxian.xml')
     install(image, output / 'bootanimation.zip', '/system/media/bootanimation.zip')
     run('e2fsck', '-fy', image, codes=(0, 1))
     run('resize2fs', '-M', image)

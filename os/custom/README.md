@@ -28,7 +28,7 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
   douxian-image-tools python3 -B /work/os/custom/build_image.py /out
 ```
 
-配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入两个 APK、省电豁免和开机动画。原有文件及其权限、xattrs 不经过解包重打包；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
+配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入两个 APK、省电豁免、默认运行时权限和开机动画。原有文件及其权限、xattrs 不经过解包重打包；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
 
 输出包括 `system.img`、`payload.json`、`manifest.json` 和 `avb-info.txt`。使用无签名 AVB 元数据，只适用于当前已解锁且关闭验证的开发设备；不能重新锁定 Bootloader。容量限制使用当前 Pixel 6 Pro 的 dynamic partition group 与其他分区实际尺寸，不能直接套用到其他手机。
 
@@ -68,6 +68,14 @@ os/tools/platform-tools/fastboot -s "$DOUXIAN_SERIAL" reboot
 ```
 
 这里不使用 `-w`，不擦除 userdata 或 metadata，不卸载旧应用，不重新锁定 Bootloader。
+
+系统版默认授予麦克风、相机和通知权限，用户仍可在系统设置中关闭；独立安装的 APK 仍在应用内按需申请。Android 只在首次开机或系统 fingerprint 变化时应用 `default-permissions`，而本镜像沿用 GSI 的 fingerprint，所以不清数据刷写并启动后需补一次授权：
+
+```sh
+for permission in RECORD_AUDIO CAMERA POST_NOTIFICATIONS; do
+  adb -s "$DOUXIAN_SERIAL" shell pm grant com.openodoubao.assistant android.permission.$permission
+done
+```
 
 ## 不清数据升级检查
 
