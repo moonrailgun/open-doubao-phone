@@ -51,6 +51,7 @@ import com.moonrailgun.opendoubao.assistant.remote.RemoteSnapshot
 import com.moonrailgun.opendoubao.assistant.remote.RemoteTasks
 import com.moonrailgun.opendoubao.assistant.statusStyle
 import com.moonrailgun.opendoubao.assistant.voice.LocalVoiceInput
+import com.moonrailgun.opendoubao.assistant.voice.VoiceRuntime
 import com.moonrailgun.opendoubao.assistant.voice.TtsSettings
 import com.moonrailgun.opendoubao.assistant.voice.tts
 import com.moonrailgun.opendoubao.assistant.voice.withTts
@@ -60,6 +61,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
+
+private val VoiceRing = androidx.compose.ui.graphics.Color(0xFF3DBB82)
 
 class AssistantService : AccessibilityService() {
     companion object {
@@ -107,6 +110,7 @@ class AssistantService : AccessibilityService() {
     private var locked = false
     private var running = false
     private var paused = false
+    private var conversing = false
     private var expanded = false
     private var typing = false
     private val lockReceiver = object : BroadcastReceiver() {
@@ -125,6 +129,7 @@ class AssistantService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
         })
         createOverlay()
+        scope.launch { VoiceRuntime.conversing.collect { conversing = it; ringBubble() } }
         // Tasks never outlive the service, including those waiting for manual intervention.
         runCatching {
             val vault = Vault(this)
@@ -484,12 +489,28 @@ class AssistantService : AccessibilityService() {
             ellipsize = if (running) TextUtils.TruncateAt.END else null
             scrollTo(0, 0)
         }
-        bubble?.contentDescription = when {
+        ringBubble()
+        applyOverlay()
+    }
+
+    /** The collapsed bubble's border shows a running or paused task, else a voice conversation. */
+    private fun ringBubble() {
+        val ball = bubble ?: return
+        val color = when {
+            running -> statusStyle(TaskStatus.RUNNING.name).second
+            paused -> statusStyle(TaskStatus.PAUSED.name).second
+            conversing -> VoiceRing
+            else -> null
+        }
+        ball.foreground = color?.let { GradientDrawable().apply {
+            shape = GradientDrawable.OVAL; setStroke((3 * resources.displayMetrics.density).toInt(), it.toArgb())
+        } }
+        ball.contentDescription = when {
             running -> "Open Doubao 正在操作手机，点按展开紧急停止"
             paused -> "Open Doubao 已暂停，点按展开继续任务"
+            conversing -> "Open Doubao 正在语音对话，点按展开"
             else -> "Open Doubao，点按查看结果或下达命令"
         }
-        applyOverlay()
     }
 
     private fun styled(md: Markdown) = SpannableStringBuilder(md.text).apply {

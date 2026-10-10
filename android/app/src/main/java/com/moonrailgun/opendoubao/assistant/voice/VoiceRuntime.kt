@@ -16,6 +16,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import java.util.concurrent.Executors
 
 object VoiceRuntime {
@@ -32,7 +33,12 @@ object VoiceRuntime {
     private var assistantReady = false
     private var engine: LocalSpeechEngine? = null
     private var speech: FileSpeech? = null
-    private var active: Long? = null
+    private val mutableActive = MutableStateFlow<Long?>(null)
+    private var active: Long?
+        get() = mutableActive.value
+        set(value) { mutableActive.value = value }
+    /** True while a request listens, speaks or loads for one; waiting for the wake word does not count. */
+    val conversing = mutableActive.map { it != null }
     private var wakeJob: Job? = null
     private var taskWatcher: Job? = null
     private var ready = CompletableDeferred<Unit>()
