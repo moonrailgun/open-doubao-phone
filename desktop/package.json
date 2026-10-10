@@ -1,0 +1,25 @@
+{
+  "name": "open-odoubao-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "vite build",
+    "test": "playwright test",
+    "tauri": "tauri",
+    "desktop": "tauri dev",
+    "bundle": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "lucide": "^1.54.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@tauri-apps/cli": "^2.0.0",
+    "jsqr": "^1.4.0",
+    "vite": "^7.0.0"
+  }
+}
