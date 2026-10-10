@@ -88,6 +88,35 @@ class CloudModelsTest {
             .getJSONArray("elements").getJSONObject(0).getString("text"))
     }
 
+    @Test fun oneMalformedVisionReplyIsRetriedWithTheParserComplaint() = runBlocking {
+        val sent = mutableListOf<JSONObject>()
+        fun models(vararg replies: String): CloudModels {
+            val queue = ArrayDeque(replies.toList())
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                val buffer = Buffer()
+                chain.request().body!!.writeTo(buffer)
+                sent += JSONObject(buffer.readUtf8())
+                val response = JSONObject().put("choices", org.json.JSONArray().put(JSONObject()
+                    .put("message", JSONObject().put("content", queue.removeFirst())))).toString()
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                    .body(response.toResponseBody("application/json".toMediaType())).build()
+            }.build()
+            return CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
+        }
+        val plan = Plan("browser.app", listOf("read"), emptyList())
+        val step = models("""{"action":"scroll","node":"0.1","direction":"down"}""", """{"action":"scroll","node":"0.1","forward":true}""")
+            .fallback("read", screen(), plan, null, Evidence(emptyList()), null)
+        assertEquals(Action.Scroll("0.1", true), step.action)
+        assertEquals(2, sent.size)
+        assertTrue(sent[1].getJSONArray("messages").getJSONObject(1).getString("content").contains("forward"))
+        sent.clear()
+        // A second bad reply still fails the step; no retry loop.
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { models("not json", "still not json").fallback("read", screen(), plan, null, Evidence(emptyList()), null) }
+        }
+        assertEquals(2, sent.size)
+    }
+
     @Test fun planningDistinguishesAuthorizedComponentsFromLaunchableApps() = runBlocking {
         var sent: JSONObject? = null
         val client = OkHttpClient.Builder().addInterceptor { chain ->
