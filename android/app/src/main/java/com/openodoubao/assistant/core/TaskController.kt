@@ -146,8 +146,14 @@ class TaskController(
                             }
                             update("正在决定下一步", logged = false)
                             val candidates = Candidates.build(screen, plan!!, apps, launchableApps)
-                            val decision = timed("Jev 决策（${candidates.size} 个候选）") {
-                                withTimeout(60_000) { models.decide(state.value.goal, screen, plan!!, candidates, previous) }
+                            val decision = try {
+                                timed("Jev 决策（${candidates.size} 个候选）") {
+                                    withTimeout(60_000) { models.decide(state.value.goal, screen, plan!!, candidates, previous) }
+                                }
+                            } catch (e: java.io.IOException) {
+                                // Jev only speeds up element picks; when it is rate limited or down, the vision model takes the step.
+                                trace("Jev 不可用：${e.message?.lineSequence()?.first()}")
+                                Decision(null, false, Effect.UNKNOWN)
                             }
                             checkCurrent(token)
                             trace("Jev：${decision.action?.description(screen) ?: "无动作"}，完成=${decision.done}，上一步效果=${decision.effect}")

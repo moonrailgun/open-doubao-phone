@@ -46,6 +46,22 @@ class TaskControllerTest {
         assertEquals(listOf(Action.OpenApp("browser.app"), Action.Wait, Action.Back), phone.actions)
     }
 
+    @Test fun rateLimitedJevHandsTheStepToTheVisionModel() = runTest {
+        val phone = FakePhone()
+        val models = object : Models by FakeModels() {
+            override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision =
+                throw java.io.IOException("Jev 决策请求失败：模型服务返回 HTTP 429")
+            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?) =
+                if (previous == null) ModelStep(Action.Back) else ModelStep(done = true, observations = "page read")
+        }
+        val controller = TaskController(this, phone, models)
+        controller.start("Read the page", setOf("browser.app"))
+        advanceUntilIdle()
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals(listOf(Action.OpenApp("browser.app"), Action.Back), phone.actions)
+        assertTrue(controller.state.value.trace.any { it.contains("Jev 不可用：Jev 决策请求失败：模型服务返回 HTTP 429") })
+    }
+
     @Test fun failedDispatchReobservesAndChoosesAnotherAction() = runTest {
         val phone = FakePhone()
         val models = object : Models by FakeModels() {
@@ -321,14 +337,16 @@ class TaskControllerTest {
 
     @Test fun failureLeavesATraceOfThePlanTheFailingCallAndTheError() = runTest {
         val models = object : Models by FakeModels() {
-            override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision =
-                throw java.io.IOException("Jev 决策请求失败：模型服务返回 HTTP 400")
+            override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
+                Decision(null, false, Effect.UNKNOWN)
+            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep =
+                throw java.io.IOException("视觉模型请求失败：模型服务返回 HTTP 400")
         }
         val controller = TaskController(this, FakePhone(), models)
         controller.start("search", setOf("browser.app"))
         advanceUntilIdle()
         val trace = controller.state.value.trace.joinToString("\n")
-        listOf("开始：search", "规划结果：browser.app", "页面 browser.app", "→ Jev 决策", "× Jev 决策", "HTTP 400",
+        listOf("开始：search", "规划结果：browser.app", "页面 browser.app", "→ 视觉模型", "× 视觉模型", "HTTP 400",
             "java.io.IOException", "\tat ", "结束：FAILED").forEach { assertTrue("Missing $it in\n$trace", trace.contains(it)) }
     }
 
