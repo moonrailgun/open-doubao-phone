@@ -1,6 +1,6 @@
-# Open Doubao Phone
+# Open Doubao
 
-Open Doubao Phone 包含操作系统、桌面端和 Android 应用三个独立项目：
+Open Doubao 包含操作系统、桌面端和 Android 应用三个独立项目：
 
 ```text
 os/        操作系统相关工程与镜像

@@ -4,5 +4,5 @@
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
     </style>
-    <string name="accessibility_description">开始任务后，Open Doubao Phone 会读取当前应用的屏幕内容，必要时截图，交给你配置的模型服务决定下一步，再替你点按、输入和滑动。任务全程可随时紧急停止。它不读取密码，也不会在后台自行开始任务。</string>
+    <string name="accessibility_description">开始任务后，Open Doubao 会读取当前应用的屏幕内容，必要时截图，交给你配置的模型服务决定下一步，再替你点按、输入和滑动。任务全程可随时紧急停止。它不读取密码，也不会在后台自行开始任务。</string>
 </resources>

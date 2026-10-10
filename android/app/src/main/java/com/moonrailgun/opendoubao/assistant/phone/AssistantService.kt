@@ -371,7 +371,7 @@ class AssistantService : AccessibilityService() {
             setOnTouchListener(drag)
             addView(statusIcon, LinearLayout.LayoutParams(dp(20), dp(20)).apply { topMargin = dp(10) })
             addView(statusText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            openButton = iconButton(R.drawable.lucide_external_link, "打开 Open Odoubao") {
+            openButton = iconButton(R.drawable.lucide_external_link, "打开 Open Doubao") {
                 collapse()
                 packageManager.getLaunchIntentForPackage(packageName)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
@@ -483,9 +483,9 @@ class AssistantService : AccessibilityService() {
             scrollTo(0, 0)
         }
         bubble?.contentDescription = when {
-            running -> "Open Odoubao 正在操作手机，点按展开紧急停止"
-            paused -> "Open Odoubao 已暂停，点按展开继续任务"
-            else -> "Open Odoubao，点按查看结果或下达命令"
+            running -> "Open Doubao 正在操作手机，点按展开紧急停止"
+            paused -> "Open Doubao 已暂停，点按展开继续任务"
+            else -> "Open Doubao，点按查看结果或下达命令"
         }
         applyOverlay()
     }

@@ -226,7 +226,7 @@ class MainActivity : ComponentActivity() {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Image(painterResource(R.drawable.app_logo), null,
                                 Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)))
-                            Text("Open Odoubao", Modifier.padding(start = 10.dp).weight(1f), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Open Doubao", Modifier.padding(start = 10.dp).weight(1f), fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             Surface(color = colors.surfaceContainer, shape = CircleShape) {
                                 Icon(painterResource(if (service != null) R.drawable.lucide_plug else R.drawable.lucide_unplug),
                                     if (service != null) "服务已连接" else "服务未开启", Modifier.padding(8.dp).size(18.dp),

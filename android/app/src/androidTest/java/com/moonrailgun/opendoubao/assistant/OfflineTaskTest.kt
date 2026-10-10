@@ -67,7 +67,7 @@ class OfflineTaskTest {
             assertTrue(result.message, result.message.contains("规划") && result.message.contains("网络"))
             assertEquals(0, result.steps)
             assertTrue("The actual task error must be visible in MainActivity", device.wait(
-                Until.hasObject(By.pkg(context.packageName).hasDescendant(By.text("Open Odoubao"))
+                Until.hasObject(By.pkg(context.packageName).hasDescendant(By.text("Open Doubao"))
                     .hasDescendant(By.text(result.message))), 5000))
             instrument.sendStatus(0, android.os.Bundle().apply { putString("stream", "Visible offline task message: ${result.message}\n") })
         } finally {
