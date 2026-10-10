@@ -1,17 +1,21 @@
 package com.openodoubao.assistant.voice
 
 import android.content.Context
+import android.content.Intent
 import android.app.KeyguardManager
 import android.media.*
 import android.os.*
 import android.speech.tts.*
+import com.openodoubao.assistant.data.Vault
+import kotlinx.coroutines.*
 import java.io.File
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 
-/** The separate TTS UID synthesizes; PCM playback belongs to our foreground service. */
-class FileSpeech(private val context: Context, private val unlockPrompt: Boolean = false, private val finished: (String?) -> Unit) {
+/** Online or separate-UID local synthesis; PCM playback belongs to our foreground service. */
+class FileSpeech(private val context: Context, private val unlockPrompt: Boolean = false,
+    private val online: OnlineSpeech = OnlineSpeech(), private val finished: (String?) -> Unit) {
     private val handler = Handler(Looper.getMainLooper())
     private val audio = context.getSystemService(AudioManager::class.java)
     private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -19,6 +23,7 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
         .setAudioAttributes(attributes).setOnAudioFocusChangeListener { if (it < 0) stop() }.build()
     private var tts: TextToSpeech? = null
+    private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val playback = Executors.newSingleThreadExecutor()
     private var player: AudioTrack? = null
     private var writtenFrames = 0L // Only accessed on the playback worker.
@@ -30,6 +35,40 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
         val id = UUID.randomUUID().toString()
         active = id
         handler.postDelayed({ if (active == id) stop("语音合成超时") }, 120_000)
+        val spoken = speechText(text)
+        val settings = try { if (unlockPrompt) null else Vault(context).read() }
+            catch (e: Exception) { stop(e.message ?: "无法读取播报设置"); return }
+        if (settings == null || settings.onlineTtsToken.isBlank() || settings.onlineTtsEndpoint.isBlank()) {
+            speakLocal(id, spoken); return
+        }
+        scope.launch {
+            var receivedAudio = false
+            try {
+                online.stream(settings.onlineTtsEndpoint, settings.onlineTtsToken, spoken,
+                    model = settings.onlineTtsModel, voice = settings.onlineTtsVoice) { buffer -> handler.post {
+                    if (active != id) return@post
+                    if (!receivedAudio) {
+                        receivedAudio = true
+                        startPlayback(24_000, AudioFormat.ENCODING_PCM_16BIT, 1)
+                    }
+                    if (active == id) queueAudio(id, buffer)
+                } }
+                if (active == id) completeAudio(id)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (active == id) {
+                    // Once speech has started, falling back would repeat private results from the beginning.
+                    if (receivedAudio) stop(e.message ?: "在线播报中断") else speakLocal(id, spoken)
+                }
+            }
+        }
+    }
+
+    private fun speakLocal(id: String, text: String) {
+        if (context.packageManager.queryIntentServices(Intent("android.intent.action.TTS_SERVICE")
+                .setPackage("com.openodoubao.tts"), 0).isEmpty()) {
+            stop("请先安装豆馅本地语音引擎"); return
+        }
         tts = TextToSpeech(context, { status -> handler.post {
             if (active != id) return@post
             if (status != TextToSpeech.SUCCESS) { stop("无法连接本地播报引擎"); return@post }
@@ -43,27 +82,13 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
                 override fun onAudioAvailable(utteranceId: String?, buffer: ByteArray) {
                     handler.post {
                         if (active != id || utteranceId != id) return@post
-                        val track = player ?: return@post
-                        playback.execute {
-                            try {
-                                var offset = 0
-                                while (active == id && offset < buffer.size) {
-                                    val count = track.write(buffer, offset, buffer.size - offset, AudioTrack.WRITE_BLOCKING)
-                                    check(count > 0) { "播放失败" }
-                                    offset += count
-                                    writtenFrames += count / 2
-                                }
-                            } catch (e: Exception) { handler.post { if (active == id) stop(e.message ?: "播放失败") } }
-                        }
+                        queueAudio(id, buffer)
                     }
                 }
                 override fun onDone(utteranceId: String?) {
                     handler.post {
                         if (active != id || utteranceId != id) return@post
-                        playback.execute {
-                            val frames = writtenFrames
-                            handler.post { if (active == id) awaitPlayback(id, frames) }
-                        }
+                        completeAudio(id)
                     }
                 }
                 @Deprecated("Platform callback")
@@ -72,10 +97,32 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
             try {
                 val output = File.createTempFile("speech-", ".wav", context.cacheDir).also { file = it }
                 ParcelFileDescriptor.open(output, ParcelFileDescriptor.MODE_READ_WRITE or ParcelFileDescriptor.MODE_TRUNCATE).use {
-                    if (engine.synthesizeToFile(speechText(text), Bundle(), it, id) != TextToSpeech.SUCCESS) stop("无法提交播报")
+                    if (engine.synthesizeToFile(text, Bundle(), it, id) != TextToSpeech.SUCCESS) stop("无法提交播报")
                 }
             } catch (e: Exception) { stop(e.message ?: "无法保存语音") }
         } }, "com.openodoubao.tts")
+    }
+
+    private fun queueAudio(id: String, buffer: ByteArray) {
+        val track = player ?: return
+        playback.execute {
+            try {
+                var offset = 0
+                while (active == id && offset < buffer.size) {
+                    val count = track.write(buffer, offset, buffer.size - offset, AudioTrack.WRITE_BLOCKING)
+                    check(count > 0) { "播放失败" }
+                    offset += count
+                    writtenFrames += count / 2
+                }
+            } catch (e: Exception) { handler.post { if (active == id) stop(e.message ?: "播放失败") } }
+        }
+    }
+
+    private fun completeAudio(id: String) {
+        playback.execute {
+            val frames = writtenFrames
+            handler.post { if (active == id) awaitPlayback(id, frames) }
+        }
     }
 
     private fun startPlayback(sampleRate: Int, format: Int, channels: Int) {
@@ -95,7 +142,7 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
 
     private fun awaitPlayback(id: String, frames: Long) {
         val track = player
-        if (track == null || frames == 0L) { stop("本地合成未返回音频"); return }
+        if (track == null || frames == 0L) { stop("合成未返回音频"); return }
         // Synthesis completion can precede the last audible sample; only then may listening resume.
         if ((track.playbackHeadPosition.toLong() and 0xffffffffL) >= frames) stop()
         else handler.postDelayed({ if (active == id) awaitPlayback(id, frames) }, 25)
@@ -107,6 +154,7 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
     fun stop(error: String? = null) {
         if (active == null) return
         active = null
+        scope.cancel()
         handler.removeCallbacksAndMessages(null)
         tts?.stop(); tts?.shutdown(); tts = null
         player?.let { track ->

@@ -593,12 +593,19 @@ class NativeBridgeTest {
         val vault = Vault(isolated)
         val config = ModelConfig(jevKey = "never-write-this-plain", chatKey = "private-secret")
         val record = Record("one", 10, "private goal", "COMPLETED", "actual result", listOf("12:00:00.000 → Jev 决策"))
-        vault.write(Saved(config, setOf("browser.app"), true, listOf(record)))
+        vault.write(Saved(config, setOf("browser.app"), true, listOf(record), onlineTtsToken = "private-tts-token",
+            onlineTtsEndpoint = "https://speech.example/v1/audio/speech",
+            onlineTtsModel = "elevenlabs/custom-model", onlineTtsVoice = "custom-voice"))
         assertEquals(record, vault.read().records.single())
         assertEquals(config, vault.read().config)
+        assertEquals("private-tts-token", vault.read().onlineTtsToken)
+        assertEquals("https://speech.example/v1/audio/speech", vault.read().onlineTtsEndpoint)
+        assertEquals("elevenlabs/custom-model", vault.read().onlineTtsModel)
+        assertEquals("custom-voice", vault.read().onlineTtsVoice)
         val file = File(folder, "assistant.enc")
         assertFalse(file.readText().contains("never-write-this-plain"))
         assertFalse(file.readText().contains("private goal"))
+        assertFalse(file.readText().contains("private-tts-token"))
         val corrupted = file.readBytes().apply { this[lastIndex] = (this[lastIndex].toInt() xor 1).toByte() }
         file.writeBytes(corrupted)
         assertTrue(runCatching { vault.read() }.isFailure)

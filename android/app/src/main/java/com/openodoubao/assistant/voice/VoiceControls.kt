@@ -43,8 +43,8 @@ fun VoiceControls() {
     }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("本地语音", style = MaterialTheme.typography.titleMedium)
-            Text("识别和播报在本机运行。麦克风按钮填写输入框；唤醒后可直接下达任务。")
+            Text("语音识别与唤醒", style = MaterialTheme.typography.titleMedium)
+            Text("识别在本机运行。麦克风按钮填写输入框；唤醒后可直接下达任务。")
             Text("唤醒词：${wakePhrases.joinToString("、")}。说“停止任务”或“继续任务”可控制当前任务。")
             TextButton({ context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }) {
                 Text(if (selected) "已设为默认助手 · 查看设置" else "第一步：设为默认数字助手")
@@ -62,8 +62,6 @@ fun VoiceControls() {
             Text(state)
             if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ VoiceRuntime.speak(context, "你好，我是豆馅。现在使用本地语音播报。") },
-                    enabled = state == "空闲" || state == "等待唤醒词") { Text("测试播报") }
                 OutlinedButton({ VoiceRuntime.setEnabled(context, false); VoiceRuntime.cancel() }, enabled = state != "空闲" || enabled) { Text("停止语音") }
             }
             TextButton({ VoiceRuntime.retryInitialization(context) }, enabled = state == "空闲") { Text("重试识别引擎") }

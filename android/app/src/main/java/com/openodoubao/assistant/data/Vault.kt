@@ -20,7 +20,13 @@ data class Record(val id: String, val time: Long, val goal: String, val status: 
     val log: List<String> = emptyList())
 data class Saved(val config: ModelConfig = ModelConfig(), val apps: Set<String> = emptySet(),
     val consent: Boolean = false, val records: List<Record> = emptyList(), val appsConfigured: Boolean = apps.isNotEmpty(),
-    val remote: RemoteConfig = RemoteConfig())
+    val remote: RemoteConfig = RemoteConfig(), val onlineTtsToken: String = "", val onlineTtsEndpoint: String = "",
+    val onlineTtsModel: String = DEFAULT_TTS_MODEL, val onlineTtsVoice: String = DEFAULT_TTS_VOICE) {
+    companion object {
+        const val DEFAULT_TTS_MODEL = "elevenlabs/eleven_v3"
+        const val DEFAULT_TTS_VOICE = "bhJUNIXWQQ94l8eI2VUf"
+    }
+}
 
 /** Main-thread access; atomic replacement preserves the previous file if a write fails. */
 class Vault(context: Context) {
@@ -57,7 +63,8 @@ class Vault(context: Context) {
                         (0 until log.length()).map { log.getString(it) }) } },
                 json.optBoolean("appsConfigured", apps.length() > 0),
                 RemoteConfig(remote?.optString("deviceId").orEmpty(), remote?.optJSONObject("binding")?.let(Pairing::fromJson),
-                    remote?.optBoolean("enabled") ?: false))
+                    remote?.optBoolean("enabled") ?: false), json.optString("onlineTtsToken"), json.optString("onlineTtsEndpoint"),
+                json.optString("onlineTtsModel", Saved.DEFAULT_TTS_MODEL), json.optString("onlineTtsVoice", Saved.DEFAULT_TTS_VOICE))
         } catch (e: Exception) { throw IllegalStateException("本地加密记录无法读取，原文件已保留", e) }
     }
 
@@ -67,6 +74,9 @@ class Vault(context: Context) {
             .put("jevKey", cfg.jevKey).put("chatEndpoint", cfg.chatEndpoint).put("chatModel", cfg.chatModel).put("chatKey", cfg.chatKey)
             .put("language", cfg.language))
             .put("apps", JSONArray(saved.apps.toList())).put("appsConfigured", saved.appsConfigured).put("consent", saved.consent)
+            .put("onlineTtsToken", saved.onlineTtsToken)
+            .put("onlineTtsEndpoint", saved.onlineTtsEndpoint)
+            .put("onlineTtsModel", saved.onlineTtsModel).put("onlineTtsVoice", saved.onlineTtsVoice)
             .put("remote", JSONObject().put("deviceId", saved.remote.deviceId).put("enabled", saved.remote.enabled)
                 .put("binding", saved.remote.binding?.json() ?: JSONObject.NULL))
             .put("records", JSONArray(saved.records.take(30).map { r -> JSONObject().put("id", r.id).put("time", r.time)

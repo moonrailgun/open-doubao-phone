@@ -71,6 +71,7 @@ import com.openodoubao.assistant.phone.visibleAppCatalog
 import com.openodoubao.assistant.remote.RemoteControls
 import com.openodoubao.assistant.voice.rememberVoiceInput
 import com.openodoubao.assistant.voice.VoiceControls
+import com.openodoubao.assistant.voice.TtsControls
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -307,7 +308,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     2 -> {
-                        PageTitle("模型设置", "需要两个模型服务：一个在每一步决定点哪里，一个负责规划、看截图和总结结果。")
+                        PageTitle("设置", "配置模型服务、语音播报和远程连接。")
                         Section("Jev 决策模型", "每一步由它挑选要点按的元素，并判断上一步是否生效。") {
                             SettingField("接口地址", config.jevEndpoint) { config = config.copy(jevEndpoint = it.trim()) }
                             SettingField("模型", config.jevModel) { config = config.copy(jevModel = it.trim()) }
@@ -348,6 +349,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Text("测试连接会向两个服务各发一次请求，可能产生少量费用。密钥经 Android Keystore 加密后只存在本机，不写入日志和备份。",
                             Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
+                        TtsControls(vault)
                         VoiceControls()
                         RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     }

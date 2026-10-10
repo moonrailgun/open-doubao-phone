@@ -238,11 +238,6 @@ object VoiceRuntime {
     private fun speakUnlock(context: Context) = speak(context, "请先点亮并解锁手机，然后重新下达指令。", true)
     private fun speak(context: Context, text: String, unlockPrompt: Boolean, after: (() -> Unit)? = null): Boolean {
         if (!unlockPrompt && !screenAvailable(context)) return false
-        if (context.packageManager.queryIntentServices(Intent("android.intent.action.TTS_SERVICE")
-                .setPackage("com.openodoubao.tts"), 0).isEmpty()) {
-            mutableError.value = "请先安装豆馅本地语音引擎"
-            return false
-        }
         val id = begin(context, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, "正在播报") ?: return false
         scope.launch {
             try {
@@ -252,7 +247,8 @@ object VoiceRuntime {
                     speech = null
                     if (error != null) mutableError.value = error
                     finish(id, if (error == null) after else null)
-                }.also { it.speak(text) }
+                }
+                speech?.speak(text)
             } catch (e: Exception) { mutableError.value = e.message ?: "播报失败"; finish(id) }
         }
         return true
