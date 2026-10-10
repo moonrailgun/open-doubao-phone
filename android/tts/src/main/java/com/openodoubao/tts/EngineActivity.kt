@@ -13,7 +13,7 @@ class EngineActivity : Activity() {
         super.onCreate(savedInstanceState)
         if (intent.action == TextToSpeech.Engine.ACTION_CHECK_TTS_DATA) {
             setResult(TextToSpeech.Engine.CHECK_VOICE_DATA_PASS, Intent().apply {
-                putStringArrayListExtra(TextToSpeech.Engine.EXTRA_AVAILABLE_VOICES, arrayListOf("zho-CHN", "eng-USA"))
+                putStringArrayListExtra(TextToSpeech.Engine.EXTRA_AVAILABLE_VOICES, arrayListOf("zho-CHN"))
                 putStringArrayListExtra(TextToSpeech.Engine.EXTRA_UNAVAILABLE_VOICES, arrayListOf())
             })
             finish()

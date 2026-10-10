@@ -5,7 +5,8 @@ plugins {
 
 tasks.named("preBuild") {
     doFirst {
-        for (path in listOf("tts-assets/kokoro/model.int8.onnx", "tts-assets/kokoro/voices.bin",
+        for (path in listOf("tts-assets/xiao_ya/zh_CN-xiao_ya-medium.onnx", "tts-assets/xiao_ya/lexicon.txt",
+            "tts-assets/xiao_ya/tokens.txt", "tts-assets/xiao_ya/date.fst", "tts-assets/xiao_ya/number.fst", "tts-assets/xiao_ya/phone.fst",
             "tts-jni/arm64-v8a/libsherpa-onnx-jni.so", "tts-jni/arm64-v8a/libonnxruntime.so")) {
             check(file("../.voice/$path").isFile) { "Missing $path; run python3 tools/prepare_voice.py from android/" }
         }

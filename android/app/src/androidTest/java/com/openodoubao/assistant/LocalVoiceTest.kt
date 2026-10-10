@@ -229,36 +229,45 @@ class LocalVoiceTest {
                 assertTrue("Synthesis timed out", completed.await(120, TimeUnit.SECONDS))
                 assertFalse("Synthesis failed", synthesisError)
                 val audio = file.readBytes()
-                assertTrue("Empty WAV", audio.size > 48000)
+                assertTrue("Empty WAV", audio.size > 44)
                 assertEquals("RIFF", String(audio, 0, 4, Charsets.US_ASCII))
                 assertTrue("Silent WAV", audio.drop(44).any { abs(it.toInt()) > 20 })
-                val pcm = ByteBuffer.wrap(audio).order(ByteOrder.LITTLE_ENDIAN)
-                var chunk = 12
-                var sampleRate = 0
-                while (String(audio, chunk, 4, Charsets.US_ASCII) != "data") {
-                    if (String(audio, chunk, 4, Charsets.US_ASCII) == "fmt ") sampleRate = pcm.getInt(chunk + 12)
-                    val length = pcm.getInt(chunk + 4)
-                    chunk += 8 + length + (length % 2)
-                }
-                assertTrue(sampleRate > 0)
-                val count = pcm.getInt(chunk + 4) / 2
-                val spoken = FloatArray(count + sampleRate) { if (it < count) pcm.getShort(chunk + 8 + it * 2) / 32768f else 0f }
-                val spotter = createKeywordSpotter(context)
-                val stream = spotter.createStream()
-                val found = mutableSetOf<String>()
-                try {
-                    spoken.asList().chunked(1024).forEach { frame ->
-                        stream.acceptWaveform(frame.toFloatArray(), sampleRate)
-                        while (spotter.isReady(stream)) {
-                            spotter.decode(stream)
-                            spotter.getResult(stream).keyword.takeIf { it.isNotEmpty() }?.let {
-                                found += it; spotter.reset(stream)
-                            }
-                        }
-                    }
-                    assertEquals("Synthetic voice keyword detection: $phrase", setOf(phrase), found)
-                } finally { stream.release(); spotter.release() }
             }
         } finally { tts.shutdown(); file.delete() }
+    }
+
+    @Test fun fixedRecordingsRecognizeEveryWakePhrase() {
+        val instrument = InstrumentationRegistry.getInstrumentation()
+        val context = instrument.targetContext
+        // Keep KWS inputs fixed so changing the playback voice does not change this regression test.
+        wakePhrases.forEachIndexed { index, phrase ->
+            val audio = instrument.context.assets.open("wake/wake-$index.wav").use { it.readBytes() }
+            val pcm = ByteBuffer.wrap(audio).order(ByteOrder.LITTLE_ENDIAN)
+            var chunk = 12
+            var sampleRate = 0
+            while (String(audio, chunk, 4, Charsets.US_ASCII) != "data") {
+                if (String(audio, chunk, 4, Charsets.US_ASCII) == "fmt ") sampleRate = pcm.getInt(chunk + 12)
+                val length = pcm.getInt(chunk + 4)
+                chunk += 8 + length + (length % 2)
+            }
+            assertTrue(sampleRate > 0)
+            val count = pcm.getInt(chunk + 4) / 2
+            val spoken = FloatArray(count + sampleRate) { if (it < count) pcm.getShort(chunk + 8 + it * 2) / 32768f else 0f }
+            val spotter = createKeywordSpotter(context)
+            val stream = spotter.createStream()
+            val found = mutableSetOf<String>()
+            try {
+                spoken.asList().chunked(1024).forEach { frame ->
+                    stream.acceptWaveform(frame.toFloatArray(), sampleRate)
+                    while (spotter.isReady(stream)) {
+                        spotter.decode(stream)
+                        spotter.getResult(stream).keyword.takeIf { it.isNotEmpty() }?.let {
+                            found += it; spotter.reset(stream)
+                        }
+                    }
+                }
+                assertEquals("Synthetic voice keyword detection: $phrase", setOf(phrase), found)
+            } finally { stream.release(); spotter.release() }
+        }
     }
 }

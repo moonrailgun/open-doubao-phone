@@ -18,7 +18,7 @@ INPUTS = {
     'onnxruntime-android-1.28.2.zip': ('https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.2/onnxruntime-android-1.28.2.zip', '01518867f78241138b6aa25925802e843a4fa9085af8d303d49e35bbb52aff4d'),
     'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2': (RELEASE + 'asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2', '7d1efa2138a65b0b488df37f8b89e3d91a60676e416f515b952358d83dfd347e'),
     'sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2': (RELEASE + 'kws-models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2', 'b2f7c89690dc8ce4c6ed6afeab7cd800c36ad1421fb6b6302b4a4b194cf7f35f'),
-    'kokoro-int8-multi-lang-v1_1.tar.bz2': (RELEASE + 'tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2', 'a1e94694776049035c4f2c6529f003aaece993c76aae9a78995831c3c4dcafc6'),
+    'vits-piper-zh_CN-xiao_ya-medium.tar.bz2': (RELEASE + 'tts-models/vits-piper-zh_CN-xiao_ya-medium.tar.bz2', '9396a3dffbb95b037acaa18094500f58d0db9a7c4f2689554e2539717cf0db65'),
     'silero_vad.onnx': (RELEASE + 'asr-models/silero_vad.onnx', '9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6'),
 }
 
@@ -80,9 +80,12 @@ def stage_assets():
         assert set(pronunciation.split()) <= tokens, 'Unknown KWS token: ' + line
         phrases.add(phrase)
     assert len(keywords) == 4 and phrases == {'豆馅你好', '你好豆馅', '豆馅同志', '同志你好'}
-    tts = CACHE / 'kokoro-int8-multi-lang-v1_1'
-    for name in ('model.int8.onnx', 'voices.bin', 'tokens.txt', 'lexicon-zh.txt', 'lexicon-us-en.txt', 'espeak-ng-data', 'LICENSE', 'date-zh.fst', 'number-zh.fst', 'phone-zh.fst'):
-        copy(tts / name, CACHE / 'tts-assets/kokoro' / name)
+    tts = CACHE / 'vits-piper-zh_CN-xiao_ya-medium'
+    # Remove the previous generated model so upgrades do not package both voices.
+    if (CACHE / 'tts-assets/kokoro').exists():
+        shutil.rmtree(CACHE / 'tts-assets/kokoro')
+    for name in ('zh_CN-xiao_ya-medium.onnx', 'tokens.txt', 'lexicon.txt', 'MODEL_CARD', 'date.fst', 'number.fst', 'phone.fst'):
+        copy(tts / name, CACHE / 'tts-assets/xiao_ya' / name)
     for assets in ('assistant-assets', 'tts-assets'):
         copy(ROOT / 'third_party/sherpa-onnx/licenses', CACHE / assets / 'licenses')
         copy(ROOT / 'third_party/sherpa-onnx/LICENSE', CACHE / assets / 'licenses/sherpa-onnx-LICENSE')

@@ -20,7 +20,7 @@ Use `ANDROID_NDK` to override the installed NDK path. Inputs, native build trees
 
 - sherpa-onnx, KWS code: Apache-2.0, root `LICENSE`.
 - SenseVoice weights: FunASR model license (`licenses/SenseVoice-LICENSE`), distinct from the code license.
-- Kokoro v1.1 Chinese/English weights: Apache-2.0 (`licenses/Kokoro-LICENSE`). Voice 3 is `zf_001`.
+- Piper xiao_ya medium: one Chinese speaker, 22,050 Hz, speaker ID 0. The model's `MODEL_CARD` declares its BZNSYP dataset non-commercial; retain that notice and review it before commercial distribution. The converted model supplies a Chinese lexicon and does not need eSpeak data.
 - ONNX Runtime: MIT and included third-party notices.
 - Native dependencies: original license texts under `licenses/*-src/`, including GPL, MPL, Apache, MIT and BSD terms. These texts are copied into both APKs.
 
@@ -36,7 +36,13 @@ Install both APKs. In the assistant's voice settings, choose 豆馅 as the defau
 
 On an unlocked screen, the assistant replies 我在 after the wake utterance, then listens for the task. A task spoken in the same utterance as the wake phrase is retained and runs after the reply. Recording pauses during the reply; cancelling playback also cancels this continuation.
 
-### Device checks (Pixel 6 Pro, AOSP 17)
+Voice settings can optionally save a complete HTTPS speech endpoint and bearer token in the encrypted vault. Online playback uses `elevenlabs/eleven_v3`, voice `bhJUNIXWQQ94l8eI2VUf`, and streamed mono PCM16 at 24 kHz. No endpoint or token is bundled. Unconfigured playback and failures before audio starts use local xiao_ya; interrupted online audio stops without repeating the utterance. Locked-screen unlock prompts always remain local.
+
+### xiao_ya and online playback checks
+
+Unit tests, Android Lint and both APK builds pass. Eight emulator instrumentation tests cover local synthesis, fixed wake recordings, streamed playback and cancellation, online failure fallback, interrupted online playback and encrypted settings. A Pixel 6 Pro native benchmark reduced the same long utterance's synthesis time from 10.128 s with Kokoro to 0.776 s with xiao_ya; this excludes Android service startup and playback. Device-level TTS tests timed out and remain unresolved. The new assistant settings have not been installed on that phone because Android rejected updating its persistent system app. The live online endpoint has not been tested with a user token.
+
+### Prior device checks (Pixel 6 Pro, AOSP 17, Kokoro)
 
 Unit tests, Android Lint and both APK builds passed. Instrumentation passed real Chinese ASR, all three KWS phrases using synthesized audio, file-based TTS, playback completion, microphone cancellation, background listening, mute/resume and listening after playback. A reboot with both the default assistant and default recognition service selected started microphone capture without launching the app; `dumpsys audio` reported active capture with `silenced:false`.
 
