@@ -4,19 +4,19 @@
 
 ## 当前产物
 
-最近完成刷写验收的是 v1.7。v1.8 已修正为底部 Dock 居中并完成构建，尚未刷入，详见下方候选镜像记录。
+当前已刷入 v1.9，包含底部 Dock 居中和独立 TTS 语音设置。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
 
-本地输出目录：`os/custom/out/v1.7/`，未纳入 Git。保留原始镜像以及先前可启动的 `v1/` 至 `v1.6/` 输出。`manifest.json` 记录完整 payload、签名和容量数据。
+本地输出目录：`os/custom/out/v1.9/`，未纳入 Git。保留原始镜像和先前版本输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
 | 产物 | SHA-256 |
 |---|---|
-| `system.img` | `e8c81d7779beec8f894b9b1426dfd0fdb8c8cdc89795ea7fe873352c07377ebc` |
-| `assistant.apk` | `e4e07acc1dc7cd9ac5188a9a9bf35845c4b54387b43d988f4fef17cb23fd4ba7` |
+| `system.img` | `516c35754d6853dd1e2f47db5445898456a18027abd4ecfdedd5d0461ceaeb07` |
+| `assistant.apk` | `2d45ba3e5f1adb444673de1f05963d3a67de884f5f6d5412d3410a64ac607322` |
 | `tts.apk` | `7506d6c265ae3252501d13271734c07c763f4f49c50c6a22d94165c3c0dfe6bd` |
 | `bootanimation.zip` | `ab7130e8d416016c77eb9561d589fa6413941b0784a8a479813f865fe284d31d` |
-| `voice-corresponding-source.tar.gz` | `4c580391c199b278619e2d4849c4b95e0d219c5bb7ff03fed4673e8b36dec68c` |
+| `voice-corresponding-source.tar.gz` | `8cd6c299983df3084c07a33a4e9575da9b4ca7b330311f9cc198d2c3d870874c` |
 
-`system.img` 为 2,572,296,192 字节；动态分区合计 8,038,854,656 字节，低于 group 上限 8,527,020,032 字节，余量 488,165,376 字节。两份系统 APK 版本号均为 1001，证书与先前开发 APK 相同：`f73c285679b81382e5bdd814fdfab042620f86824798f7ac949e799d62e63578`。
+`system.img` 为 2,572,324,864 字节；动态分区合计 8,038,883,328 字节，低于 group 上限 8,527,020,032 字节，余量 488,136,704 字节。两份系统 APK 版本号均为 1001，证书与先前开发 APK 相同：`f73c285679b81382e5bdd814fdfab042620f86824798f7ac949e799d62e63578`。手机实际运行的 TTS 是数据分区中的更新包，不能将预装 TTS 摘要当作运行版本。
 
 ## 已取得的证据
 
@@ -83,9 +83,9 @@ v1.7 已完成不清数据刷写，见 `flash.log`、`partition-check.txt`。测
 
 本次升级数据比较未通过：此前基线记录实际配置不存在，而手机随后已经保存模型配置、配对信息和任务记录，该基线已过时。保留严格比较逻辑，当前配置仍可解密，但本次缺少刷写前的最新配置摘要，不能声称完成了配置逐字节保留验证。对应源码包已更新，共 18,166 个条目，包含的 151 个已跟踪 Android 文件与镜像对应的源码提交 `8d27c94` 逐字节一致，见 `source-check.txt`；生产 APK 与镜像摘要不变。
 
-## v1.8 候选镜像：底部 Dock 居中
+## v1.8 布局修正：底部 Dock 居中
 
-按用户澄清，将助手从首页网格中央移到五格底部 Dock 的第三格：`container=-101 screen=2 cell(2,0)`，保留其他默认快捷方式。修改已提交为 `4e2c3cc`。默认模板只用于新建桌面，已有用户的图标还需单独移动；当前手机尚未完成这一步。
+按用户澄清，将助手从首页网格中央移到五格底部 Dock 的第三格：`container=-101 screen=2 cell(2,0)`，保留其他默认快捷方式。修改已提交为 `4e2c3cc`。默认模板只用于新建桌面；当前机主的图标已单独移入 Dock，原有五个快捷方式保持不变，见 `v1.8/owner-layout-check.log`、`owner-home-docked.png`。
 
 构建使用隔离的已提交源码，仅加入该布局修正，未混入工作区同时进行的语音改动。Debug/System APK 构建、System Lint 和单元测试通过，见 `v1.8/gradle.log`；完整镜像通过文件系统、容量、读回摘要与 AVB 检查，见 `build.log`、`avb-info.txt`。再次核对产物 SHA-256，并从 APK 中解码布局，确认助手在 Dock 第三格，见 `artifact-check.txt`、`packaged-launcher-layout.txt`。
 
@@ -97,13 +97,38 @@ v1.7 已完成不清数据刷写，见 `flash.log`、`partition-check.txt`。测
 
 TTS 与开机动画沿用 v1.7，摘要见“当前产物”。镜像为 2,572,296,192 字节，动态分区合计 8,038,854,656 字节，低于 8,527,020,032 字节上限。源码包共 18,166 个条目，其中 151 个已跟踪 Android 文件与 `4e2c3cc` 一致，见 `source-check.txt`。
 
-v1.8 尚未刷写，也未完成新用户 Dock 布局及重启后的真机验收。目前 ADB 和 fastboot 均未检测到设备；恢复连接后，需先确认其他真机测试已停止，记录最新升级数据基线，再进行不清数据刷写。
+v1.8 未单独刷写，其布局修正随 v1.9 完成真机验证。机主原有六个图标的位置在升级前后完全一致，见 `v1.9/owner-layout-check.log`。临时新用户 11 的 Launcher 记录确认六个快捷方式均属于该用户，助手位于 Dock 第三格，见 `fresh-user-launcher.txt`、`fresh-layout-check.log`；检查后已切回机主并删除该临时用户，见 `fresh-user-cleanup.txt`。
+
+## v1.9 TTS 语音设置
+
+设置页增加独立 TTS 区域，可配置完整 HTTPS 接口、Token、模型和音色 ID，并保存或保存后试听。默认模型为 `elevenlabs/eleven_v3`；清空 Token 使用本地播报，在线请求出声前失败时回退到本地。设置使用现有 Keystore 加密存储，旧配置缺少模型、音色字段时使用默认值。当前在线客户端按 24 kHz 单声道 PCM 流接收音频，未验证任意服务商兼容性。
+
+Debug/System 各 108 项单元测试通过，System Lint 无错误，Debug/System APK 和测试 APK 构建通过，见 `v1.9/gradle.log`、`gradle-system-tests.log`。请求测试覆盖自定义模型和音色、拒绝空值；真机加密配置测试覆盖新增字段。镜像与对应源码包保留原有预装 TTS 和开机动画，仅更新设置及所依赖的助手在线播报实现，见 `source-check.txt`、`artifact-check.txt`。
+
+不清数据刷写前重新记录了当前实际配置基线；刷写后 UID、实际配置密文、语音设置和 Keystore 解密验证通过，见 `upgrade-prepare.log`、`upgrade-verify.log`。该结果补齐了 v1.7 使用过时基线留下的验证缺口。
+
+真机验证通过加密保存、在线部分播放中断不重复回退，以及在线请求失败后的本地合成播放。首次回退测试受实际 TTS 更新包的初始化中断状态阻止并超时；通过该引擎现有“重试初始化”入口恢复后，同一测试在 4.626 秒通过，见 `tts-device-tests.log`、`tts-device-retry.log`。本次没有修改或替换该更新包，也没有修改初始化保护逻辑。
+
+通过手机设置页“保存并试听”实际保存配置并播放了本地语音，之后状态回到空闲，见 `tts-settings-saved-ui.xml`、`tts-settings-finished-ui.xml`、`tts-preview-logcat.txt`。接口和 Token 当前为空，没有调用付费在线接口。设置页启用防截屏保护，因此界面检查使用视图树；未将黑屏截图作为视觉验收证据。
+
+最终重启约 26.7 秒恢复未被静音的助手录音，全程未打开助手 Activity。默认助手实际连接、前台服务、省电豁免和无障碍绑定均通过检查，机主 Dock 居中图标保留，见 `final-reboot.log`、`final-reboot-audio.txt`、`final-voiceinteraction.txt`、`final-accessibility.txt`、`final-launcher.txt`。预装两份 APK 与开机动画摘要和 manifest 一致；实际运行的 TTS 更新包摘要为 `ea9e6d2d95407b5d0090316a7f9142b155516e345b0215f48374ce7142d471d4`。本次捕获的 15,890 行启动日志未检出 FATAL EXCEPTION 或助手相关 AVC 拒绝，见 `boot-log-audit.txt`。这不替代真人唤醒和长时间待机验收。
+
+## v1.10 候选镜像：内置 Dao 浏览器
+
+在 v1.9 payload 上只加入 Dao 浏览器 0.1.9 arm64（`com.msgbyte.dao`），写入 `/system/app/DaoBrowser/DaoBrowser.apk`；助手、TTS、开机动画和源码包按原文件复制，未混入工作区其他未提交改动，见 `v1.10/source-check.txt`。APK 摘要与发布页一致，原生库不压缩且 16 KB 对齐。
+
+| 产物 | SHA-256 |
+|---|---|
+| `system.img` | `1a98630aa2894438e0f4016c6cb8c8fd91bb07203b49d92fbd9c0f28557349d6` |
+| `dao.apk` | `2645fa9570d8de423ccfa9642e4b604e6ed98b3d46d4eec2344c79f0240856e6` |
+
+镜像为 2,818,867,200 字节，动态分区合计 8,285,425,664 字节，距上限余 241,594,368 字节。小型 ext4 测试、完整构建的读回摘要与 AVB 校验通过；另从镜像导出 APK 复核摘要、root:root/0644 与 `system_file` 标签，见 `build.log`、`artifact-check.txt`。v1.10 尚未刷写，Dao 作为系统应用的启动和默认浏览器设置尚未真机验证。
 
 ## 唤醒失效反馈跟进
 
 用户反馈在亮屏解锁时说“同志你好”没有响应。该词已包含在 v1.7 关键词配置中。现场诊断发现同期 instrumentation 测试结束时杀掉了助手进程，随后默认助手绑定没有实际服务连接，活动录音为空。重新绑定默认助手后，录音恢复为未被系统静音，通知显示“等待唤醒词”；这只证明监听恢复，尚未取得真人再次唤醒成功的确认，不能将反馈记为已解决。
 
-同期另一个真机任务安装了数据分区中的 TTS 更新包。后续诊断需重新核对实际运行的 TTS APK、初始化状态与播放结果，不能仅凭镜像内预装文件摘要判断当前运行版本。避免在真人唤醒验收期间运行会终止助手进程的 instrumentation 测试。
+同期另一个真机任务安装了数据分区中的 TTS 更新包。v1.9 已核对实际运行 APK，并通过现有重试入口恢复其初始化后验证本地播放；重启后录音也已恢复，但仍待真人再次唤醒确认。不能仅凭镜像内预装文件摘要判断当前运行版本。避免在真人唤醒验收期间运行会终止助手进程的 instrumentation 测试。
 
 ## 桌面远程模型配置
 
