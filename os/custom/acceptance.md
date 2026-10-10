@@ -4,7 +4,7 @@
 
 ## 当前产物
 
-当前已刷入 v1.11，包含 Dao 浏览器及下方 v1.11 记录列出的改动；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
+当前已刷入 v1.12（包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
 
 本地输出目录：`os/custom/out/v1.9/`，未纳入 Git。保留原始镜像和先前版本输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
@@ -146,6 +146,25 @@ v1.11 已在 b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xa1
 Dao 以系统应用冷启动打开 `https://example.com` 并正常渲染，Gecko 从 `DaoBrowser.apk!/lib/arm64-v8a` 直接加载原生库，未出现崩溃，见 `dao-launch.txt`、`dao-logcat.txt`、`dao-launch.png`。启动日志 15,922 行，未检出 FATAL EXCEPTION 或相关 AVC 拒绝，见 `final-boot-logcat.txt`。最终重启 25 秒取得未被静音的助手录音，前台为桌面、未打开助手 Activity；默认助手绑定、前台服务、省电豁免和无障碍绑定通过，见 `final-reboot.log`、`final-reboot-audio.txt`、`final-reboot-state.txt`。
 
 手机数据分区的 TTS 更新包（`ea9e6d2d…d471d4`，版本 1001）仍覆盖预装的 xiao_ya TTS，实际运行的不是本镜像的 TTS。尚待：挥手开机动画目测；xiao_ya 真机 TTS 测试此前超时未解决；Dao 搜索写入笔记任务重跑三次；真人唤醒率及误唤醒计数。
+
+## v1.12：改名为 com.moonrailgun.opendoubao
+
+由提交 `9845061` 加未提交的工作区构建（13 个 Android 路径有改动：去掉数据使用确认、设置页分 tab、桌面语音播报接口、显示名改为 Open Doubao）。源码包中 162 个已跟踪 Android 文件与构建时工作区一致，见 `source-check.txt`。
+
+| 产物 | SHA-256 |
+|---|---|
+| `system.img` | `92ea459e4bfa9773c1060aa64abcd1582e3407719d3d88c9f427e1e3f9572cdd` |
+| `assistant.apk` | `6c6fdb836e7ed64e19011c3e99bcc16396b71c08ad1c444b65935cf20cbf62d0` |
+| `tts.apk` | `da1b17dc66800e9d28e78162d4289dcc8c3be4ddcf4c562e53ad7937eb4800ff` |
+| `dao.apk` | `2645fa9570d8de423ccfa9642e4b604e6ed98b3d46d4eec2344c79f0240856e6` |
+| `bootanimation.zip` | `9cbcf00435e88c34525ce14ac3067076bbfdcf173cd561dc03eab730346a93ec` |
+| `voice-corresponding-source.tar.gz` | `2aa212cd8d372d503a030859899d0dff5b37ae7eaf1b56985646da850fd082d6` |
+
+镜像为 2,708,041,728 字节，动态分区合计 8,174,600,192 字节，距上限余 352,419,840 字节。Debug/System 各 117 项单元测试、三项 Lint、开机动画测试、小型 ext4 测试、读回摘要与 AVB 校验通过，见 `gradle.log`、`image-test.log`、`build.log`。证书仍为 `f73c2856…e63578`。
+
+b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xa1697000`，与 manifest 一致。启动 24 秒完成。设备上五个写入文件摘要与 payload 一致，助手 appId 10129，为 SYSTEM、PERSISTENT；TTS appId 10130，为 SYSTEM；无障碍服务开机自动启用到新组件，见 `device-checks.txt`。补授三项运行时权限，并用 adb 将默认助手、语音识别服务指向新包，见 `permissions.txt`、`voice-settings.txt`。启动日志未检出新包或 Douxian 相关的 AVC 拒绝；崩溃缓冲区只有已知的 `init` SIGABRT。
+
+包名变更不是原地升级：旧系统应用 `com.openodoubao.assistant` 随镜像移除，其模型配置、桌面绑定、记录和监听设置不会迁移，需要重新设置；数据分区里的旧 TTS 更新包和旧测试 APK 降为普通应用残留。未做升级测试（`SystemUpgradeTest` 只适用于同包名），也未做真人唤醒和长时间录音检查。
 
 ## 唤醒失效反馈跟进
 
