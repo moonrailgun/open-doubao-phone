@@ -153,4 +153,19 @@ class CloudModelsTest {
         CloudModels(config, HttpTransport(client)).summarize("goal", Evidence(emptyList()))
         assertTrue(system.endsWith("Write the summary in ${java.util.Locale.getDefault().getDisplayName(java.util.Locale.ENGLISH)}."))
     }
+
+    @Test fun spokenReplyRetellsTheSummaryInTheConfiguredLanguage() = runBlocking {
+        var messages = org.json.JSONArray()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val buffer = Buffer()
+            chain.request().body!!.writeTo(buffer)
+            messages = JSONObject(buffer.readUtf8()).getJSONArray("messages")
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body("""{"choices":[{"message":{"content":" 明天有雨，记得带伞。\n"}}]}""".toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val config = ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test", language = "zh-CN")
+        assertEquals("明天有雨，记得带伞。", CloudModels(config, HttpTransport(client)).spoken("明天天气", "**明天小雨**\n- 来源：https://weather.example"))
+        assertTrue(messages.getJSONObject(0).getString("content").endsWith("Speak in Chinese (China)."))
+        assertEquals("**明天小雨**\n- 来源：https://weather.example", JSONObject(messages.getJSONObject(1).getString("content")).getString("summary"))
+    }
 }

@@ -11,6 +11,8 @@ import android.os.*
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
 import com.moonrailgun.opendoubao.assistant.core.TaskStatus
+import com.moonrailgun.opendoubao.assistant.data.Vault
+import com.moonrailgun.opendoubao.assistant.model.CloudModels
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -238,7 +240,13 @@ object VoiceRuntime {
             // Let the executor publish the new state before observing its eventual result.
             yield()
             val result = service.state.first { it.status !in setOf(TaskStatus.IDLE, TaskStatus.RUNNING) }
-            if (screenAvailable(context)) speak(context, result.result.ifBlank { result.message })
+            if (!screenAvailable(context)) return@launch
+            // Speak a short retelling of the summary; a slow or failed rewrite falls back to the summary itself.
+            val spoken = result.result.takeIf { it.isNotBlank() }?.let { summary ->
+                try { withTimeoutOrNull(15_000) { CloudModels(Vault(context).read().config).spoken(result.goal, summary) } }
+                catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+            }
+            if (screenAvailable(context)) speak(context, spoken ?: result.result.ifBlank { result.message })
         }
     }
 
