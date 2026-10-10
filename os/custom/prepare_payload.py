@@ -48,7 +48,7 @@ def build_overlay(tools, sdk, assistant_cert, target):
         tool('zipalign', '-f', '-p', '4', work / 'unsigned.apk', work / 'aligned.apk')
         # Same development key as the assistant; the overlay never updates outside the image.
         tool('apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore', '--ks-pass', 'pass:android',
-             '--out', target, work / 'aligned.apk')
+             '--v4-signing-enabled', 'false', '--out', target, work / 'aligned.apk')
 
 
 def main(output):
