@@ -7,7 +7,7 @@
 - `upstream.json` 固定官方镜像的下载地址、版本与 SHA-256，纳入 Git。
 - `aosp-CP3A.260905.010/` 保存校验后的官方原始文件，不直接修改；ZIP、解压镜像和 SDK 工具由本目录的 `.gitignore` 排除。
 - 后续自定义源码、补丁、产品配置放在 `os/` 内单独的源码目录，按功能独立提交。升级官方基线时单独更新清单，避免与功能修改混合。
-- 当前没有对 AOSP 做任何自定义修改，也没有导入完整 AOSP 源码。镜像校验只能证明二进制基线一致，不能代替源码 diff。
+- 定制不修改 AOSP 源码，也没有导入完整 AOSP 源码：[`custom/`](custom/README.md) 的配方只在原始 GSI 副本中写入助手特权应用（附带桌面默认布局）、TTS 系统应用、特权权限白名单、省电豁免和开机动画，各版本验收见 [验收记录](custom/acceptance.md)。镜像校验只能证明二进制基线一致，不能代替源码 diff。
 
 ## AOSP 系统镜像
 
@@ -18,7 +18,7 @@ Android 17 QPR1 AOSP GSI，无 Google 应用，构建 `CP3A.260905.010` / `16176
 - ZIP SHA-256：`4a869a6959a50fee15ff871ce378853ced4485f2aa456eb64dbdbf7a2c0408aa`，已核对一致。
 - 解压文件：`system.img`、`vbmeta.img`、`build.prop`，各文件校验值见 `upstream.json`。
 
-GSI 替换 Android 系统分区，使用设备现有的内核与 vendor 固件。它用于兼容性和应用开发测试，不是整机出厂包。包内 `build.prop` 表明这是 `user` 构建、`ro.debuggable=0`，不提供 `userdebug` 的 `adb root`；当前也尚未集成 AI 助手。
+GSI 替换 Android 系统分区，使用设备现有的内核与 vendor 固件。它用于兼容性和应用开发测试，不是整机出厂包。包内 `build.prop` 表明这是 `user` 构建、`ro.debuggable=0`，不提供 `userdebug` 的 `adb root`。原始 GSI 不含 AI 助手，助手由上述定制镜像内置。
 
 ## 恢复镜像
 
