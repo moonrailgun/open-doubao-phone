@@ -5,10 +5,10 @@ plugins {
 }
 
 android {
-    namespace = "com.openodoubao.assistant"
+    namespace = "com.moonrailgun.opendoubao.assistant"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.openodoubao.assistant"
+        applicationId = "com.moonrailgun.opendoubao.assistant"
         minSdk = 30
         targetSdk = 36
         versionCode = 1

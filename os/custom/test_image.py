@@ -15,7 +15,7 @@ class ImageRecipeTest(unittest.TestCase):
     def test_default_permissions(self):
         # Only the ROM grants runtime permissions up front; a standalone install still asks in the app.
         (exception,) = ET.parse(ROOT / 'os/custom/default-permissions-douxian.xml').getroot()
-        self.assertEqual('com.openodoubao.assistant', exception.get('package'))
+        self.assertEqual('com.moonrailgun.opendoubao.assistant', exception.get('package'))
         granted = {permission.get('name'): permission.get('fixed') for permission in exception}
         self.assertEqual(dict.fromkeys(['android.permission.RECORD_AUDIO', 'android.permission.CAMERA',
                                         'android.permission.POST_NOTIFICATIONS'], 'false'), granted)

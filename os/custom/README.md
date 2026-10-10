@@ -79,7 +79,7 @@ os/tools/platform-tools/fastboot -s "$DOUXIAN_SERIAL" reboot
 
 ```sh
 for permission in RECORD_AUDIO CAMERA POST_NOTIFICATIONS; do
-  adb -s "$DOUXIAN_SERIAL" shell pm grant com.openodoubao.assistant android.permission.$permission
+  adb -s "$DOUXIAN_SERIAL" shell pm grant com.moonrailgun.opendoubao.assistant android.permission.$permission
 done
 ```
 
@@ -89,12 +89,12 @@ done
 
 ```sh
 adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
-  -e class com.openodoubao.assistant.SystemUpgradeTest -e upgradePhase prepare \
-  com.openodoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
+  -e class com.moonrailgun.opendoubao.assistant.SystemUpgradeTest -e upgradePhase prepare \
+  com.moonrailgun.opendoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
 # 不清数据刷入同签名 v1 镜像，启动后再运行：
 adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
-  -e class com.openodoubao.assistant.SystemUpgradeTest -e upgradePhase verify \
-  com.openodoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
+  -e class com.moonrailgun.opendoubao.assistant.SystemUpgradeTest -e upgradePhase verify \
+  com.moonrailgun.opendoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 检查保留的 UID、实际配置文件密文摘要、语音设置、系统应用标记及版本号，并用原有 Keystore alias 加密的独立测试配置验证解密能力。不会覆盖实际配置或输出凭据；基线保存在应用的 `no_backup/system-upgrade-check/`，重复 `prepare` 会拒绝覆盖。Instrumentation 会重启目标进程，完成后应重启手机并单独确认默认助手绑定和后台录音。
@@ -113,11 +113,11 @@ python3 android/tools/test_wake_recovery.py --serial "$DOUXIAN_SERIAL"
 
 ```sh
 adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
-  -e class com.openodoubao.assistant.OfflineTaskTest -e offlineCheck true -e offlineUiCheck true \
-  com.openodoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
+  -e class com.moonrailgun.opendoubao.assistant.OfflineTaskTest -e offlineCheck true -e offlineUiCheck true \
+  com.moonrailgun.opendoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
 adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
-  -e class 'com.openodoubao.assistant.WakeLifecycleTest#wakeListeningSurvivesPlaybackMuteAndBackground' \
-  com.openodoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
+  -e class 'com.moonrailgun.opendoubao.assistant.WakeLifecycleTest#wakeListeningSurvivesPlaybackMuteAndBackground' \
+  com.moonrailgun.opendoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 生命周期测试需要已设置默认助手，会播放测试语音、切换麦克风静音，并启动独立 UID 的测试 Activity 占用麦克风十秒，检查暂停及恢复；不读取或保存音频。测试结束会关闭监听，重新开启监听并重启手机后再确认后台录音。

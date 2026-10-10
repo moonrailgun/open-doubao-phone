@@ -1,4 +1,4 @@
-# open-odoubao Android 手机助手设计
+# open-doubao-phone Android 手机助手设计
 
 日期：2026-10-08
 

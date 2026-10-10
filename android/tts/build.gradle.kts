@@ -14,10 +14,10 @@ tasks.named("preBuild") {
 }
 
 android {
-    namespace = "com.openodoubao.tts"
+    namespace = "com.moonrailgun.opendoubao.tts"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.openodoubao.tts"
+        applicationId = "com.moonrailgun.opendoubao.tts"
         minSdk = 30
         targetSdk = 36
         versionCode = 1

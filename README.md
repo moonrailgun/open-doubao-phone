@@ -1,6 +1,6 @@
-# Open Odoubao
+# Open Doubao Phone
 
-Open Odoubao 包含操作系统、桌面端和 Android 应用三个独立项目：
+Open Doubao Phone 包含操作系统、桌面端和 Android 应用三个独立项目：
 
 ```text
 os/        操作系统相关工程与镜像
@@ -25,7 +25,7 @@ Android Studio 请直接打开 `android/`。各端的构建命令在对应目录
 
 要求 Android 11/API 30 或更高，手机保持解锁且可以访问配置的 HTTPS 模型服务。
 
-1. 安装 `artifacts/open-odoubao-0.1.0-lan-debug.apk`（包含桌面接收端；自行构建后位于 `android/app/build/outputs/apk/debug/app-debug.apk`）。这是开发签名的 APK，不是应用商店发行包。
+1. 安装 `artifacts/open-doubao-phone-0.1.0-lan-debug.apk`（包含桌面接收端；自行构建后位于 `android/app/build/outputs/apk/debug/app-debug.apk`）。这是开发签名的 APK，不是应用商店发行包。
 2. 在底部齿轮图标（设置）页配置两个服务，然后点击「保存」：
 
    | 字段 | 内容 |
@@ -53,7 +53,7 @@ Android Studio 请直接打开 `android/`。各端的构建命令在对应目录
 
 ## 桌面端与手机绑定
 
-本次构建产物：`artifacts/open-odoubao-desktop-0.1.0-macos-arm64.zip`（Apple Silicon Mac，解压得到 `.app`）和 `artifacts/open-odoubao-0.1.0-lan-debug.apk`。macOS 应用仅带本地临时签名，未做 Developer ID 签名或公证。
+本次构建产物：`artifacts/open-doubao-phone-desktop-0.1.0-macos-arm64.zip`（Apple Silicon Mac，解压得到 `.app`）和 `artifacts/open-doubao-phone-0.1.0-lan-debug.apk`。macOS 应用仅带本地临时签名，未做 Developer ID 签名或公证。
 
 开发运行需要 Node.js 20.19+/22.12+、Rust stable，以及对应系统的 Tauri 构建环境（macOS 使用 Xcode Command Line Tools）。
 
@@ -142,4 +142,4 @@ cd android
 - `MainActivity.kt`：任务、配置、记录和语音输入。
 - `remote/RemoteProtocol.kt`、`remote/RemoteReceiver.kt`：设备码、远程命令、证书固定与连接生命周期。
 
-以上路径相对于 `android/app/src/main/java/com/openodoubao/assistant/`。桌面页面位于 `desktop/src/`，内置连接服务位于 `desktop/src-tauri/src/bridge.rs`。详细方案见 [Android 设计文档](docs/superpowers/specs/2026-10-08-android-assistant-design.md) 和 [局域网桌面端设计](docs/superpowers/specs/2026-10-09-desktop-remote-design.md)。协议依据为 [TypeSafe Jev API](https://docs.typesafe.ai/api) 和 [Android AccessibilityService](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService)。
+以上路径相对于 `android/app/src/main/java/com/moonrailgun/opendoubao/assistant/`。桌面页面位于 `desktop/src/`，内置连接服务位于 `desktop/src-tauri/src/bridge.rs`。详细方案见 [Android 设计文档](docs/superpowers/specs/2026-10-08-android-assistant-design.md) 和 [局域网桌面端设计](docs/superpowers/specs/2026-10-09-desktop-remote-design.md)。协议依据为 [TypeSafe Jev API](https://docs.typesafe.ai/api) 和 [Android AccessibilityService](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService)。

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Open Odoubao",
+  "productName": "Open Doubao Phone",
   "version": "0.1.0",
-  "identifier": "com.openodoubao.desktop",
+  "identifier": "com.moonrailgun.opendoubao.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "title": "Open Odoubao", "width": 1200, "height": 820, "minWidth": 900, "minHeight": 640 }],
+    "windows": [{ "title": "Open Doubao Phone", "width": 1200, "height": 820, "minWidth": 900, "minHeight": 640 }],
     "security": {
       "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'",
       "devCsp": "default-src 'self'; connect-src ipc: http://ipc.localhost ws://localhost:1420; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'"

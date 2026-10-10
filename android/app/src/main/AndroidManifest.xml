@@ -15,10 +15,10 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
-        <package android:name="com.openodoubao.tts" />
+        <package android:name="com.moonrailgun.opendoubao.tts" />
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
     </queries>
-    <application android:theme="@style/AppTheme" android:label="Open Odoubao" android:icon="@mipmap/ic_launcher"
+    <application android:theme="@style/AppTheme" android:label="Open Doubao Phone" android:icon="@mipmap/ic_launcher"
         android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>

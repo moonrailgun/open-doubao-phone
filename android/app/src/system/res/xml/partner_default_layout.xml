@@ -43,8 +43,8 @@
     </resolve>
 
     <favorite
-        launcher:packageName="com.openodoubao.assistant"
-        launcher:className="com.openodoubao.assistant.MainActivity"
+        launcher:packageName="com.moonrailgun.opendoubao.assistant"
+        launcher:className="com.moonrailgun.opendoubao.assistant.MainActivity"
         launcher:container="-101"
         launcher:screen="2"
         launcher:x="2"

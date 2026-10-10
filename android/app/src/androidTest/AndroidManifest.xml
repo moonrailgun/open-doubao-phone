@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application>
-        <activity android:name="com.openodoubao.assistant.ConcurrentRecordingActivity"
+        <activity android:name="com.moonrailgun.opendoubao.assistant.ConcurrentRecordingActivity"
             android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
 </manifest>

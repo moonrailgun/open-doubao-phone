@@ -17,7 +17,7 @@
 
 ## 系统集成
 
-- 将现有 `com.openodoubao.assistant` 内置为 `persistent` 系统应用，加入省电豁免。清除最近任务不会停止助手；进程异常退出后由系统恢复，但不会自动重放未完成任务。
+- 将现有 `com.moonrailgun.opendoubao.assistant` 内置为 `persistent` 系统应用，加入省电豁免。清除最近任务不会停止助手；进程异常退出后由系统恢复，但不会自动重放未完成任务。
 - 首次设置引导用户选择默认数字助手、授权麦克风并启用无障碍。默认助手通过系统设置页选择；AOSP 的助手角色不支持普通角色申请弹窗。[AOSP 角色定义](https://android.googlesource.com/platform/packages/modules/Permission/+/refs/heads/main/PermissionController/res/xml/roles.xml)
 - 保留现有桌面。助手组件不启用 Direct Boot，首次解锁前不访问凭据或启动语音。
 - 使用一个前台服务管理录音与播放，显示监听状态和关闭入口；监听期间持有必要的 CPU 唤醒锁。麦克风隐私开关、通话或录音冲突发生时暂停，条件恢复后重新监听。

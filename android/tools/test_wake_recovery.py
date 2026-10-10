@@ -7,7 +7,7 @@ import time
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--serial", required=True)
 args = parser.parse_args()
-package = "com.openodoubao.assistant"
+package = "com.moonrailgun.opendoubao.assistant"
 
 
 def shell(*command):

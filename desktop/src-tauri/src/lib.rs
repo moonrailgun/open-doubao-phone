@@ -98,7 +98,7 @@ mod desktop {
                 forget_device
             ])
             .run(tauri::generate_context!())
-            .expect("failed to run Open Odoubao desktop");
+            .expect("failed to run Open Doubao Phone desktop");
     }
 }
 

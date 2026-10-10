@@ -28,8 +28,8 @@ def main(output):
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):
         raise RuntimeError('Use an empty output directory')
-    for module, name, package in [('app', 'assistant.apk', 'com.openodoubao.assistant'),
-                                   ('tts', 'tts.apk', 'com.openodoubao.tts')]:
+    for module, name, package in [('app', 'assistant.apk', 'com.moonrailgun.opendoubao.assistant'),
+                                   ('tts', 'tts.apk', 'com.moonrailgun.opendoubao.tts')]:
         source = ROOT / 'android' / module / 'build/outputs/apk'
         debug = source / 'debug' / f'{module}-debug.apk'
         system = source / 'system' / f'{module}-system.apk'

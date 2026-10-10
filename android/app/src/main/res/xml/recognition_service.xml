@@ -1,2 +1,2 @@
 <recognition-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:settingsActivity="com.openodoubao.assistant.MainActivity" />
+    android:settingsActivity="com.moonrailgun.opendoubao.assistant.MainActivity" />
