@@ -122,6 +122,8 @@ class PairingScanTest {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             assertTrue(device.wait(Until.hasObject(By.desc("设置")), 5000))
             device.findObject(UiSelector().description("设置")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("桌面远程")), 5000))
+            device.findObject(UiSelector().text("桌面远程")).click()
             val receiver = AssistantService.connected.value!!.remote!!
 
             if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {

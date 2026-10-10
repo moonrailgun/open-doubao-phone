@@ -150,13 +150,14 @@ class MainActivity : ComponentActivity() {
         var records by remember { mutableStateOf(saved.records) }
         var goal by remember { mutableStateOf("") }
         var tab by rememberSaveable { mutableIntStateOf(0) }
+        var settingsTab by rememberSaveable { mutableIntStateOf(0) }
         var message by remember { mutableStateOf("") }
         var choosingApps by remember { mutableStateOf(false) }
         var testing by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
         val scroll = rememberScrollState()
         LaunchedEffect(message) { if (message.isNotEmpty() && tab != 2) scroll.animateScrollTo(0) }
-        LaunchedEffect(tab) { scroll.scrollTo(0) }
+        LaunchedEffect(tab, settingsTab) { scroll.scrollTo(0) }
         val service by AssistantService.connected.collectAsState()
         val task = service?.state?.collectAsState()?.value ?: TaskState()
         val paused = task.status == TaskStatus.PAUSED
@@ -242,7 +243,7 @@ class MainActivity : ComponentActivity() {
                         if (service == null) Banner("还差一步：开启无障碍服务", "手机需要它读取屏幕、替你点按和输入。只在你开始任务后工作。") {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }
-                        if (!configReady && !busy) Banner("还没有设置模型", "填好两个模型服务的地址和密钥后才能开始任务。") { tab = 2 }
+                        if (!configReady && !busy) Banner("还没有设置模型", "填好两个模型服务的地址和密钥后才能开始任务。") { tab = 2; settingsTab = 0 }
                         if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = {
                             moveTaskToBack(true)
                             scope.launch { delay(300); attempt { service?.resume() } }
@@ -310,49 +311,60 @@ class MainActivity : ComponentActivity() {
                     }
                     2 -> {
                         PageTitle("设置", "配置模型服务、语音播报和远程连接。")
-                        Section("Jev 决策模型", "每一步由它挑选要点按的元素，并判断上一步是否生效。") {
-                            SettingField("接口地址", config.jevEndpoint) { config = config.copy(jevEndpoint = it.trim()) }
-                            SettingField("模型", config.jevModel) { config = config.copy(jevModel = it.trim()) }
-                            KeyField("API Key", config.jevKey) { config = config.copy(jevKey = it.trim()) }
-                        }
-                        Section("规划与视觉模型", "拆解任务、看截图和总结结果。需要支持图片输入的 Chat Completions 接口。") {
-                            SettingField("完整接口地址", config.chatEndpoint, "通常以 /v1/chat/completions 结尾") { config = config.copy(chatEndpoint = it.trim()) }
-                            SettingField("模型", config.chatModel) { config = config.copy(chatModel = it.trim()) }
-                            KeyField("API Key", config.chatKey) { config = config.copy(chatKey = it.trim()) }
-                        }
-                        Section("语言", "任务结束时的总结使用这个语言。") {
-                            LanguageField(config.language) { config = config.copy(language = it) }
-                        }
-                        notice()
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button({ attempt { save(); message = "已保存" } }, Modifier.weight(1f).height(52.dp), enabled = !busy && !testing,
-                                shape = RoundedCornerShape(16.dp)) {
-                                Icon(painterResource(R.drawable.lucide_save), null, Modifier.size(18.dp))
-                                Text("保存", Modifier.padding(start = 8.dp))
+                        PrimaryTabRow(settingsTab) {
+                            listOf("模型", "语音", "桌面远程").forEachIndexed { index, title ->
+                                Tab(settingsTab == index, { settingsTab = index }, text = { Text(title) })
                             }
-                            OutlinedButton({ attempt {
-                                config.validate()
-                                val client = CloudModels(config)
-                                message = ""
-                                testing = true
-                                scope.launch {
-                                    try { client.checkConnection(); message = "连接正常：两个模型服务都有响应" }
-                                    catch (e: CancellationException) { throw e }
-                                    catch (e: Exception) { message = e.message ?: "连接失败" }
-                                    finally { testing = false }
+                        }
+                        when (settingsTab) {
+                            0 -> {
+                                Section("Jev 决策模型", "每一步由它挑选要点按的元素，并判断上一步是否生效。") {
+                                    SettingField("接口地址", config.jevEndpoint) { config = config.copy(jevEndpoint = it.trim()) }
+                                    SettingField("模型", config.jevModel) { config = config.copy(jevModel = it.trim()) }
+                                    KeyField("API Key", config.jevKey) { config = config.copy(jevKey = it.trim()) }
                                 }
-                            } }, Modifier.weight(1f).height(52.dp), enabled = !busy && !testing,
-                                shape = RoundedCornerShape(16.dp)) {
-                                if (testing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                                else Icon(painterResource(R.drawable.lucide_plug_zap), null, Modifier.size(18.dp))
-                                Text("测试连接", Modifier.padding(start = 8.dp))
+                                Section("规划与视觉模型", "拆解任务、看截图和总结结果。需要支持图片输入的 Chat Completions 接口。") {
+                                    SettingField("完整接口地址", config.chatEndpoint, "通常以 /v1/chat/completions 结尾") { config = config.copy(chatEndpoint = it.trim()) }
+                                    SettingField("模型", config.chatModel) { config = config.copy(chatModel = it.trim()) }
+                                    KeyField("API Key", config.chatKey) { config = config.copy(chatKey = it.trim()) }
+                                }
+                                Section("语言", "任务结束时的总结使用这个语言。") {
+                                    LanguageField(config.language) { config = config.copy(language = it) }
+                                }
+                                notice()
+                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Button({ attempt { save(); message = "已保存" } }, Modifier.weight(1f).height(52.dp), enabled = !busy && !testing,
+                                        shape = RoundedCornerShape(16.dp)) {
+                                        Icon(painterResource(R.drawable.lucide_save), null, Modifier.size(18.dp))
+                                        Text("保存", Modifier.padding(start = 8.dp))
+                                    }
+                                    OutlinedButton({ attempt {
+                                        config.validate()
+                                        val client = CloudModels(config)
+                                        message = ""
+                                        testing = true
+                                        scope.launch {
+                                            try { client.checkConnection(); message = "连接正常：两个模型服务都有响应" }
+                                            catch (e: CancellationException) { throw e }
+                                            catch (e: Exception) { message = e.message ?: "连接失败" }
+                                            finally { testing = false }
+                                        }
+                                    } }, Modifier.weight(1f).height(52.dp), enabled = !busy && !testing,
+                                        shape = RoundedCornerShape(16.dp)) {
+                                        if (testing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        else Icon(painterResource(R.drawable.lucide_plug_zap), null, Modifier.size(18.dp))
+                                        Text("测试连接", Modifier.padding(start = 8.dp))
+                                    }
+                                }
+                                Text("测试连接会向两个服务各发一次请求，可能产生少量费用。密钥经 Android Keystore 加密后只存在本机，不写入日志和备份。",
+                                    Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                             }
+                            1 -> {
+                                TtsControls(vault)
+                                VoiceControls()
+                            }
+                            else -> RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                         }
-                        Text("测试连接会向两个服务各发一次请求，可能产生少量费用。密钥经 Android Keystore 加密后只存在本机，不写入日志和备份。",
-                            Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
-                        TtsControls(vault)
-                        VoiceControls()
-                        RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
