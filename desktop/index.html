@@ -15,6 +15,7 @@
           <div class="device"><i data-lucide="smartphone"></i><div><strong id="device-name">尚未绑定设备</strong><span id="connection-status" role="status">正在启动…</span></div></div>
           <button id="pair-open" class="button secondary wide"><i data-lucide="smartphone-nfc"></i>绑定手机</button>
           <button id="model-open" class="button secondary wide" disabled>模型配置</button>
+          <button id="apps-open" class="button secondary wide" disabled>应用范围</button>
           <button id="forget" class="icon-button danger" aria-label="解除绑定" title="解除绑定" hidden><i data-lucide="link-2-off"></i></button>
         </div>
         <div class="sidebar-note"><i data-lucide="network" class="network-icon"></i><strong>局域网直连</strong><p>电脑和手机连接同一网络。任务由手机执行，结果回到这里。</p><p id="server-address"></p></div>
@@ -31,7 +32,7 @@
               <div class="composer-footer"><span id="compose-hint">绑定手机后即可下发任务</span><button id="send" class="button primary" type="submit" disabled><span id="send-label">下发任务</span><i data-lucide="send"></i></button></div>
             </form>
             <section class="activity" aria-labelledby="activity-title">
-              <div class="section-heading"><h2 id="activity-title">执行动态</h2><button id="stop" class="icon-button stop" aria-label="停止任务" title="停止任务" hidden><i data-lucide="square"></i></button></div>
+              <div class="section-heading"><h2 id="activity-title">执行动态</h2><span class="task-actions"><button id="resume" class="icon-button resume" aria-label="继续任务" title="继续任务" hidden><i data-lucide="play"></i></button><button id="stop" class="icon-button stop" aria-label="停止任务" title="停止任务" hidden><i data-lucide="square"></i></button></span></div>
               <div id="task-empty" class="empty"><div class="empty-symbol" aria-hidden="true"><i data-lucide="list-todo"></i></div><h3>从一件小事开始</h3><p>下发任务后，在这里查看进度和回复。<br />手机端设置的应用范围和执行限制依然生效。</p></div>
               <div id="task-content" hidden>
                 <h3 id="current-goal"></h3>
@@ -62,8 +63,23 @@
           </fieldset>
           <label for="model-language">总结语言</label><select id="model-language"><option value="">跟随系统</option><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option></select>
         </fieldset>
+        <p class="muted">测试连接由手机用表单中的配置向两个服务各发一次请求，不会保存，可能产生少量费用。</p>
         <p id="model-message" role="status" class="muted"></p>
-        <div class="dialog-actions"><button type="button" class="close-dialog button secondary">取消</button><button id="model-save" type="submit" class="button primary" disabled>保存到手机</button></div>
+        <div class="dialog-actions"><button id="model-test" type="button" class="button secondary" disabled>测试连接</button><button type="button" class="close-dialog button secondary">取消</button><button id="model-save" type="submit" class="button primary" disabled>保存到手机</button></div>
+      </form>
+    </dialog>
+    <dialog id="apps-dialog" aria-labelledby="apps-title">
+      <div class="dialog-heading"><div><h2 id="apps-title">应用范围与数据使用</h2><p>任务只会在勾选的应用里操作。保存到当前手机，下一次任务生效。</p></div><button class="close-dialog icon-button" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></div>
+      <form id="apps-form" autocomplete="off">
+        <fieldset id="apps-fields" disabled>
+          <label for="apps-search">搜索应用名称或包名</label><input id="apps-search" type="search" spellcheck="false" />
+          <label class="check"><input id="apps-system" type="checkbox" />显示系统组件（如 Google Play 服务等无启动入口的组件）</label>
+          <div class="apps-toolbar"><button id="apps-all" type="button" class="button secondary">全选当前列表</button><button id="apps-none" type="button" class="button secondary">取消当前列表</button><span id="apps-count" class="muted"></span></div>
+          <div id="apps-list" class="apps-list" role="group" aria-label="可用应用"></div>
+          <label class="check"><input id="apps-consent" type="checkbox" />允许把任务内容和所选应用的屏幕文字发给手机配置的模型服务，必要时附带截图。截图用完即丢。任务记录保存在手机，已绑定的桌面也可读取。</label>
+        </fieldset>
+        <p id="apps-message" role="status" class="muted"></p>
+        <div class="dialog-actions"><button type="button" class="close-dialog button secondary">取消</button><button id="apps-save" type="submit" class="button primary" disabled>保存到手机</button></div>
       </form>
     </dialog>
     <dialog id="pair-dialog" aria-labelledby="pair-title">
@@ -76,7 +92,7 @@
       </div>
       <p id="pair-error" class="error" role="alert"></p>
     </dialog>
-    <dialog id="record-dialog" class="record-dialog" aria-labelledby="record-title"><div class="dialog-heading"><h2 id="record-title">任务详情</h2><button class="icon-button close-dialog" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></div><div id="record-content"></div></dialog>
+    <dialog id="record-dialog" class="record-dialog" aria-labelledby="record-title"><div class="dialog-heading"><h2 id="record-title">任务详情</h2><button class="icon-button close-dialog" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></div><div id="record-content"></div><div class="dialog-actions"><p id="record-message" class="error" role="alert"></p><button id="record-delete" class="button destructive" hidden><i data-lucide="trash-2"></i>删除记录</button></div></dialog>
     <dialog id="forget-dialog" aria-labelledby="forget-title"><h2 id="forget-title">解除手机绑定？</h2><p>此设备码和连接凭据将失效。手机上的任务和记录会保留，正在执行的任务不会被停止。</p><div class="dialog-actions"><button class="button secondary close-dialog">取消</button><button id="confirm-forget" class="button destructive">解除绑定</button></div></dialog>
     <script type="module" src="/src/main.js"></script>
   </body>

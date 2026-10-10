@@ -1,15 +1,15 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import QRCode from 'qrcode';
-import { createElement, createIcons, Check, CircleAlert, Copy, Link2, Link2Off, ListTodo, Network, RefreshCw, Send, Smartphone, SmartphoneNfc, Square, X } from 'lucide';
+import { createElement, createIcons, Check, CircleAlert, Copy, Link2, Link2Off, ListTodo, Network, Play, RefreshCw, Send, Smartphone, SmartphoneNfc, Square, Trash2, X } from 'lucide';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
 const icon = (node) => createElement(node, { class: 'lucide', 'aria-hidden': 'true', focusable: 'false' });
-createIcons({ icons: { Link2, Link2Off, ListTodo, Network, RefreshCw, Send, Smartphone, SmartphoneNfc, Square, X }, attrs: { 'aria-hidden': 'true', focusable: 'false' } });
+createIcons({ icons: { Link2, Link2Off, ListTodo, Network, Play, RefreshCw, Send, Smartphone, SmartphoneNfc, Square, Trash2, X }, attrs: { 'aria-hidden': 'true', focusable: 'false' } });
 const labels = { IDLE: '等待任务', RUNNING: '正在执行', PAUSED: '已暂停', COMPLETED: '已完成', SUCCEEDED: '已完成', DONE: '已完成', FAILED: '执行失败', STOPPED: '已停止', CANCELLED: '已停止', INTERRUPTED: '已中断' };
 let snapshot = { connected: false, device: null, state: null, addresses: [] };
 let sending = false;
-let stopping = false;
+let commanding = false;
 let refreshing = false;
 let recordKey = '';
 let session = 0;
@@ -20,7 +20,13 @@ let historyRecords = [];
 let historyRange = '';
 let modelConfig = null;
 let modelSaving = false;
+let modelTesting = false;
 let modelRequest = 0;
+let appAccess = null;
+let appsSaving = false;
+let appsRequest = 0;
+let shownRecord = null;
+let deleting = false;
 const recordHeight = 96;
 
 const message = (error) => typeof error === 'string' ? error : error?.message || '操作失败，请检查连接后重试。';
@@ -35,6 +41,33 @@ function element(tag, text, className) {
   if (text != null) el.textContent = text;
   if (className) el.className = className;
   return el;
+}
+// The phone's Markdown.kt subset, built from text nodes so device output never becomes HTML.
+// Italic avoids lookbehind, which older macOS WebViews cannot parse.
+const inline = /\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\((\S+?)\)|(^|[^\w*])\*([^\s*](?:.*?[^\s*])??)\*(?![\w*])/g;
+const heading = /^#{1,6}\s+/;
+const bullet = /^(\s*)[-*+]\s+/;
+const rule = /^\s*(?:[-*_]\s*){3,}$|^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/;
+function markdown(source) {
+  const out = document.createDocumentFragment();
+  source.trim().split(/\r\n|\r|\n/).filter((line) => !rule.test(line)).forEach((raw, index) => {
+    if (index) out.append('\n');
+    let line = raw.replace(heading, '').replace(bullet, '$1• ');
+    if (line.trimStart().startsWith('|')) line = line.trim().replace(/^\|+|\|+$/g, '').split('|').map((cell) => cell.trim()).join('  |  ');
+    const target = heading.test(raw) ? out.appendChild(element('strong', null, 'md-heading')) : out;
+    let last = 0;
+    for (const match of line.matchAll(inline)) {
+      const [whole, bold, code, label, url, before = '', italic] = match;
+      target.append(line.slice(last, match.index) + before);
+      if (bold) target.append(element('strong', bold));
+      else if (code) target.append(element('code', code));
+      else if (label) target.append(label === url ? url : `${label} (${url})`);
+      else target.append(element('em', italic));
+      last = match.index + whole.length;
+    }
+    target.append(line.slice(last));
+  });
+  return out;
 }
 function resetHistory(text) {
   historyRecords = [];
@@ -121,12 +154,23 @@ function controls() {
   $('send').disabled = !snapshot.connected || running || paused || sending || !$('goal').value.trim();
   $('send-label').textContent = sending ? '正在下发…' : '下发任务';
   $('stop').hidden = !running && !paused;
-  $('stop').disabled = !snapshot.connected || stopping;
+  $('stop').disabled = !snapshot.connected || commanding;
+  $('resume').hidden = !paused;
+  $('resume').disabled = !snapshot.connected || commanding;
   $('refresh').disabled = !snapshot.connected || refreshing;
   $('model-open').disabled = !snapshot.connected;
   $('model-fields').disabled = !snapshot.connected || !modelConfig || modelSaving || running || paused;
-  $('model-save').disabled = $('model-fields').disabled;
+  $('model-save').disabled = $('model-fields').disabled || modelTesting;
   $('model-save').textContent = modelSaving ? '正在保存…' : running || paused ? '请先停止当前任务' : '保存到手机';
+  $('model-test').disabled = $('model-fields').disabled || modelTesting;
+  $('model-test').textContent = modelTesting ? '正在测试…' : '测试连接';
+  $('apps-open').disabled = !snapshot.connected;
+  $('apps-fields').disabled = !snapshot.connected || !appAccess || appsSaving || running || paused;
+  $('apps-save').disabled = $('apps-fields').disabled || !appAccess.selected.size;
+  $('apps-save').textContent = appsSaving ? '正在保存…' : running || paused ? '请先停止当前任务' : '保存到手机';
+  $('record-delete').hidden = !shownRecord;
+  $('record-delete').disabled = !snapshot.connected || deleting || running || paused;
+  $('record-delete').title = running || paused ? '请先停止当前任务' : '';
   if (modelConfig) {
     $('jev-key').required = !modelConfig.hasJevKey || $('jev-endpoint').value.trim() !== modelConfig.jevEndpoint;
     $('chat-key').required = !modelConfig.hasChatKey || $('chat-endpoint').value.trim() !== modelConfig.chatEndpoint;
@@ -145,6 +189,8 @@ function render(next) {
     $('record-dialog').close();
     $('model-dialog').close();
     clearModelConfig();
+    $('apps-dialog').close();
+    clearApps();
   }
   $('device-name').textContent = next.device?.name || '尚未绑定设备';
   $('connection-status').textContent = next.connected ? '已连接' : next.device ? '等待手机连接' : next.listening ? '可以绑定手机' : '连接服务未启动';
@@ -169,7 +215,11 @@ function render(next) {
     $('current-status').textContent = labels[state.status] || state.status;
     $('current-steps').textContent = `${state.steps || 0} 步`;
     $('current-message').textContent = state.message || '';
-    $('current-result').textContent = state.result || '';
+    // Rebuild only on change so a selection in the summary survives polling.
+    if ($('current-result').dataset.source !== (state.result || '')) {
+      $('current-result').dataset.source = state.result || '';
+      $('current-result').replaceChildren(markdown(state.result || ''));
+    }
     $('result-block').hidden = !state.result;
     const log = state.log || [];
     const text = log.join('\n');
@@ -211,12 +261,18 @@ async function refreshRecords() {
 async function showRecord(taskId) {
   const current = ++detailRequest;
   const currentSession = session;
+  shownRecord = null;
+  $('record-message').textContent = '';
+  controls();
   $('record-content').replaceChildren(element('p', '正在读取…', 'muted'));
   $('record-dialog').showModal();
   try {
     const record = await invoke('request', { method: 'records.get', params: { taskId } });
     if (current !== detailRequest || currentSession !== session) return;
-    const result = element('div', record.result || '暂无结果', 'prose');
+    shownRecord = taskId;
+    controls();
+    const result = element('div', null, 'prose');
+    result.append(record.result ? markdown(record.result) : '暂无结果');
     const log = element('pre', (record.log || []).join('\n') || '暂无日志', 'log');
     $('record-content').replaceChildren(element('h3', record.goal), element('p', `${labels[record.status] || record.status} · ${date(record.time)}`, 'muted'), result, element('h2', '执行与访问日志'), log);
     addCopyButton(result, '复制任务结果');
@@ -235,6 +291,24 @@ async function poll() {
   }
 }
 $('goal').addEventListener('input', controls);
+$('record-dialog').addEventListener('close', () => { detailRequest += 1; shownRecord = null; controls(); });
+$('record-delete').addEventListener('click', async () => {
+  const taskId = shownRecord;
+  const currentSession = session;
+  if (!taskId || $('record-delete').disabled) return;
+  deleting = true;
+  $('record-message').textContent = '';
+  controls();
+  try {
+    await invoke('request', { method: 'records.delete', params: { taskId } });
+    if (currentSession !== session) return;
+    $('record-dialog').close();
+    notice('记录已从手机删除。');
+    recordKey = '';
+    refreshRecords();
+  } catch (error) { if (shownRecord === taskId) $('record-message').textContent = `删除失败：${message(error)}`; }
+  finally { deleting = false; controls(); }
+});
 $('task-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   if ($('send').disabled) return;
@@ -248,31 +322,36 @@ $('task-form').addEventListener('submit', async (event) => {
   } catch (error) { notice(message(error), true); }
   finally { sending = false; controls(); }
 });
-$('stop').addEventListener('click', async () => {
+async function command(method, success) {
   const taskId = snapshot.state?.taskId;
-  if (!taskId || !snapshot.connected || stopping) return;
-  stopping = true;
+  if (!taskId || !snapshot.connected || commanding) return;
+  commanding = true;
   controls();
   try {
-    await invoke('request', { method: 'task.stop', params: { taskId } });
-    notice('已向手机发送停止请求。');
+    await invoke('request', { method, params: { taskId } });
+    notice(success);
     render(await invoke('get_snapshot'));
   } catch (error) { notice(message(error), true); }
-  finally { stopping = false; controls(); }
-});
+  finally { commanding = false; controls(); }
+}
+$('stop').addEventListener('click', () => command('task.stop', '已向手机发送停止请求。'));
+$('resume').addEventListener('click', () => command('task.resume', '手机已继续执行任务。'));
 $('refresh').addEventListener('click', refreshRecords);
 function clearModelConfig() {
   modelRequest += 1;
   modelConfig = null;
   modelSaving = false;
+  modelTesting = false;
   $('model-form').reset();
   $('model-language').querySelector('[data-custom]')?.remove();
   controls();
 }
-function modelMessage(text, error = false) {
-  $('model-message').textContent = text;
-  $('model-message').classList.toggle('error', error);
+function dialogMessage(id, text, error = false) {
+  $(id).textContent = text;
+  $(id).classList.toggle('error', error);
 }
+const modelMessage = (text, error) => dialogMessage('model-message', text, error);
+const appsMessage = (text, error) => dialogMessage('apps-message', text, error);
 $('model-dialog').addEventListener('close', clearModelConfig);
 $('model-form').addEventListener('input', controls);
 $('model-open').addEventListener('click', async () => {
@@ -303,15 +382,28 @@ $('model-open').addEventListener('click', async () => {
   } catch (error) { if (current === modelRequest) modelMessage(`读取失败：${message(error)}`, true); }
   finally { if (current === modelRequest) controls(); }
 });
+const modelParams = () => ({
+  jevEndpoint: $('jev-endpoint').value.trim(), jevModel: $('jev-model').value.trim(), jevKey: $('jev-key').value.trim() || null,
+  chatEndpoint: $('chat-endpoint').value.trim(), chatModel: $('chat-model').value.trim(), chatKey: $('chat-key').value.trim() || null,
+  language: $('model-language').value,
+});
+$('model-test').addEventListener('click', async () => {
+  if ($('model-test').disabled || !$('model-form').reportValidity()) return;
+  const current = modelRequest;
+  modelTesting = true;
+  controls();
+  modelMessage('手机正在测试两个模型服务，最长约 2 分钟…');
+  try {
+    await invoke('request', { method: 'config.test', params: modelParams() });
+    if (current === modelRequest) modelMessage('连接正常：两个模型服务都有响应。配置尚未保存。');
+  } catch (error) { if (current === modelRequest) modelMessage(message(error), true); }
+  finally { if (current === modelRequest) { modelTesting = false; controls(); } }
+});
 $('model-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   if ($('model-save').disabled) return;
   const current = modelRequest;
-  const params = {
-    jevEndpoint: $('jev-endpoint').value.trim(), jevModel: $('jev-model').value.trim(), jevKey: $('jev-key').value.trim() || null,
-    chatEndpoint: $('chat-endpoint').value.trim(), chatModel: $('chat-model').value.trim(), chatKey: $('chat-key').value.trim() || null,
-    language: $('model-language').value,
-  };
+  const params = modelParams();
   modelSaving = true;
   controls();
   modelMessage('');
@@ -323,6 +415,88 @@ $('model-form').addEventListener('submit', async (event) => {
     notice('模型配置已保存到手机，下一次任务生效。');
   } catch (error) { if (current === modelRequest) modelMessage(`保存失败：${message(error)}`, true); }
   finally { if (current === modelRequest) { modelSaving = false; controls(); } }
+});
+function clearApps() {
+  appsRequest += 1;
+  appAccess = null;
+  appsSaving = false;
+  $('apps-form').reset();
+  $('apps-list').replaceChildren();
+  $('apps-count').textContent = '';
+  controls();
+}
+function renderApps() {
+  if (!appAccess) return;
+  const term = $('apps-search').value.trim().toLowerCase();
+  // Same filter as the phone's picker: search covers system components, otherwise they need the toggle.
+  const visible = appAccess.apps.filter((app) => term
+    ? app.label.toLowerCase().includes(term) || app.packageName.toLowerCase().includes(term)
+    : app.launchable || $('apps-system').checked);
+  $('apps-list').replaceChildren(...visible.map((app) => {
+    const row = element('label', null, 'app-row');
+    const box = element('input');
+    box.type = 'checkbox';
+    box.checked = appAccess.selected.has(app.packageName);
+    box.dataset.package = app.packageName;
+    box.addEventListener('change', () => {
+      if (box.checked) appAccess.selected.add(app.packageName); else appAccess.selected.delete(app.packageName);
+      appsCount();
+    });
+    const text = element('span');
+    text.append(element('strong', app.label), element('small', app.launchable ? app.packageName : `${app.packageName} · 系统组件 · 无启动入口`));
+    row.append(box, text);
+    return row;
+  }));
+  if (!visible.length) $('apps-list').append(element('p', '没有匹配的应用或组件', 'muted'));
+  appsCount();
+}
+function appsCount() {
+  $('apps-count').textContent = `已选 ${appAccess.selected.size} 个`;
+  $('apps-count').classList.toggle('error', !appAccess.selected.size);
+  controls();
+}
+function selectVisible(selected) {
+  for (const box of $('apps-list').querySelectorAll('input[type=checkbox]')) {
+    if (selected) appAccess.selected.add(box.dataset.package); else appAccess.selected.delete(box.dataset.package);
+  }
+  renderApps();
+}
+$('apps-dialog').addEventListener('close', clearApps);
+$('apps-search').addEventListener('input', renderApps);
+$('apps-system').addEventListener('change', renderApps);
+$('apps-all').addEventListener('click', () => selectVisible(true));
+$('apps-none').addEventListener('click', () => selectVisible(false));
+$('apps-open').addEventListener('click', async () => {
+  clearApps();
+  const current = appsRequest;
+  appsMessage('正在读取手机上的应用…');
+  $('apps-dialog').showModal();
+  try {
+    const access = await invoke('request', { method: 'apps.get', params: {} });
+    if (current !== appsRequest || !$('apps-dialog').open) return;
+    appAccess = { apps: access.apps, selected: new Set(access.selected) };
+    $('apps-consent').checked = access.consent;
+    appsMessage('');
+    renderApps();
+  } catch (error) { if (current === appsRequest) appsMessage(`读取失败：${message(error)}`, true); }
+  finally { if (current === appsRequest) controls(); }
+});
+$('apps-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if ($('apps-save').disabled) return;
+  const current = appsRequest;
+  const consent = $('apps-consent').checked;
+  appsSaving = true;
+  controls();
+  appsMessage('');
+  try {
+    await invoke('request', { method: 'apps.set', params: { apps: [...appAccess.selected], consent } });
+    if (current !== appsRequest) return;
+    $('apps-dialog').close();
+    clearApps();
+    notice(consent ? '应用范围已保存到手机，下一次任务生效。' : '应用范围已保存。勾选数据使用说明后才能开始任务。');
+  } catch (error) { if (current === appsRequest) appsMessage(`保存失败：${message(error)}`, true); }
+  finally { if (current === appsRequest) { appsSaving = false; controls(); } }
 });
 $('pair-open').addEventListener('click', () => {
   $('address').replaceChildren(...snapshot.addresses.map((address) => {

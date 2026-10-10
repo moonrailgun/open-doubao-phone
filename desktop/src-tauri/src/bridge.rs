@@ -294,7 +294,7 @@ fn validate_request(method: &str, params: &Value) -> Result<(), String> {
                 return Err("任务目标长度必须为 1–4000 个字符".into());
             }
         }
-        "task.stop" | "records.get" if object.len() == 1 => {
+        "task.stop" | "task.resume" | "records.get" | "records.delete" if object.len() == 1 => {
             let task_id = object
                 .get("taskId")
                 .and_then(Value::as_str)
@@ -303,8 +303,27 @@ fn validate_request(method: &str, params: &Value) -> Result<(), String> {
                 return Err("任务 ID 无效".into());
             }
         }
-        "records.list" | "status.get" | "config.get" if object.is_empty() => {}
-        "config.set" if object.len() == 7 => {
+        "records.list" | "status.get" | "config.get" | "apps.get" if object.is_empty() => {}
+        "apps.set" if object.len() == 2 => {
+            let apps = object
+                .get("apps")
+                .and_then(Value::as_array)
+                .ok_or("应用范围格式错误")?;
+            if apps.is_empty() || apps.len() > 4096 {
+                return Err("请至少选择一个应用".into());
+            }
+            if !apps
+                .iter()
+                .all(|app| app.as_str().is_some_and(|name| !name.is_empty() && name.len() <= 256))
+            {
+                return Err("应用包名无效".into());
+            }
+            object
+                .get("consent")
+                .and_then(Value::as_bool)
+                .ok_or("数据使用确认格式错误")?;
+        }
+        "config.set" | "config.test" if object.len() == 7 => {
             for (field, limit) in [
                 ("jevEndpoint", 2048),
                 ("chatEndpoint", 2048),
@@ -440,12 +459,18 @@ impl Bridge {
             inner.pending.insert(id.clone(), response);
             receiver
         };
-        match timeout(Duration::from_secs(10), receiver).await {
+        // The phone tests two model services with up to 60 seconds each.
+        let wait = if method == "config.test" { 130 } else { 10 };
+        match timeout(Duration::from_secs(wait), receiver).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err(CONNECTION_LOST.into()),
             Err(_) => {
                 self.inner.lock().await.pending.remove(&id);
-                Err("手机 10 秒内未回复，任务执行状态未知；请查看当前状态，不要重复下发".into())
+                Err(if method == "config.test" {
+                    "手机 130 秒内未返回测试结果，请稍后重试".into()
+                } else {
+                    "手机 10 秒内未回复，任务执行状态未知；请查看当前状态，不要重复下发".into()
+                })
             }
         }
     }
@@ -782,6 +807,17 @@ mod tests {
         assert!(validate_request("records.list", &json!({})).is_ok());
         assert!(validate_request("config.get", &json!({})).is_ok());
         assert!(validate_request("config.get", &json!({"keys":true})).is_err());
+        assert!(validate_request("task.resume", &json!({"taskId":"task-1"})).is_ok());
+        assert!(validate_request("task.resume", &json!({})).is_err());
+        assert!(validate_request("records.delete", &json!({"taskId":"record-1"})).is_ok());
+        assert!(validate_request("apps.get", &json!({})).is_ok());
+        let apps = json!({"apps":["com.example.notes"], "consent":true});
+        assert!(validate_request("apps.set", &apps).is_ok());
+        assert!(validate_request("apps.set", &json!({"apps":[], "consent":true})).is_err());
+        assert!(validate_request("apps.set", &json!({"apps":[""], "consent":true})).is_err());
+        assert!(validate_request("apps.set", &json!({"apps":[1], "consent":true})).is_err());
+        assert!(validate_request("apps.set", &json!({"apps":["a"], "consent":"yes"})).is_err());
+        assert!(validate_request("apps.set", &json!({"apps":["a"]})).is_err());
         let mut config = json!({"jevEndpoint":"https://jev.example", "jevModel":"jev", "jevKey":null,
             "chatEndpoint":"https://chat.example", "chatModel":"chat", "chatKey":"new-key", "language":""});
         assert!(validate_request("config.set", &config).is_ok());

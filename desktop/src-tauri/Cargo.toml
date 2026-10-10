@@ -14,7 +14,7 @@ required-features = ["desktop"]
 
 [features]
 default = ["desktop"]
-desktop = ["dep:tauri", "dep:tauri-build"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-notification"]
 
 [build-dependencies]
 tauri-build = { version = "2", optional = true, features = [] }
@@ -30,6 +30,7 @@ serde_json = "1"
 sha2 = "0.10"
 subtle = "2"
 tauri = { version = "2", optional = true, features = [] }
+tauri-plugin-notification = { version = "2", optional = true }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 tokio-tungstenite = "0.28"

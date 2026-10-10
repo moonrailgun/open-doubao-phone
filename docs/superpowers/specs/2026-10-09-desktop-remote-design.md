@@ -22,15 +22,21 @@ All WebSocket frames are bounded JSON text, at most 256 KiB.
 - Phone state: `{type:"state",data:{taskId,status,goal,message,result,steps,log}}`.
 - `task.start {goal}` returns `{taskId}`. Goal is 1–4000 characters. The request UUID is also the task ID; a duplicate retained task ID returns its existing ID and does not execute again.
 - `task.stop {taskId}` checks the active ID before stopping, then returns `{taskId}`.
+- `task.resume {taskId}` continues the active task only when it is paused, then returns `{taskId}`. The phone must be unlocked.
 - `status.get {}` returns the current state.
 - `records.list {}` returns up to 30 record previews (goal up to 240 characters, result up to 500), without detailed logs.
 - `records.get {taskId}` returns `{id,time,goal,status,result,log}`.
+- `records.delete {taskId}` removes one retained record and returns `{taskId}`; refused while a task is running or paused, like the phone's own delete.
+- `config.get {}` returns endpoints, model names, language and `hasJevKey`/`hasChatKey`, never keys. `config.set {jevEndpoint,jevModel,jevKey,chatEndpoint,chatModel,chatKey,language}` saves it; a null key keeps the saved key only when its endpoint is unchanged.
+- `config.test` takes the same fields, applies the same key rule and asks the phone to call both services once without saving. The desktop waits up to 130 seconds for it.
+- `apps.get {}` returns `{apps:[{packageName,label,launchable}],selected,consent}` from the phone's installed-app catalog. `apps.set {apps,consent}` saves a non-empty set of installed packages and the data-use consent.
+- Configuration, app scope and record deletion are refused while a task is running or paused.
 
-Only these methods are accepted. Phone network callbacks return to Main for Vault and task operations. A single task can run at a time, whether started locally or remotely. Late callbacks after receiver shutdown are ignored. Desktop response timeout is ten seconds and reports an unknown outcome rather than silently resending. TLS/hello handshake concurrency, timeout and message size are bounded.
+Only these methods are accepted. Phone network callbacks return to Main for Vault and task operations. A single task can run at a time, whether started locally or remotely. Late callbacks after receiver shutdown are ignored. Desktop response timeout is ten seconds (130 for `config.test`) and reports an unknown outcome rather than silently resending. TLS/hello handshake concurrency, timeout and message size are bounded.
 
 ## User interface
 
-Desktop: device sidebar with online status and pairing/forget actions; task composer and stop control; live progress, reply and summary; history list and a detailed log reader. Use a restrained blue-gray workspace, native system Chinese type, clear labels, visible keyboard focus and selectable output. Render all device text as text, never HTML.
+Desktop: device sidebar with online status, pairing/forget, model configuration with a connection test, and app scope with data-use consent; task composer with stop and resume controls; live progress, reply and summary rendered from the phone's Markdown subset; history list, a detailed log reader and record deletion. A system notification reports a task that pauses or ends while the window is in the background. Use a restrained blue-gray workspace, native system Chinese type, clear labels, visible keyboard focus and selectable output. Render all device text as text, never HTML.
 
 Phone: settings section for device-code entry, explicit bind, reception toggle, status, and unbind. Existing local tasks and settings remain available. Update privacy wording to explain that a bound desktop can read retained task history and logs.
 

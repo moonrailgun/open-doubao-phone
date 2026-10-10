@@ -8,6 +8,11 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
     window.testRecords = records;
     window.testConfig = { jevEndpoint: 'https://jev.example/v1', jevModel: 'jev', hasJevKey: true,
       chatEndpoint: 'https://chat.example/v1', chatModel: 'chat', hasChatKey: true, language: '' };
+    window.testApps = { consent: false, selected: ['com.example.notes'], apps: [
+      { packageName: 'com.example.notes', label: '备忘录', launchable: true },
+      { packageName: 'com.android.chrome', label: 'Chrome', launchable: true },
+      { packageName: 'com.google.android.gms', label: 'Google Play 服务', launchable: false },
+    ] };
     window.testSnapshot = {
       listening: true, addresses: ['192.168.1.20'], port: 38687, connected,
       device: connected ? { id: 'phone-1', name: '测试手机' } : null,
@@ -43,6 +48,11 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
             return { taskId: 'task-1' };
           }
           if (args.method === 'task.stop') { window.testSnapshot.state.status = 'STOPPED'; return { taskId: args.params.taskId }; }
+          if (args.method === 'task.resume') { window.testSnapshot.state.status = 'RUNNING'; return { taskId: args.params.taskId }; }
+          if (args.method === 'records.delete') { window.testRecords = window.testRecords.filter(record => record.id !== args.params.taskId); return { taskId: args.params.taskId }; }
+          if (args.method === 'config.test') { if (window.testConnectionFailure) throw window.testConnectionFailure; return {}; }
+          if (args.method === 'apps.get') return structuredClone(window.testApps);
+          if (args.method === 'apps.set') { window.testApps.selected = args.params.apps; window.testApps.consent = args.params.consent; return { selected: args.params.apps.length, consent: args.params.consent }; }
         }
         throw new Error(`Unexpected command: ${command}`);
       },
@@ -429,4 +439,119 @@ test('a model response arriving after closing is ignored and unset keys are requ
   await page.getByRole('button', { name: '模型配置', exact: true }).click();
   await expect(page.locator('#jev-key')).toHaveAttribute('required', '');
   await expect(page.locator('#jev-key')).toHaveAttribute('placeholder', '尚未设置，请填写');
+});
+
+test('a paused task can be resumed from the desktop by its task ID', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.evaluate(() => {
+    window.testSnapshot.state = { taskId: 'task-1', status: 'RUNNING', goal: '打开日历', message: '正在读取', steps: 1, result: '', log: [] };
+  });
+  await expect(page.getByRole('button', { name: '停止任务' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '继续任务' })).toBeHidden();
+  await page.evaluate(() => { window.testSnapshot.state.status = 'PAUSED'; });
+  await page.getByRole('button', { name: '继续任务' }).click();
+  await expect(page.locator('#task-badge')).toHaveText('正在执行');
+  await expect(page.getByRole('button', { name: '继续任务' })).toBeHidden();
+  const resumes = await page.evaluate(() => window.testCalls.filter(c => c.args?.method === 'task.resume'));
+  expect(resumes.map(c => c.args.params)).toEqual([{ taskId: 'task-1' }]);
+});
+
+test('app scope mirrors the phone picker and saves the selection with consent', async ({ page }, testInfo) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: '应用范围', exact: true }).click();
+  const list = page.locator('#apps-list');
+  await expect(list.getByLabel(/备忘录/)).toBeChecked();
+  await expect(list.getByLabel(/Chrome/)).not.toBeChecked();
+  await expect(list.getByText('Google Play 服务')).toHaveCount(0);
+  await expect(page.locator('#apps-consent')).not.toBeChecked();
+  await page.getByLabel(/显示系统组件/).check();
+  await expect(list.getByText('系统组件 · 无启动入口', { exact: false })).toBeVisible();
+  await page.getByLabel(/显示系统组件/).uncheck();
+  await page.getByLabel('搜索应用名称或包名').fill('gms');
+  await expect(list.getByLabel(/Google Play 服务/)).toBeVisible();
+  await page.getByRole('button', { name: '全选当前列表' }).click();
+  await page.getByLabel('搜索应用名称或包名').fill('');
+  await page.getByRole('button', { name: '取消当前列表' }).click();
+  await expect(page.locator('#apps-count')).toHaveText('已选 1 个');
+  await expect(page.locator('#apps-save')).toBeEnabled();
+  await page.getByLabel('搜索应用名称或包名').fill('gms');
+  await list.getByLabel(/Google Play 服务/).uncheck();
+  await expect(page.locator('#apps-count')).toHaveText('已选 0 个');
+  await expect(page.locator('#apps-save')).toBeDisabled();
+  await page.getByLabel('搜索应用名称或包名').fill('');
+  await list.getByLabel(/Chrome/).check();
+  await page.locator('#apps-consent').check();
+  await page.screenshot({ path: testInfo.outputPath('app-scope.png'), fullPage: true });
+  await page.getByRole('button', { name: '保存到手机', exact: true }).click();
+  await expect(page.locator('#apps-dialog')).not.toBeVisible();
+  await expect(page.locator('#notice')).toContainText('应用范围已保存到手机');
+  expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'apps.set').args.params))
+    .toEqual({ apps: ['com.android.chrome'], consent: true });
+});
+
+test('app scope cannot change during a task and closes on disconnect', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: '应用范围', exact: true }).click();
+  await expect(page.locator('#apps-save')).toBeEnabled();
+  await page.evaluate(() => { window.testSnapshot.state = { taskId: 'task-1', status: 'RUNNING', goal: 'x', message: '', steps: 1, result: '', log: [] }; });
+  await expect(page.locator('#apps-save')).toHaveText('请先停止当前任务');
+  await expect(page.locator('#apps-save')).toBeDisabled();
+  await expect(page.locator('#apps-list input').first()).toBeDisabled();
+  await page.evaluate(() => { window.testSnapshot.connected = false; });
+  await expect(page.locator('#apps-dialog')).not.toBeVisible();
+  await expect(page.getByRole('button', { name: '应用范围', exact: true })).toBeDisabled();
+});
+
+test('connection test sends unsaved form values and never saves them', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: '模型配置', exact: true }).click();
+  await page.getByLabel('通用模型名称', { exact: true }).fill('draft-model');
+  await page.getByRole('button', { name: '测试连接' }).click();
+  await expect(page.locator('#model-message')).toContainText('连接正常');
+  expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'config.test').args.params)).toEqual({
+    jevEndpoint: 'https://jev.example/v1', jevModel: 'jev', jevKey: null,
+    chatEndpoint: 'https://chat.example/v1', chatModel: 'draft-model', chatKey: null, language: '',
+  });
+  await page.evaluate(() => { window.testConnectionFailure = 'Jev 连接测试失败\nPOST https://jev.example/v1'; });
+  await page.getByRole('button', { name: '测试连接' }).click();
+  await expect(page.locator('#model-message')).toHaveClass(/error/);
+  await expect(page.locator('#model-message')).toContainText('Jev 连接测试失败');
+  await page.getByLabel('通用模型接口地址', { exact: true }).fill('https://other.example/v1');
+  await page.getByRole('button', { name: '测试连接' }).click();
+  expect(await page.evaluate(() => window.testCalls.filter(c => c.args?.method === 'config.test').length)).toBe(2);
+  expect(await page.evaluate(() => window.testCalls.filter(c => c.args?.method === 'config.set'))).toHaveLength(0);
+});
+
+test('summaries render the phone Markdown subset as text nodes', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.evaluate(() => {
+    window.testSnapshot.state = { taskId: 'finished-1', status: 'COMPLETED', goal: '对比', message: '', steps: 3,
+      result: '## 结论\n- **iPhone 18** 更值得买\n- 价格 `5999` 元，*仅供参考*\n---\n<b>原样</b> 2 * 3 * 4', log: [] };
+  });
+  const result = page.locator('#current-result');
+  await expect(result.locator('.md-heading')).toHaveText('结论');
+  await expect(result.locator('strong', { hasText: 'iPhone 18' })).toBeVisible();
+  await expect(result.locator('code')).toHaveText('5999');
+  await expect(result.locator('em')).toHaveText('仅供参考');
+  await expect(result).toContainText('• ');
+  await expect(result).toContainText('<b>原样</b> 2 * 3 * 4');
+  await expect(result.locator('b')).toHaveCount(0);
+  await expect(result).not.toContainText('---');
+});
+
+test('a record can be deleted from its details and the history refreshes', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: /整理备忘录/ }).click();
+  await expect(page.locator('#record-content')).toContainText('com.example.notes');
+  await page.getByRole('button', { name: '删除记录' }).click();
+  await expect(page.locator('#record-dialog')).not.toBeVisible();
+  await expect(page.locator('#notice')).toContainText('记录已从手机删除');
+  await expect(page.locator('#records')).toContainText('还没有记录');
+  expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'records.delete').args.params)).toEqual({ taskId: 'record-1' });
 });
