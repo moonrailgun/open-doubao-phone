@@ -70,6 +70,7 @@ import com.openodoubao.assistant.phone.loadAppCatalog
 import com.openodoubao.assistant.phone.visibleAppCatalog
 import com.openodoubao.assistant.remote.RemoteControls
 import com.openodoubao.assistant.voice.rememberVoiceInput
+import com.openodoubao.assistant.voice.voiceAutoSend
 import com.openodoubao.assistant.voice.VoiceControls
 import com.openodoubao.assistant.voice.TtsControls
 import kotlinx.coroutines.CancellationException
@@ -182,7 +183,20 @@ class MainActivity : ComponentActivity() {
             else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
         }
-        val voice = rememberVoiceInput({ goal = it.take(4000) }, { message = it })
+        fun start() = attempt {
+            check(consent) { "请先勾选数据使用说明" }
+            check(configReady) { "请先在设置中配置模型" }
+            check(goal.isNotBlank()) { "请先写下要做的事" }
+            if (apps.isEmpty()) {
+                message = ""
+                choosingApps = true
+            } else {
+                save()
+                checkNotNull(service) { "请先开启无障碍服务" }.startTask(goal)
+            }
+        }
+        // Dictation continues the goal; auto-send starts it as soon as recognition ends.
+        val voice = rememberVoiceInput({ goal = (goal + it).take(4000); if (voiceAutoSend(this@MainActivity)) start() }, { message = it })
         val colors = MaterialTheme.colorScheme
         val notice = @Composable {
             if (message.isNotEmpty()) Surface(color = colors.secondaryContainer, shape = RoundedCornerShape(18.dp)) {
@@ -249,17 +263,7 @@ class MainActivity : ComponentActivity() {
                                             Icon(painterResource(R.drawable.lucide_layout_grid), null, Modifier.size(18.dp))
                                             Text("${apps.size}", Modifier.padding(start = 6.dp))
                                         }
-                                        FilledIconButton({ attempt {
-                                            check(consent) { "请先勾选数据使用说明" }
-                                            check(goal.isNotBlank()) { "请先写下要做的事" }
-                                            if (apps.isEmpty()) {
-                                                message = ""
-                                                choosingApps = true
-                                            } else {
-                                                save()
-                                                checkNotNull(service) { "请先开启无障碍服务" }.startTask(goal)
-                                            }
-                                        } }, Modifier.size(48.dp), enabled = service != null && configReady && consent && goal.isNotBlank()) {
+                                        FilledIconButton({ start() }, Modifier.size(48.dp), enabled = service != null && configReady && consent && goal.isNotBlank()) {
                                             Icon(painterResource(R.drawable.lucide_play), "开始任务")
                                         }
                                     }

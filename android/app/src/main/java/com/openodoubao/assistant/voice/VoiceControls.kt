@@ -2,6 +2,7 @@ package com.openodoubao.assistant.voice
 
 import android.Manifest
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -26,6 +27,8 @@ fun VoiceControls() {
     val state by VoiceRuntime.state.collectAsState()
     val error by VoiceRuntime.error.collectAsState()
     val enabled by VoiceRuntime.enabled.collectAsState()
+    val prefs = remember { context.getSharedPreferences("voice", Context.MODE_PRIVATE) }
+    var autoSend by remember { mutableStateOf(voiceAutoSend(context)) }
     fun isAssistant() = VoiceInteractionService.isActiveService(context, ComponentName(context, DouxianInteractionService::class.java))
     var selected by remember { mutableStateOf(isAssistant()) }
     DisposableEffect(lifecycle) {
@@ -44,7 +47,11 @@ fun VoiceControls() {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("语音识别与唤醒", style = MaterialTheme.typography.titleMedium)
-            Text("识别在本机运行。麦克风按钮填写输入框；唤醒后可直接下达任务。")
+            Text("识别在本机运行。麦克风按钮把识别结果接在输入框后面，可以多次输入；唤醒后可直接下达任务。")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("语音输入后自动发送")
+                Switch(checked = autoSend, onCheckedChange = { autoSend = it; prefs.edit().putBoolean("auto_send", it).apply() })
+            }
             Text("唤醒词：${wakePhrases.joinToString("、")}。说“停止任务”或“继续任务”可控制当前任务。")
             TextButton({ context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }) {
                 Text(if (selected) "已设为默认助手 · 查看设置" else "第一步：设为默认数字助手")

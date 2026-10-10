@@ -49,6 +49,8 @@ import com.openodoubao.assistant.remote.RemoteReceiver
 import com.openodoubao.assistant.remote.RemoteSnapshot
 import com.openodoubao.assistant.remote.RemoteTasks
 import com.openodoubao.assistant.statusStyle
+import com.openodoubao.assistant.voice.LocalVoiceInput
+import com.openodoubao.assistant.voice.voiceAutoSend
 import com.openodoubao.assistant.voice.taskScreenAvailable
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +95,8 @@ class AssistantService : AccessibilityService() {
     private var openButton: View? = null
     private var inputRow: View? = null
     private var input: EditText? = null
+    private var voiceInput: LocalVoiceInput? = null
+    private var voiceStatus: TextView? = null
     private var layout: WindowManager.LayoutParams? = null
     private var captureHidden = false
     private var locked = false
@@ -234,6 +238,7 @@ class AssistantService : AccessibilityService() {
         scope.cancel()
         if (connection.value === this) connection.value = null
         runCatching { unregisterReceiver(lockReceiver) }
+        voiceInput?.destroy(); voiceInput = null
         overlay?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
         overlay = null
     }
@@ -362,12 +367,29 @@ class AssistantService : AccessibilityService() {
             }
         }
         input = field
+        // Status sits below the field: the hint disappears once the command has text.
+        val status = TextView(this).apply {
+            setTextColor(Color.argb(170, 255, 255, 255)); textSize = 12f
+            setPadding(dp(10), dp(4), 0, 0); visibility = View.GONE
+        }
+        voiceStatus = status
+        // Each dictation continues the command; it is sent right away only when auto-send is on.
+        val voice = LocalVoiceInput(this, { field.append(it); if (voiceAutoSend(this)) submit() }, {
+            status.text = it; status.visibility = if (it.isEmpty()) View.GONE else View.VISIBLE
+        })
+        voiceInput = voice
         inputRow = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setOnTouchListener(drag)
-            addView(field, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            addView(iconButton(R.drawable.lucide_play, "执行") { submit() },
-                LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
+            orientation = LinearLayout.VERTICAL
+            addView(LinearLayout(this@AssistantService).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setOnTouchListener(drag)
+                addView(field, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(iconButton(R.drawable.lucide_mic, "语音输入") { voice.start() },
+                    LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
+                addView(iconButton(R.drawable.lucide_play, "执行") { submit() },
+                    LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
+            })
+            addView(status)
         }
         card.addView(inputRow)
         resumeButton = Button(this).apply {
@@ -415,6 +437,7 @@ class AssistantService : AccessibilityService() {
         paused = value.status == TaskStatus.PAUSED
         // Fold away while working; open for manual intervention or the final result.
         if (running != wasRunning || paused) { expanded = !running; typing = false }
+        if (running) voiceStatus?.visibility = View.GONE
         val (label, color, glyph) = statusStyle(value.status.name)
         statusIcon?.apply {
             setImageResource(glyph); imageTintList = ColorStateList.valueOf(color.toArgb()); contentDescription = label
