@@ -4,7 +4,7 @@
 
 ## 当前产物
 
-当前已刷入 v1.9，包含底部 Dock 居中和独立 TTS 语音设置。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
+当前已刷入 v1.11，包含 Dao 浏览器及下方 v1.11 记录列出的改动；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
 
 本地输出目录：`os/custom/out/v1.9/`，未纳入 Git。保留原始镜像和先前版本输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
@@ -139,7 +139,13 @@ Debug/System 各 108 项单元测试通过，System Lint 无错误，Debug/Syste
 
 镜像为 2,708,021,248 字节，动态分区合计 8,174,579,712 字节，距上限余 352,440,320 字节。Debug/System 各 112 项单元测试通过，三项 Lint 均无错误，见 `gradle.log`；开机动画测试、小型 ext4 测试、完整构建的读回摘要与 AVB 校验通过，见 `image-test.log`、`build.log`。另从镜像导出五个写入文件复核摘要、0644 与 `system_file` 标签，见 `artifact-check.txt`；源码包中 162 个已跟踪 Android 文件与提交一致，见 `source-check.txt`。
 
-v1.11 尚未刷写。刷写后待验：Dao 作为系统应用启动；`pm grant` 补齐默认权限（沿用 GSI fingerprint，不清数据升级不会自动应用）；挥手开机动画；手机数据分区已有 TTS 更新包，需核对实际运行版本；xiao_ya 的真机 TTS 测试此前超时未解决；Dao 搜索写入笔记任务重跑三次；真人唤醒率及误唤醒计数。
+v1.11 已在 b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xa1692000`，与 manifest 一致，见 `partition-check.txt`。启动 25 秒完成。设备上五个写入文件的 SHA-256 与 manifest 一致，Dao 为 root:root/0644、`system_file`，以 SYSTEM 标记安装，见 `device-checks.txt`。
+
+刷写前 v1.9 的升级基线已过时（实际配置在其后被保存），`prepare` 拒绝覆盖，`verify` 因配置摘要不同失败。改为比较刷写前后同一测试报告的实际配置摘要，均为 `8c5ee934805bc35f1bcad637f0250bb8fb58251f6264f7c2837f4a8707a28175`，且 UID 断言通过；助手 appId 仍为 10124，保留 SYSTEM 与 PERSISTENT 标记，见 `upgrade-preflash-verify.log`、`upgrade-verify.log`。由于测试在配置摘要处中止，语音设置和 Keystore 哨兵未在本次逐项比较。三项运行时权限在刷写前后均已授予，`pm grant` 未改变状态，见 `permissions.txt`。
+
+Dao 以系统应用冷启动打开 `https://example.com` 并正常渲染，Gecko 从 `DaoBrowser.apk!/lib/arm64-v8a` 直接加载原生库，未出现崩溃，见 `dao-launch.txt`、`dao-logcat.txt`、`dao-launch.png`。启动日志 15,922 行，未检出 FATAL EXCEPTION 或相关 AVC 拒绝，见 `final-boot-logcat.txt`。最终重启 25 秒取得未被静音的助手录音，前台为桌面、未打开助手 Activity；默认助手绑定、前台服务、省电豁免和无障碍绑定通过，见 `final-reboot.log`、`final-reboot-audio.txt`、`final-reboot-state.txt`。
+
+手机数据分区的 TTS 更新包（`ea9e6d2d…d471d4`，版本 1001）仍覆盖预装的 xiao_ya TTS，实际运行的不是本镜像的 TTS。尚待：挥手开机动画目测；xiao_ya 真机 TTS 测试此前超时未解决；Dao 搜索写入笔记任务重跑三次；真人唤醒率及误唤醒计数。
 
 ## 唤醒失效反馈跟进
 
