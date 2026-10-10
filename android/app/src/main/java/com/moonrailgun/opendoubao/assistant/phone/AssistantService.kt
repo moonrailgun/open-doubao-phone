@@ -147,11 +147,11 @@ class AssistantService : AccessibilityService() {
                     override fun access(): AppAccess {
                         val saved = vault.read()
                         val catalog = loadAppCatalog(this@AssistantService)
-                        return AppAccess(catalog, catalogSelection(catalog, saved.apps, saved.appsConfigured), saved.consent)
+                        return AppAccess(catalog, catalogSelection(catalog, saved.apps, saved.appsConfigured))
                     }
-                    override fun saveAccess(apps: Set<String>, consent: Boolean) {
+                    override fun saveAccess(apps: Set<String>) {
                         check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改应用范围" }
-                        vault.write(vault.read().copy(apps = apps, appsConfigured = true, consent = consent))
+                        vault.write(vault.read().copy(apps = apps, appsConfigured = true))
                         remoteEdits.value++
                     }
                     override fun start(goal: String, taskId: String): String {
@@ -193,7 +193,6 @@ class AssistantService : AccessibilityService() {
         check(saved.records.none { it.id == taskId }) { "任务 ID 已存在" }
         val record = Record(taskId, System.currentTimeMillis(), goal.trim(), "RUNNING", "")
         val models = try {
-            check(saved.consent) { "请先确认界面数据的使用方式" }
             check(saved.apps.isNotEmpty()) { "请先选择本次任务允许访问的应用" }
             CloudModels(saved.config)
         } catch (e: Exception) {

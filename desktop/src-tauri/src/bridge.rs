@@ -304,7 +304,7 @@ fn validate_request(method: &str, params: &Value) -> Result<(), String> {
             }
         }
         "records.list" | "status.get" | "config.get" | "apps.get" if object.is_empty() => {}
-        "apps.set" if object.len() == 2 => {
+        "apps.set" if object.len() == 1 => {
             let apps = object
                 .get("apps")
                 .and_then(Value::as_array)
@@ -318,10 +318,6 @@ fn validate_request(method: &str, params: &Value) -> Result<(), String> {
             {
                 return Err("应用包名无效".into());
             }
-            object
-                .get("consent")
-                .and_then(Value::as_bool)
-                .ok_or("数据使用确认格式错误")?;
         }
         "config.set" | "config.test" if object.len() == 7 => {
             for (field, limit) in [
@@ -811,13 +807,12 @@ mod tests {
         assert!(validate_request("task.resume", &json!({})).is_err());
         assert!(validate_request("records.delete", &json!({"taskId":"record-1"})).is_ok());
         assert!(validate_request("apps.get", &json!({})).is_ok());
-        let apps = json!({"apps":["com.example.notes"], "consent":true});
+        let apps = json!({"apps":["com.example.notes"]});
         assert!(validate_request("apps.set", &apps).is_ok());
-        assert!(validate_request("apps.set", &json!({"apps":[], "consent":true})).is_err());
-        assert!(validate_request("apps.set", &json!({"apps":[""], "consent":true})).is_err());
-        assert!(validate_request("apps.set", &json!({"apps":[1], "consent":true})).is_err());
-        assert!(validate_request("apps.set", &json!({"apps":["a"], "consent":"yes"})).is_err());
-        assert!(validate_request("apps.set", &json!({"apps":["a"]})).is_err());
+        assert!(validate_request("apps.set", &json!({"apps":[]})).is_err());
+        assert!(validate_request("apps.set", &json!({"apps":[""]})).is_err());
+        assert!(validate_request("apps.set", &json!({"apps":[1]})).is_err());
+        assert!(validate_request("apps.set", &json!({"apps":["a"], "consent":true})).is_err());
         let mut config = json!({"jevEndpoint":"https://jev.example", "jevModel":"jev", "jevKey":null,
             "chatEndpoint":"https://chat.example", "chatModel":"chat", "chatKey":"new-key", "language":""});
         assert!(validate_request("config.set", &config).is_ok());

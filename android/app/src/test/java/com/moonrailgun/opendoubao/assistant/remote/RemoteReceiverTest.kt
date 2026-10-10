@@ -163,8 +163,8 @@ class RemoteReceiverTest {
         override fun resume(taskId: String) = Unit
         override fun deleteRecord(taskId: String) = Unit
         override suspend fun testConfig(config: com.moonrailgun.opendoubao.assistant.model.ModelConfig) = Unit
-        override fun access() = AppAccess(emptyList(), emptySet(), false)
-        override fun saveAccess(apps: Set<String>, consent: Boolean) = Unit
+        override fun access() = AppAccess(emptyList(), emptySet())
+        override fun saveAccess(apps: Set<String>) = Unit
     }
 
     private class Fixture(config: RemoteConfig) : AutoCloseable {

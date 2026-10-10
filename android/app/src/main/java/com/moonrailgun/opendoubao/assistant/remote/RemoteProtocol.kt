@@ -72,7 +72,7 @@ internal fun JSONObject.exactFields(vararg names: String) {
 }
 
 /** The apps a task may touch, as the phone's app picker shows them. */
-data class AppAccess(val catalog: List<InstalledApp>, val selected: Set<String>, val consent: Boolean)
+data class AppAccess(val catalog: List<InstalledApp>, val selected: Set<String>)
 
 interface RemoteTasks {
     fun snapshot(): RemoteSnapshot
@@ -85,7 +85,7 @@ interface RemoteTasks {
     fun saveConfig(config: ModelConfig)
     suspend fun testConfig(config: ModelConfig)
     fun access(): AppAccess
-    fun saveAccess(apps: Set<String>, consent: Boolean)
+    fun saveAccess(apps: Set<String>)
 }
 
 class RemoteCommands(private val tasks: RemoteTasks) {
@@ -183,22 +183,21 @@ class RemoteCommands(private val tasks: RemoteTasks) {
                 "apps.get" -> {
                     params.exactFields()
                     val access = tasks.access()
-                    JSONObject().put("consent", access.consent).put("selected", JSONArray(access.selected.toList()))
+                    JSONObject().put("selected", JSONArray(access.selected.toList()))
                         .put("apps", JSONArray(access.catalog.map {
                             JSONObject().put("packageName", it.packageName).put("label", it.label.take(200)).put("launchable", it.launchable)
                         }))
                 }
                 "apps.set" -> {
-                    params.exactFields("apps", "consent")
+                    params.exactFields("apps")
                     check(idle()) { "请先停止当前任务再修改应用范围" }
                     val list = params.opt("apps") as? JSONArray ?: throw IllegalArgumentException("apps 必须是数组")
-                    val consent = params.opt("consent") as? Boolean ?: throw IllegalArgumentException("consent 必须是布尔值")
                     val apps = (0 until list.length()).map { list.opt(it) as? String ?: throw IllegalArgumentException("应用包名无效") }.toSet()
                     require(apps.isNotEmpty()) { "请至少选择一个应用" }
                     val installed = tasks.access().catalog.map { it.packageName }.toSet()
                     require(installed.containsAll(apps)) { "包含手机上不存在的应用" }
-                    tasks.saveAccess(apps, consent)
-                    JSONObject().put("selected", apps.size).put("consent", consent)
+                    tasks.saveAccess(apps)
+                    JSONObject().put("selected", apps.size)
                 }
                 else -> error("不支持的远程方法")
             }

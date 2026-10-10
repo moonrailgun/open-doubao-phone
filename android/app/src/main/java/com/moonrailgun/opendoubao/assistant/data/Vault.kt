@@ -19,7 +19,7 @@ import javax.crypto.spec.GCMParameterSpec
 data class Record(val id: String, val time: Long, val goal: String, val status: String, val result: String,
     val log: List<String> = emptyList())
 data class Saved(val config: ModelConfig = ModelConfig(), val apps: Set<String> = emptySet(),
-    val consent: Boolean = false, val records: List<Record> = emptyList(), val appsConfigured: Boolean = apps.isNotEmpty(),
+    val records: List<Record> = emptyList(), val appsConfigured: Boolean = apps.isNotEmpty(),
     val remote: RemoteConfig = RemoteConfig(), val onlineTtsToken: String = "", val onlineTtsEndpoint: String = "",
     val onlineTtsModel: String = DEFAULT_TTS_MODEL, val onlineTtsVoice: String = DEFAULT_TTS_VOICE) {
     companion object {
@@ -56,7 +56,7 @@ class Vault(context: Context) {
             val remote = json.optJSONObject("remote")
             return Saved(ModelConfig(cfg.getString("jevEndpoint"), cfg.getString("jevModel"), cfg.getString("jevKey"),
                 cfg.getString("chatEndpoint"), cfg.getString("chatModel"), cfg.getString("chatKey"), cfg.optString("language")),
-                (0 until apps.length()).map { apps.getString(it) }.toSet(), json.getBoolean("consent"),
+                (0 until apps.length()).map { apps.getString(it) }.toSet(),
                 (0 until records.length()).map { records.getJSONObject(it).let { r ->
                     val log = r.optJSONArray("log") ?: JSONArray()
                     Record(r.getString("id"), r.getLong("time"), r.getString("goal"), r.getString("status"), r.getString("result"),
@@ -73,7 +73,7 @@ class Vault(context: Context) {
         val json = JSONObject().put("config", JSONObject().put("jevEndpoint", cfg.jevEndpoint).put("jevModel", cfg.jevModel)
             .put("jevKey", cfg.jevKey).put("chatEndpoint", cfg.chatEndpoint).put("chatModel", cfg.chatModel).put("chatKey", cfg.chatKey)
             .put("language", cfg.language))
-            .put("apps", JSONArray(saved.apps.toList())).put("appsConfigured", saved.appsConfigured).put("consent", saved.consent)
+            .put("apps", JSONArray(saved.apps.toList())).put("appsConfigured", saved.appsConfigured)
             .put("onlineTtsToken", saved.onlineTtsToken)
             .put("onlineTtsEndpoint", saved.onlineTtsEndpoint)
             .put("onlineTtsModel", saved.onlineTtsModel).put("onlineTtsVoice", saved.onlineTtsVoice)

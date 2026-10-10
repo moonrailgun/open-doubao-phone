@@ -593,7 +593,7 @@ class NativeBridgeTest {
         val vault = Vault(isolated)
         val config = ModelConfig(jevKey = "never-write-this-plain", chatKey = "private-secret")
         val record = Record("one", 10, "private goal", "COMPLETED", "actual result", listOf("12:00:00.000 → Jev 决策"))
-        vault.write(Saved(config, setOf("browser.app"), true, listOf(record), onlineTtsToken = "private-tts-token",
+        vault.write(Saved(config, setOf("browser.app"), listOf(record), onlineTtsToken = "private-tts-token",
             onlineTtsEndpoint = "https://speech.example/v1/audio/speech",
             onlineTtsModel = "elevenlabs/custom-model", onlineTtsVoice = "custom-voice"))
         assertEquals(record, vault.read().records.single())

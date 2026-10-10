@@ -59,9 +59,9 @@ class RemoteProtocolTest {
         val tested = mutableListOf<ModelConfig>()
         override suspend fun testConfig(config: ModelConfig) { tested += config }
         var access = AppAccess(listOf(InstalledApp("com.example.notes", "备忘录", true), InstalledApp("com.google.android.gms", "Google Play 服务", false)),
-            setOf("com.example.notes"), false)
+            setOf("com.example.notes"))
         override fun access() = access
-        override fun saveAccess(apps: Set<String>, consent: Boolean) { access = access.copy(selected = apps, consent = consent) }
+        override fun saveAccess(apps: Set<String>) { access = access.copy(selected = apps) }
     }
 
     // Commands only suspend for connection tests; the fakes return immediately.
@@ -225,20 +225,17 @@ class RemoteProtocolTest {
         assertEquals(2, read.getJSONArray("apps").length())
         assertFalse(read.getJSONArray("apps").getJSONObject(1).getBoolean("launchable"))
         assertEquals("com.example.notes", read.getJSONArray("selected").getString(0))
-        assertFalse(read.getBoolean("consent"))
-        fun set(apps: List<Any>, consent: Any = true) = commands.call(request("apps.set",
-            JSONObject().put("apps", org.json.JSONArray(apps)).put("consent", consent))).getBoolean("ok")
+        fun set(apps: List<Any>) = commands.call(request("apps.set",
+            JSONObject().put("apps", org.json.JSONArray(apps)))).getBoolean("ok")
         assertFalse(set(emptyList()))
         assertFalse(set(listOf("com.not.installed")))
         assertFalse(set(listOf(42)))
-        assertFalse(set(listOf("com.example.notes"), "yes"))
         phone.current = RemoteSnapshot(id, TaskState(status = TaskStatus.PAUSED))
         assertFalse(set(listOf("com.google.android.gms")))
-        assertFalse(phone.access.consent)
+        assertEquals(setOf("com.example.notes"), phone.access.selected)
         phone.current = RemoteSnapshot()
         assertTrue(set(listOf("com.example.notes", "com.google.android.gms")))
         assertEquals(setOf("com.example.notes", "com.google.android.gms"), phone.access.selected)
-        assertTrue(phone.access.consent)
     }
 
     @Test fun historyListsAreBoundedWhileDetailAndLiveStateKeepDiagnostics() {

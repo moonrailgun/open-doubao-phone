@@ -147,7 +147,6 @@ class MainActivity : ComponentActivity() {
         val launcherApps = remember { installed.filter { it.launchable }.map { it.packageName }.toSet() }
         var config by remember { mutableStateOf(saved.config) }
         var apps by remember { mutableStateOf(catalogSelection(installed, saved.apps, saved.appsConfigured)) }
-        var consent by remember { mutableStateOf(saved.consent) }
         var records by remember { mutableStateOf(saved.records) }
         var goal by remember { mutableStateOf("") }
         var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -170,7 +169,7 @@ class MainActivity : ComponentActivity() {
         }
         fun save() {
             config.validate()
-            vault.write(vault.read().copy(config = config, apps = apps, consent = consent, appsConfigured = true))
+            vault.write(vault.read().copy(config = config, apps = apps, appsConfigured = true))
         }
         fun attempt(action: () -> Unit) {
             try { action() } catch (e: Exception) { message = e.message ?: "操作失败" }
@@ -180,7 +179,6 @@ class MainActivity : ComponentActivity() {
             val fresh = vault.read()
             config = fresh.config
             apps = catalogSelection(installed, fresh.apps, fresh.appsConfigured)
-            consent = fresh.consent
             records = fresh.records
         } }
         LaunchedEffect(refresh, task.status) { attempt { records = vault.read().records } }
@@ -190,7 +188,6 @@ class MainActivity : ComponentActivity() {
             onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
         }
         fun start() = attempt {
-            check(consent) { "请先勾选数据使用说明" }
             check(configReady) { "请先在设置中配置模型" }
             check(goal.isNotBlank()) { "请先写下要做的事" }
             if (apps.isEmpty()) {
@@ -269,7 +266,7 @@ class MainActivity : ComponentActivity() {
                                             Icon(painterResource(R.drawable.lucide_layout_grid), null, Modifier.size(18.dp))
                                             Text("${apps.size}", Modifier.padding(start = 6.dp))
                                         }
-                                        FilledIconButton({ start() }, Modifier.size(48.dp), enabled = service != null && configReady && consent && goal.isNotBlank()) {
+                                        FilledIconButton({ start() }, Modifier.size(48.dp), enabled = service != null && configReady && goal.isNotBlank()) {
                                             Icon(painterResource(R.drawable.lucide_play), "开始任务")
                                         }
                                     }
@@ -282,12 +279,6 @@ class MainActivity : ComponentActivity() {
                                     SuggestionChip({ goal = text }, { Text(title) }, shape = CircleShape,
                                         icon = { Icon(painterResource(glyph), null, Modifier.size(18.dp)) })
                                 }
-                            }
-                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).toggleable(consent, role = Role.Checkbox) { consent = it }
-                                .padding(end = 8.dp, top = 2.dp, bottom = 2.dp)) {
-                                Checkbox(consent, null, Modifier.padding(12.dp).size(24.dp))
-                                Text("允许把任务内容和所选应用的屏幕文字发给你配置的模型服务，必要时附带截图。截图用完即丢。任务记录保存在本机；开启远程接收后，也可由已绑定桌面读取。",
-                                    Modifier.padding(top = 12.dp), fontSize = 13.sp, lineHeight = 20.sp, color = colors.onSurfaceVariant)
                             }
                             Text("开始后自动执行，可随时点开悬浮球紧急停止。遇到付款、发送、删除、输入密码或凭据等需要手动处理的操作会暂停，处理后点击继续，但无法保证识别所有敏感操作。",
                                 Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)

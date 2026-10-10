@@ -475,7 +475,6 @@ $('apps-open').addEventListener('click', async () => {
     const access = await invoke('request', { method: 'apps.get', params: {} });
     if (current !== appsRequest || !$('apps-dialog').open) return;
     appAccess = { apps: access.apps, selected: new Set(access.selected) };
-    $('apps-consent').checked = access.consent;
     appsMessage('');
     renderApps();
   } catch (error) { if (current === appsRequest) appsMessage(`读取失败：${message(error)}`, true); }
@@ -485,16 +484,15 @@ $('apps-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   if ($('apps-save').disabled) return;
   const current = appsRequest;
-  const consent = $('apps-consent').checked;
   appsSaving = true;
   controls();
   appsMessage('');
   try {
-    await invoke('request', { method: 'apps.set', params: { apps: [...appAccess.selected], consent } });
+    await invoke('request', { method: 'apps.set', params: { apps: [...appAccess.selected] } });
     if (current !== appsRequest) return;
     $('apps-dialog').close();
     clearApps();
-    notice(consent ? '应用范围已保存到手机，下一次任务生效。' : '应用范围已保存。勾选数据使用说明后才能开始任务。');
+    notice('应用范围已保存到手机，下一次任务生效。');
   } catch (error) { if (current === appsRequest) appsMessage(`保存失败：${message(error)}`, true); }
   finally { if (current === appsRequest) { appsSaving = false; controls(); } }
 });

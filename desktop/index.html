@@ -69,14 +69,13 @@
       </form>
     </dialog>
     <dialog id="apps-dialog" aria-labelledby="apps-title">
-      <div class="dialog-heading"><div><h2 id="apps-title">应用范围与数据使用</h2><p>任务只会在勾选的应用里操作。保存到当前手机，下一次任务生效。</p></div><button class="close-dialog icon-button" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></div>
+      <div class="dialog-heading"><div><h2 id="apps-title">应用范围</h2><p>任务只会在勾选的应用里操作。保存到当前手机，下一次任务生效。</p></div><button class="close-dialog icon-button" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></div>
       <form id="apps-form" autocomplete="off">
         <fieldset id="apps-fields" disabled>
           <label for="apps-search">搜索应用名称或包名</label><input id="apps-search" type="search" spellcheck="false" />
           <label class="check"><input id="apps-system" type="checkbox" />显示系统组件（如 Google Play 服务等无启动入口的组件）</label>
           <div class="apps-toolbar"><button id="apps-all" type="button" class="button secondary">全选当前列表</button><button id="apps-none" type="button" class="button secondary">取消当前列表</button><span id="apps-count" class="muted"></span></div>
           <div id="apps-list" class="apps-list" role="group" aria-label="可用应用"></div>
-          <label class="check"><input id="apps-consent" type="checkbox" />允许把任务内容和所选应用的屏幕文字发给手机配置的模型服务，必要时附带截图。截图用完即丢。任务记录保存在手机，已绑定的桌面也可读取。</label>
         </fieldset>
         <p id="apps-message" role="status" class="muted"></p>
         <div class="dialog-actions"><button type="button" class="close-dialog button secondary">取消</button><button id="apps-save" type="submit" class="button primary" disabled>保存到手机</button></div>

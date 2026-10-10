@@ -51,7 +51,7 @@ class OfflineTaskTest {
             withTimeout(5000) { AssistantService.connected.first { it == null } }
             withContext(Dispatchers.Main) {
                 vault.write(original.copy(config = ModelConfig("https://example.com/v1", "offline-test", "offline-test",
-                    "https://example.com/v1", "offline-test", "offline-test"), apps = setOf(context.packageName), consent = true))
+                    "https://example.com/v1", "offline-test", "offline-test"), apps = setOf(context.packageName)))
             }
             Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, listOf(others, component).filter { it.isNotBlank() }.joinToString(":"))
             Settings.Secure.putString(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, "1")
