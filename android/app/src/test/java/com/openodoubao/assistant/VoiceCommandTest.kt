@@ -21,6 +21,17 @@ class VoiceCommandTest {
         assertEquals(VoiceCommand.Stop, parseVoiceCommand("同志你好，停止任务。"))
     }
 
+    @Test fun homophoneWakeWordsAreNotSubmittedAsTasks() {
+        // Transcripts the phone actually recorded as task goals after a bare wake word.
+        for (heard in listOf("豆先你好", "窦线你好。", "构线同治", "窦谢同志", "不先通知", "豆先你好啊")) {
+            assertEquals(heard, "", wakeCommand(heard))
+        }
+        assertEquals("打开日历", wakeCommand("豆先你好，打开日历。"))
+        assertEquals("停止任务", wakeCommand("窦线同志停止任务"))
+        assertEquals("打开设置", wakeCommand("嗯，豆馅你好，打开设置"))
+        assertEquals("", wakeCommand("同志你好。"))
+    }
+
     @Test fun lockedOrDarkScreensNeverAllowTaskExecution() {
         assertTrue(taskScreenAvailable(interactive = true, locked = false))
         assertFalse(taskScreenAvailable(interactive = false, locked = false))

@@ -60,7 +60,7 @@ class LocalSpeechEngine(private val context: Context) {
                             detected()
                             if (!canTakeCommand()) return@recording null
                             // Preserve a continuous command, then close the recorder before the wake reply.
-                            return@recording capture(record, keepGoing, { false }).ifBlank { keyword }
+                            return@recording wakeCommand(capture(record, keepGoing, { false })).ifBlank { keyword }
                         }
                     }
                     // Discard speech without a wake word; never submit it to the task model.
