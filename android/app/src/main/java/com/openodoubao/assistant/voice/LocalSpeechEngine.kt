@@ -124,6 +124,6 @@ internal fun createKeywordSpotter(context: Context) = KeywordSpotter(context.ass
             decoder = "voice/kws/decoder.onnx", joiner = "voice/kws/joiner.onnx"),
         tokens = "voice/kws/tokens.txt", numThreads = 1,
     ), keywordsFile = "voice/kws/keywords.txt",
-    // ponytail: on 72 synthetic wake clips the defaults (4 paths, 2 blanks, score 1.5) caught 17 and this catches 49,
-    // at twice the triggers on near-homophones (同事你好); thresholds changed nothing. Re-tune on real voices.
-    maxActivePaths = 8, numTrailingBlanks = 1, keywordsScore = 2.0f))
+    // ponytail: on 72 synthetic wake clips 4 paths caught 17 and 8 catch 40, still 0 hits in 10 min of ordinary speech;
+    // score 2.0 reached 51 but woke on ordinary speech, thresholds changed nothing. Re-tune on real voices.
+    maxActivePaths = 8))
