@@ -14,6 +14,10 @@ ROOT = Path(__file__).resolve().parents[2]
 # Prebuilt browser, pinned to the release's published SHA-256.
 DAO_APK = ROOT / 'os/dao-browser-android-v0.1.9/dao-browser-0.1.9-android-arm64-v8a.apk'
 DAO_SHA256 = '2645fa9570d8de423ccfa9642e4b604e6ed98b3d46d4eec2344c79f0240856e6'
+# From shurufa.doubao.com/api/v1/app/download_url?platform=android; no published digest, so pin the file and its signer.
+IME_APK = ROOT / 'os/doubao-ime-android-v1.5.1/doubaoime_v1.5.1_100501006_official_arm64_release.apk'
+IME_SHA256 = 'abb24d0a33cee91a9d96783243b75950151bc478ce47da629e5fdf8844607f26'
+IME_CERT_SHA256 = 'd47cafb450b9c8191180402795f35ce50ce2d8b37f1300b42e7d8633bc86b7df'
 
 
 def main(output):
@@ -58,6 +62,13 @@ def main(output):
         raise RuntimeError('dao: unexpected APK')
     read('zipalign', '-c', '-P', '16', '4', dao)
     report[dao.name] = dict(sha256=digest, certificate_sha256=cert(dao))
+    ime = output / 'doubao-ime.apk'
+    shutil.copyfile(IME_APK, ime)
+    with ime.open('rb') as stream:
+        digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+    if digest != IME_SHA256 or cert(ime) != IME_CERT_SHA256:
+        raise RuntimeError('doubao-ime: unexpected APK')
+    report[ime.name] = dict(sha256=digest, certificate_sha256=IME_CERT_SHA256)
     animation = output / 'bootanimation.zip'
     create_boot_animation(animation)
     with animation.open('rb') as stream:

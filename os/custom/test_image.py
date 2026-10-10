@@ -3,7 +3,8 @@ from pathlib import Path
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
-from build_image import AVB, ROOT, GROUP_SIZE, OTHER_PARTITIONS, check_capacity, debugfs, install, replace_line, run
+import zipfile
+from build_image import AVB, ROOT, GROUP_SIZE, OTHER_PARTITIONS, check_capacity, debugfs, install, install_libraries, replace_line, run
 
 
 class ImageRecipeTest(unittest.TestCase):
@@ -42,6 +43,31 @@ class ImageRecipeTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 replace_line(image, target, 'ro.product.product.model=AOSP on ARM64', 'unused')
             run('e2fsck', '-fn', image)
+
+    def test_install_libraries(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            image = root / 'system.img'
+            with image.open('wb') as stream:
+                stream.truncate(16 * 1024**2)
+            run('mke2fs', '-q', '-t', 'ext4', '-b', '4096', '-F', image)
+            apk = root / 'app.apk'
+            with zipfile.ZipFile(apk, 'w', zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr('classes.dex', 'dex')
+                archive.writestr('lib/arm64-v8a/libime.so', 'arm64 code')
+                archive.writestr('lib/armeabi-v7a/libime.so', 'arm32 code')
+            install_libraries(image, apk, '/system/app/Ime')
+            library = '/system/app/Ime/lib/arm64/libime.so'
+            self.assertTrue(debugfs(image, f'cat {library}').endswith('\narm64 code'))
+            self.assertIn('Mode:  0644', debugfs(image, f'stat {library}'))
+            self.assertIn('security.selinux (26)', debugfs(image, f'ea_list {library}'))
+            self.assertIn('security.selinux (26)', debugfs(image, 'ea_list /system/app/Ime/lib/arm64'))
+            self.assertNotIn('classes.dex', debugfs(image, 'ls -l /system/app/Ime'))
+            run('e2fsck', '-fn', image)
+            with zipfile.ZipFile(apk, 'w') as archive:
+                archive.writestr('classes.dex', 'dex')
+            with self.assertRaises(RuntimeError):
+                install_libraries(image, apk, '/system/app/Other')
 
     def test_write_and_preserve(self):
         with tempfile.TemporaryDirectory() as folder:

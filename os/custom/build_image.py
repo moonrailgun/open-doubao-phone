@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 GROUP_SIZE = 8_527_020_032
@@ -70,6 +71,16 @@ def replace_line(image, target, old, new):
         install(image, source, target, '010' + re.search(r'Mode:\s+(\d+)', stat).group(1))
 
 
+def install_libraries(image, apk, directory):
+    """Bundled apps never extract compressed native code; PackageManager loads it from <app>/lib/arm64."""
+    with tempfile.TemporaryDirectory() as folder, zipfile.ZipFile(apk) as archive:
+        entries = [name for name in archive.namelist() if name.startswith('lib/arm64-v8a/') and name.endswith('.so')]
+        if not entries:
+            raise RuntimeError(f'No arm64 native libraries in {apk}')
+        for name in entries:
+            install(image, Path(archive.extract(name, folder)), f'{directory}/lib/arm64/{Path(name).name}')
+
+
 def metadata(image, target, mode):
     for field, value in [('mode', mode), ('uid', '0'), ('gid', '0')]:
         debugfs(image, f'set_inode_field {target} {field} {value}', True)
@@ -96,7 +107,7 @@ def main(output):
     if sha256(original) != upstream['files']['system.img']:
         raise RuntimeError('Original GSI checksum mismatch')
     payload = json.loads((output / 'payload.json').read_text())
-    for name in ('assistant.apk', 'tts.apk', 'dao.apk', 'bootanimation.zip'):
+    for name in ('assistant.apk', 'tts.apk', 'dao.apk', 'doubao-ime.apk', 'bootanimation.zip'):
         if sha256(output / name) != payload[name]['sha256']:
             raise RuntimeError(f'Payload changed after APK verification: {name}')
     image = output / 'system.img'
@@ -116,6 +127,8 @@ def main(output):
     install(image, output / 'assistant.apk', '/system/priv-app/Douxian/Douxian.apk')
     install(image, output / 'tts.apk', '/system/app/DouxianTts/DouxianTts.apk')
     install(image, output / 'dao.apk', '/system/app/DaoBrowser/DaoBrowser.apk')
+    install(image, output / 'doubao-ime.apk', '/system/app/DoubaoIme/DoubaoIme.apk')
+    install_libraries(image, output / 'doubao-ime.apk', '/system/app/DoubaoIme')
     install(image, ROOT / 'os/custom/privapp-permissions-douxian.xml',
             '/system/etc/permissions/privapp-permissions-douxian.xml')
     install(image, ROOT / 'os/custom/douxian.xml', '/system/etc/sysconfig/douxian.xml')

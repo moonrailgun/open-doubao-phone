@@ -21,6 +21,8 @@ python3 android/tools/prepare_voice.py --assets-only --source-bundle
 python3 -B os/custom/test_boot_animation.py
 curl -fL --create-dirs -o os/dao-browser-android-v0.1.9/dao-browser-0.1.9-android-arm64-v8a.apk \
   https://github.com/msgbyte/dao-browser/releases/download/android-v0.1.9/dao-browser-0.1.9-android-arm64-v8a.apk
+curl -fL --create-dirs -o os/doubao-ime-android-v1.5.1/doubaoime_v1.5.1_100501006_official_arm64_release.apk \
+  https://lf-wave.doubaocdn.com/obj/doubao-ime/app/android/doubaoime_v1.5.1_100501006_official_arm64_release.apk
 python3 os/custom/prepare_payload.py "$DOUXIAN_OUTPUT"
 cp android/.voice/voice-corresponding-source.tar.gz "$DOUXIAN_OUTPUT/"
 docker build -t douxian-image-tools os/custom
@@ -30,7 +32,7 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
   douxian-image-tools python3 -B /work/os/custom/build_image.py /out
 ```
 
-配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入助手、TTS、Dao 浏览器三个 APK、省电豁免、默认运行时权限和开机动画，并把 product 与 system_ext 的 `build.prop` 中的设备型号由 `AOSP on ARM64` 改为 `Open Doubao`。其余原有文件及其权限、xattrs 不经过解包重打包；被改写的 `build.prop` 保留原有的 0600 权限与 SELinux 标签；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
+配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入助手、TTS、Dao 浏览器、豆包输入法四个 APK（输入法另附解压出的原生库）、省电豁免、默认运行时权限和开机动画，并把 product 与 system_ext 的 `build.prop` 中的设备型号由 `AOSP on ARM64` 改为 `Open Doubao`。其余原有文件及其权限、xattrs 不经过解包重打包；被改写的 `build.prop` 保留原有的 0600 权限与 SELinux 标签；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
 
 输出包括 `system.img`、`payload.json`、`manifest.json` 和 `avb-info.txt`。使用无签名 AVB 元数据，只适用于当前已解锁且关闭验证的开发设备；不能重新锁定 Bootloader。容量限制使用当前 Pixel 6 Pro 的 dynamic partition group 与其他分区实际尺寸，不能直接套用到其他手机。
 
@@ -41,6 +43,19 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
 ## Dao 浏览器
 
 镜像内置 [Dao 浏览器 Android v0.1.9](https://github.com/msgbyte/dao-browser/releases/tag/android-v0.1.9) 的 arm64 APK（`com.msgbyte.dao`，Gecko 内核），作为普通系统应用写入 `/system/app/DaoBrowser/`，不授予特权权限。`prepare_payload.py` 按发布页公布的 SHA-256 `2645fa95…0856e6` 核对文件，并要求原生库不压缩、16 KB 对齐（`extractNativeLibs=false`），因为只读系统分区上的应用不会解压原生库，只能直接从 APK 加载。APK 保留上游签名（证书 SHA-256 `eb66631c…383937`），之后可用同签名、更高版本号的 APK 原地更新。默认浏览器未改动，需在系统设置中手动切换。升级版本时同时修改脚本中的路径和摘要。
+
+## 豆包输入法
+
+AOSP GSI 只带 LatinIME，不支持中文，因此镜像内置字节跳动的[豆包输入法](https://shurufa.doubao.com/) Android v1.5.1（`com.bytedance.android.doubaoime`，versionCode 100501006）。它作为普通系统应用写入 `/system/app/DoubaoIme/`，不授予特权权限或默认运行时权限。它是闭源软件，使用条款以官方协议为准；对外分发包含它的镜像前需另行确认授权。
+
+官网下载按钮调用 `https://shurufa.doubao.com/api/v1/app/download_url?platform=android` 获取上方 APK 地址。官方没有公布摘要，`prepare_payload.py` 固定下载文件的 SHA-256 `abb24d0a…607f26`（与 CDN 返回的 MD5 ETag 一致）和签名证书 SHA-256 `d47cafb4…86b7df`（北京春田知韵科技有限公司）。这个 APK 压缩存放原生库（`extractNativeLibs=true`），而 PackageManager 不会为未更新过的系统应用解压，只会从 `/system/app/DoubaoIme/lib/arm64/` 加载，所以 `build_image.py` 把其中 76 个 arm64 `.so` 解压写入该目录。镜像因此增加约 250 MB（APK 171 MB，原生库 75 MB）。之后可通过应用商店用同签名的更高版本原地更新；升级内置版本时，同时修改脚本中的路径和两项摘要。
+
+新增的系统输入法不会自动启用。刷写并启动后执行以下命令，启用并切换为默认输入法：
+
+```sh
+adb -s "$DOUXIAN_SERIAL" shell ime enable com.bytedance.android.doubaoime/.ImeService
+adb -s "$DOUXIAN_SERIAL" shell ime set com.bytedance.android.doubaoime/.ImeService
+```
 
 ## 不清数据刷写
 
