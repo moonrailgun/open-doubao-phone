@@ -100,7 +100,7 @@ class LocalVoiceTest {
             await("Previous voice service did not stop", condition = ::serviceStopped)
             val existingCache = context.cacheDir.listFiles().orEmpty().toSet()
             instrument.runOnMainSync {
-                respondToWake.invoke(VoiceRuntime, context, "同志你好。")
+                respondToWake.invoke(VoiceRuntime, context)
                 assertEquals("正在播报", VoiceRuntime.state.value)
                 assertEquals(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, VoiceRuntime.foregroundType)
             }
@@ -115,11 +115,8 @@ class LocalVoiceTest {
             instrument.runOnMainSync { VoiceRuntime.cancel() }
             await("Cancel did not release microphone") { VoiceRuntime.state.value == "空闲" }
             await("Cancelled voice service did not stop", condition = ::serviceStopped)
-            instrument.runOnMainSync { respondToWake.invoke(VoiceRuntime, context, "同志你好。") }
-            await("Reply did not create its playback file", 15_000) {
-                context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("speech-") && it !in existingCache }
-            }
-            instrument.runOnMainSync { VoiceRuntime.cancel() }
+            // The bundled prompt plays at once; cancel while it is still playing.
+            instrument.runOnMainSync { respondToWake.invoke(VoiceRuntime, context); VoiceRuntime.cancel() }
             await("Cancelled reply did not finish") { VoiceRuntime.state.value == "空闲" }
             SystemClock.sleep(1_000)
             assertEquals("Cancelled reply must not start recording", "空闲", VoiceRuntime.state.value)

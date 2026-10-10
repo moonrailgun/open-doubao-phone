@@ -18,7 +18,7 @@ class LocalSpeechEngine(private val context: Context) {
     } }
     private val vad by lazy { initialize("vad") {
         Vad(context.assets, VadModelConfig(sileroVadModelConfig = SileroVadModelConfig(
-            model = "voice/silero_vad.onnx", minSilenceDuration = 0.8f, maxSpeechDuration = 15f,
+            model = "voice/silero_vad.onnx", minSilenceDuration = 2f, maxSpeechDuration = 15f,
         )))
     } }
     private val spotter by lazy { initialize("kws") { createKeywordSpotter(context) } }
@@ -42,29 +42,19 @@ class LocalSpeechEngine(private val context: Context) {
         }
     }
 
-    /** Keep the same recorder and VAD segment across the keyword/command boundary. */
-    fun listenForWake(keepGoing: () -> Boolean, canTakeCommand: () -> Boolean, detected: () -> Unit, ready: () -> Unit): String? {
+    /** Returns the keyword as soon as it is heard, null when it may not take a command, or "" when stopped. */
+    fun listenForWake(keepGoing: () -> Boolean, canTakeCommand: () -> Boolean, ready: () -> Unit): String? {
         val stream = spotter.createStream()
         try {
-            vad.reset()
             return recording { record ->
                 ready()
                 while (keepGoing()) {
-                    val samples = read(record)
-                    vad.acceptWaveform(samples)
-                    stream.acceptWaveform(samples, 16000)
+                    stream.acceptWaveform(read(record), 16000)
                     while (spotter.isReady(stream)) {
                         spotter.decode(stream)
                         val keyword = spotter.getResult(stream).keyword
-                        if (keyword.isNotEmpty()) {
-                            detected()
-                            if (!canTakeCommand()) return@recording null
-                            // Preserve a continuous command, then close the recorder before the wake reply.
-                            return@recording wakeCommand(capture(record, keepGoing, { false })).ifBlank { keyword }
-                        }
+                        if (keyword.isNotEmpty()) return@recording keyword.takeIf { canTakeCommand() }
                     }
-                    // Discard speech without a wake word; never submit it to the task model.
-                    while (!vad.empty()) vad.pop()
                 }
                 ""
             }

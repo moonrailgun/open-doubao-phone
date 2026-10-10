@@ -9,6 +9,8 @@ import android.speech.tts.*
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import kotlinx.coroutines.*
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -62,6 +64,17 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
                 }
             }
         }
+    }
+
+    /** Plays a bundled mono PCM16 WAV prompt; no synthesis, so it starts immediately. */
+    fun play(asset: String) {
+        check(active == null)
+        val id = UUID.randomUUID().toString()
+        active = id
+        val (rate, pcm) = runCatching { wavPcm(context.assets.open(asset).use { it.readBytes() }) }
+            .getOrElse { stop("语音提示 $asset 不可用：${it.message}"); return }
+        startPlayback(rate, AudioFormat.ENCODING_PCM_16BIT, 1)
+        if (active == id) { queueAudio(id, pcm); completeAudio(id) }
     }
 
     private fun speakLocal(id: String, text: String) {
@@ -168,4 +181,31 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
         file?.delete(); file = null
         finished(error)
     }
+}
+
+/** The sample rate and samples of a mono PCM16 WAV file. */
+internal fun wavPcm(wav: ByteArray): Pair<Int, ByteArray> {
+    fun tag(at: Int) = String(wav, at, 4, Charsets.US_ASCII)
+    val bytes = ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN)
+    require(wav.size >= 12 && tag(0) == "RIFF" && tag(8) == "WAVE") { "不是 WAV 文件" }
+    var offset = 12
+    var rate = 0
+    while (offset + 8 <= wav.size) {
+        val size = bytes.getInt(offset + 4)
+        val body = offset + 8
+        require(size >= 0 && size <= wav.size - body) { "WAV 数据不完整" }
+        when (tag(offset)) {
+            "fmt " -> {
+                require(size >= 16 && bytes.getShort(body).toInt() == 1 && bytes.getShort(body + 2).toInt() == 1 &&
+                    bytes.getShort(body + 14).toInt() == 16) { "只支持单声道 16 位 PCM" }
+                rate = bytes.getInt(body + 4)
+            }
+            "data" -> {
+                require(rate > 0) { "缺少 WAV 格式信息" }
+                return rate to wav.copyOfRange(body, body + size)
+            }
+        }
+        offset = body + size + (size and 1) // Chunks are padded to even sizes.
+    }
+    throw IllegalArgumentException("缺少 WAV 音频数据")
 }

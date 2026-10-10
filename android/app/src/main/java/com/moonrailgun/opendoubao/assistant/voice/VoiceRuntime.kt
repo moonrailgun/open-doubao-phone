@@ -136,7 +136,6 @@ object VoiceRuntime {
                             engine(context).listenForWake(
                                 { epoch == wakeEpoch && microphoneAvailable(context) },
                                 { screenAvailable(context) },
-                                { scope.launch { if (epoch == wakeEpoch) mutableState.value = "正在听，请说出任务" } },
                                 { scope.launch { if (epoch == wakeEpoch) mutableState.value = "等待唤醒词" } },
                             )
                         }
@@ -151,7 +150,7 @@ object VoiceRuntime {
                     val text = result.getOrNull()
                     if (text == "") continue
                     wakeJob = null
-                    if (text == null) speakUnlock(context) else respondToWake(context, text)
+                    if (text == null) speakUnlock(context) else respondToWake(context)
                     startWake()
                     return@launch
                 }
@@ -192,25 +191,28 @@ object VoiceRuntime {
             }
         }
     }
-    fun listenForTask(context: Context) {
+    fun listenForTask(context: Context, retry: Boolean = true) {
         if (!screenAvailable(context)) { speakUnlock(context); return }
         if (!hasMic(context)) { mutableError.value = "请先在应用中授权麦克风"; return }
         val id = begin(context, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE, "正在加载本地语音") ?: return
         scope.launch {
             val result = record(context, id)
-            if (finish(id)) result.fold({ dispatch(context, it) }, { mutableError.value = it.message ?: "识别失败" })
+            if (finish(id)) result.fold({ dispatch(context, it, retry) }, { mutableError.value = it.message ?: "识别失败" })
         }
     }
-    internal fun respondToWake(context: Context, text: String) {
-        speak(context, "我在", false) {
-            if (parseVoiceCommand(text) == VoiceCommand.Empty) listenForTask(context)
-            else dispatch(context, text)
-        }
+    /** Answers the wake word at once with a bundled prompt, then listens for the task. */
+    internal fun respondToWake(context: Context) {
+        speak(context, "我在", false, "voice/prompts/wake-${(1..3).random()}.wav") { listenForTask(context) }
     }
-    private fun dispatch(context: Context, text: String) {
+    private fun dispatch(context: Context, text: String, retry: Boolean) {
         if (!screenAvailable(context)) { speakUnlock(context); return }
         val command = parseVoiceCommand(text)
-        if (command == VoiceCommand.Empty) { speak(context, "没有听清，请重新唤醒后说出任务。"); return }
+        if (command == VoiceCommand.Empty) {
+            // Ask once more, then give up so an empty room cannot keep the microphone open.
+            if (retry) speak(context, "我没有听清楚，能再说一遍么", false, "voice/prompts/retry.wav") { listenForTask(context, false) }
+            else speak(context, "没有听清，请重新唤醒后说出任务。")
+            return
+        }
         runCatching {
             val service = checkNotNull(AssistantService.connected.value) { "请先在设置中启用豆馅无障碍服务" }
             when (command) {
@@ -236,7 +238,7 @@ object VoiceRuntime {
 
     fun speak(context: Context, text: String) = speak(context, text, false)
     private fun speakUnlock(context: Context) = speak(context, "请先点亮并解锁手机，然后重新下达指令。", true)
-    private fun speak(context: Context, text: String, unlockPrompt: Boolean, after: (() -> Unit)? = null): Boolean {
+    private fun speak(context: Context, text: String, unlockPrompt: Boolean, clip: String? = null, after: (() -> Unit)? = null): Boolean {
         if (!unlockPrompt && !screenAvailable(context)) return false
         val id = begin(context, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, "正在播报") ?: return false
         scope.launch {
@@ -248,7 +250,7 @@ object VoiceRuntime {
                     if (error != null) mutableError.value = error
                     finish(id, if (error == null) after else null)
                 }
-                speech?.speak(text)
+                if (clip != null) speech?.play(clip) else speech?.speak(text)
             } catch (e: Exception) { mutableError.value = e.message ?: "播报失败"; finish(id) }
         }
         return true
