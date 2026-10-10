@@ -175,8 +175,14 @@ class MainActivity : ComponentActivity() {
         fun attempt(action: () -> Unit) {
             try { action() } catch (e: Exception) { message = e.message ?: "操作失败" }
         }
-        val remoteConfigVersion by AssistantService.remoteConfigVersion.collectAsState()
-        LaunchedEffect(remoteConfigVersion) { attempt { config = vault.read().config } }
+        val remoteEditVersion by AssistantService.remoteEditVersion.collectAsState()
+        LaunchedEffect(remoteEditVersion) { attempt {
+            val fresh = vault.read()
+            config = fresh.config
+            apps = catalogSelection(installed, fresh.apps, fresh.appsConfigured)
+            consent = fresh.consent
+            records = fresh.records
+        } }
         LaunchedEffect(refresh, task.status) { attempt { records = vault.read().records } }
         DisposableEffect(tab) {
             if (tab == 2) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)

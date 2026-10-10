@@ -1,6 +1,7 @@
 package com.openodoubao.assistant.remote
 
 import android.annotation.SuppressLint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -147,8 +148,9 @@ class RemoteReceiver(
         client = next
         update(if (config.binding == null) "正在验证桌面端…" else "正在连接桌面端…")
         socket = next.newWebSocket(Request.Builder().url("wss://${target.host}:${target.port}/").build(), object : WebSocketListener() {
-            private fun current(webSocket: WebSocket, block: () -> Unit) {
-                scope.launch { if (generation == token && socket === webSocket && config.enabled) block() }
+            private fun live(webSocket: WebSocket) = generation == token && socket === webSocket && config.enabled
+            private fun current(webSocket: WebSocket, block: suspend () -> Unit) {
+                scope.launch { if (live(webSocket)) block() }
             }
             override fun onOpen(webSocket: WebSocket, response: Response) = current(webSocket) {
                 send(JSONObject().put("type", "hello").put("version", 1).put("token", target.token)
@@ -171,7 +173,12 @@ class RemoteReceiver(
                         welcomeTimeout?.cancel(); welcomeTimeout = null
                         update("已连接，可从桌面下发任务并查看记录")
                         send(JSONObject().put("type", "state").put("data", tasks.snapshot().json()))
-                    } else send(commands.handle(text))
+                    } else {
+                        val reply = commands.handle(text)
+                        // A connection test can outlive its socket; its late reply must not reach a newer connection.
+                        if (live(webSocket)) send(reply)
+                    }
+                } catch (e: CancellationException) { throw e
                 } catch (_: Exception) { halt("桌面协议或本地存储异常，已停止接收；请重新开启或绑定") }
             }
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) = current(webSocket) { halt("不支持二进制消息，已停止接收") }

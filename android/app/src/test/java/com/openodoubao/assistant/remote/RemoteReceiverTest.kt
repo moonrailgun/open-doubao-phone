@@ -160,6 +160,11 @@ class RemoteReceiverTest {
         override fun records() = emptyList<Record>()
         override fun start(goal: String, taskId: String): String { starts++; return taskId }
         override fun stop(taskId: String) = Unit
+        override fun resume(taskId: String) = Unit
+        override fun deleteRecord(taskId: String) = Unit
+        override suspend fun testConfig(config: com.openodoubao.assistant.model.ModelConfig) = Unit
+        override fun access() = AppAccess(emptyList(), emptySet(), false)
+        override fun saveAccess(apps: Set<String>, consent: Boolean) = Unit
     }
 
     private class Fixture(config: RemoteConfig) : AutoCloseable {

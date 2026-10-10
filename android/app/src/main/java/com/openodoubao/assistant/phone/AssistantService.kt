@@ -44,6 +44,7 @@ import com.openodoubao.assistant.data.Record
 import com.openodoubao.assistant.data.Vault
 import com.openodoubao.assistant.model.CloudModels
 import com.openodoubao.assistant.model.ModelConfig
+import com.openodoubao.assistant.remote.AppAccess
 import com.openodoubao.assistant.remote.RemoteProtocol
 import com.openodoubao.assistant.remote.RemoteReceiver
 import com.openodoubao.assistant.remote.RemoteSnapshot
@@ -61,8 +62,9 @@ class AssistantService : AccessibilityService() {
     companion object {
         private val connection = MutableStateFlow<AssistantService?>(null)
         val connected = connection.asStateFlow()
-        private val configVersion = MutableStateFlow(0)
-        val remoteConfigVersion = configVersion.asStateFlow()
+        private val remoteEdits = MutableStateFlow(0)
+        /** Bumped when the desktop changes saved settings or records, so open screens reload them. */
+        val remoteEditVersion = remoteEdits.asStateFlow()
         init {
             // A crash mid-task would otherwise leave its record stuck at RUNNING with no reason.
             val previous = Thread.getDefaultUncaughtExceptionHandler()
@@ -139,7 +141,18 @@ class AssistantService : AccessibilityService() {
                     override fun saveConfig(config: ModelConfig) {
                         check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改模型配置" }
                         vault.write(vault.read().copy(config = config))
-                        configVersion.value++
+                        remoteEdits.value++
+                    }
+                    override suspend fun testConfig(config: ModelConfig) = CloudModels(config).checkConnection()
+                    override fun access(): AppAccess {
+                        val saved = vault.read()
+                        val catalog = loadAppCatalog(this@AssistantService)
+                        return AppAccess(catalog, catalogSelection(catalog, saved.apps, saved.appsConfigured), saved.consent)
+                    }
+                    override fun saveAccess(apps: Set<String>, consent: Boolean) {
+                        check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改应用范围" }
+                        vault.write(vault.read().copy(apps = apps, appsConfigured = true, consent = consent))
+                        remoteEdits.value++
                     }
                     override fun start(goal: String, taskId: String): String {
                         return startTask(goal, taskId)
@@ -147,6 +160,16 @@ class AssistantService : AccessibilityService() {
                     override fun stop(taskId: String) {
                         check(remoteSnapshot.value.taskId == taskId) { "该任务不是当前任务" }
                         this@AssistantService.stop()
+                    }
+                    override fun resume(taskId: String) {
+                        check(remoteSnapshot.value.taskId == taskId) { "该任务不是当前任务" }
+                        this@AssistantService.resume()
+                    }
+                    override fun deleteRecord(taskId: String) {
+                        check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再删除记录" }
+                        val saved = vault.read()
+                        vault.write(saved.copy(records = saved.records.filterNot { it.id == taskId }))
+                        remoteEdits.value++
                     }
                 }, remoteSnapshot, android.os.Build.MODEL)
         }.onFailure { remoteError = it.message ?: "远程接收初始化失败" }

@@ -4,6 +4,8 @@ import com.openodoubao.assistant.core.TaskState
 import com.openodoubao.assistant.core.TaskStatus
 import com.openodoubao.assistant.data.Record
 import com.openodoubao.assistant.model.ModelConfig
+import com.openodoubao.assistant.phone.InstalledApp
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -69,17 +71,47 @@ internal fun JSONObject.exactFields(vararg names: String) {
     require(keys().asSequence().toSet() == names.toSet()) { "消息字段不完整或包含未知字段" }
 }
 
+/** The apps a task may touch, as the phone's app picker shows them. */
+data class AppAccess(val catalog: List<InstalledApp>, val selected: Set<String>, val consent: Boolean)
+
 interface RemoteTasks {
     fun snapshot(): RemoteSnapshot
     fun records(): List<Record>
     fun start(goal: String, taskId: String): String
     fun stop(taskId: String)
+    fun resume(taskId: String)
+    fun deleteRecord(taskId: String)
     fun config(): ModelConfig
     fun saveConfig(config: ModelConfig)
+    suspend fun testConfig(config: ModelConfig)
+    fun access(): AppAccess
+    fun saveAccess(apps: Set<String>, consent: Boolean)
 }
 
 class RemoteCommands(private val tasks: RemoteTasks) {
-    fun handle(text: String): JSONObject {
+    private fun idle() = tasks.snapshot().task.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)
+
+    /** Shared by config.set and config.test: a null key keeps the saved one only for the same endpoint. */
+    private fun remoteConfig(params: JSONObject): ModelConfig {
+        params.exactFields("jevEndpoint", "jevModel", "jevKey", "chatEndpoint", "chatModel", "chatKey", "language")
+        val old = tasks.config()
+        fun field(name: String, limit: Int): String = params.string(name).also {
+            require(it.length <= limit) { "字段 $name 过长" }
+        }.trim()
+        val jevEndpoint = field("jevEndpoint", 2048)
+        val chatEndpoint = field("chatEndpoint", 2048)
+        fun key(name: String, endpoint: String, previousEndpoint: String, previousKey: String): String {
+            if (!params.isNull(name)) return field(name, 8192)
+            // Never forward an existing secret to a remotely changed endpoint.
+            require(endpoint == previousEndpoint) { "修改接口地址时请填写新的 API Key" }
+            return previousKey
+        }
+        return ModelConfig(jevEndpoint, field("jevModel", 200), key("jevKey", jevEndpoint, old.jevEndpoint, old.jevKey),
+            chatEndpoint, field("chatModel", 200), key("chatKey", chatEndpoint, old.chatEndpoint, old.chatKey), field("language", 64))
+            .also { it.validate() }
+    }
+
+    suspend fun handle(text: String): JSONObject {
         val request = RemoteProtocol.json(text)
         request.exactFields("type", "id", "method", "params")
         require(request.string("type") == "request") { "不支持的消息类型" }
@@ -109,6 +141,15 @@ class RemoteCommands(private val tasks: RemoteTasks) {
                     tasks.stop(taskId)
                     JSONObject().put("taskId", taskId)
                 }
+                "task.resume" -> {
+                    params.exactFields("taskId")
+                    val taskId = RemoteProtocol.uuid(params.string("taskId"))
+                    val current = tasks.snapshot()
+                    check(current.taskId == taskId) { "该任务不是当前任务" }
+                    check(current.task.status == TaskStatus.PAUSED) { "任务没有暂停，无需继续" }
+                    tasks.resume(taskId)
+                    JSONObject().put("taskId", taskId)
+                }
                 "records.list" -> {
                     params.exactFields()
                     JSONArray(tasks.records().take(30).map { it.json(preview = true) })
@@ -118,32 +159,51 @@ class RemoteCommands(private val tasks: RemoteTasks) {
                     val taskId = RemoteProtocol.uuid(params.string("taskId"))
                     (tasks.records().firstOrNull { it.id == taskId } ?: error("未找到任务记录")).json()
                 }
+                "records.delete" -> {
+                    params.exactFields("taskId")
+                    val taskId = RemoteProtocol.uuid(params.string("taskId"))
+                    check(idle()) { "请先停止当前任务再删除记录" }
+                    check(tasks.records().any { it.id == taskId }) { "未找到任务记录" }
+                    tasks.deleteRecord(taskId)
+                    JSONObject().put("taskId", taskId)
+                }
                 "status.get" -> { params.exactFields(); tasks.snapshot().json() }
                 "config.get" -> { params.exactFields(); tasks.config().remoteJson() }
                 "config.set" -> {
-                    params.exactFields("jevEndpoint", "jevModel", "jevKey", "chatEndpoint", "chatModel", "chatKey", "language")
-                    check(tasks.snapshot().task.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改模型配置" }
-                    val old = tasks.config()
-                    fun field(name: String, limit: Int): String = params.string(name).also {
-                        require(it.length <= limit) { "字段 $name 过长" }
-                    }.trim()
-                    val jevEndpoint = field("jevEndpoint", 2048)
-                    val chatEndpoint = field("chatEndpoint", 2048)
-                    fun key(name: String, endpoint: String, previousEndpoint: String, previousKey: String): String {
-                        if (!params.isNull(name)) return field(name, 8192)
-                        // Never forward an existing secret to a remotely changed endpoint.
-                        require(endpoint == previousEndpoint) { "修改接口地址时请填写新的 API Key" }
-                        return previousKey
-                    }
-                    val config = ModelConfig(jevEndpoint, field("jevModel", 200), key("jevKey", jevEndpoint, old.jevEndpoint, old.jevKey),
-                        chatEndpoint, field("chatModel", 200), key("chatKey", chatEndpoint, old.chatEndpoint, old.chatKey), field("language", 64))
-                    config.validate()
+                    check(idle()) { "请先停止当前任务再修改模型配置" }
+                    val config = remoteConfig(params)
                     tasks.saveConfig(config)
                     config.remoteJson()
+                }
+                "config.test" -> {
+                    check(idle()) { "请先停止当前任务再测试连接" }
+                    tasks.testConfig(remoteConfig(params))
+                    JSONObject()
+                }
+                "apps.get" -> {
+                    params.exactFields()
+                    val access = tasks.access()
+                    JSONObject().put("consent", access.consent).put("selected", JSONArray(access.selected.toList()))
+                        .put("apps", JSONArray(access.catalog.map {
+                            JSONObject().put("packageName", it.packageName).put("label", it.label.take(200)).put("launchable", it.launchable)
+                        }))
+                }
+                "apps.set" -> {
+                    params.exactFields("apps", "consent")
+                    check(idle()) { "请先停止当前任务再修改应用范围" }
+                    val list = params.opt("apps") as? JSONArray ?: throw IllegalArgumentException("apps 必须是数组")
+                    val consent = params.opt("consent") as? Boolean ?: throw IllegalArgumentException("consent 必须是布尔值")
+                    val apps = (0 until list.length()).map { list.opt(it) as? String ?: throw IllegalArgumentException("应用包名无效") }.toSet()
+                    require(apps.isNotEmpty()) { "请至少选择一个应用" }
+                    val installed = tasks.access().catalog.map { it.packageName }.toSet()
+                    require(installed.containsAll(apps)) { "包含手机上不存在的应用" }
+                    tasks.saveAccess(apps, consent)
+                    JSONObject().put("selected", apps.size).put("consent", consent)
                 }
                 else -> error("不支持的远程方法")
             }
             response.put("ok", true).put("data", data)
+        } catch (e: CancellationException) { throw e
         } catch (e: Exception) {
             response.put("ok", false).put("error", e.message?.take(500) ?: "请求失败")
         }

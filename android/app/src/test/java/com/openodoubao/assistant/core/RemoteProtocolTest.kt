@@ -2,7 +2,9 @@ package com.openodoubao.assistant.core
 
 import com.openodoubao.assistant.data.Record
 import com.openodoubao.assistant.model.ModelConfig
+import com.openodoubao.assistant.phone.InstalledApp
 import com.openodoubao.assistant.remote.*
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -51,7 +53,19 @@ class RemoteProtocolTest {
             return taskId
         }
         override fun stop(taskId: String) { stops++; current = current.copy(task = current.task.copy(status = TaskStatus.STOPPED)) }
+        var resumes = 0
+        override fun resume(taskId: String) { resumes++; current = current.copy(task = current.task.copy(status = TaskStatus.RUNNING)) }
+        override fun deleteRecord(taskId: String) { saved.removeAll { it.id == taskId } }
+        val tested = mutableListOf<ModelConfig>()
+        override suspend fun testConfig(config: ModelConfig) { tested += config }
+        var access = AppAccess(listOf(InstalledApp("com.example.notes", "备忘录", true), InstalledApp("com.google.android.gms", "Google Play 服务", false)),
+            setOf("com.example.notes"), false)
+        override fun access() = access
+        override fun saveAccess(apps: Set<String>, consent: Boolean) { access = access.copy(selected = apps, consent = consent) }
     }
+
+    // Commands only suspend for connection tests; the fakes return immediately.
+    private fun RemoteCommands.call(text: String) = runBlocking { handle(text) }
 
     private fun request(method: String, params: JSONObject = JSONObject(), requestId: String = id) =
         JSONObject().put("type", "request").put("id", requestId).put("method", method).put("params", params).toString()
@@ -60,10 +74,10 @@ class RemoteProtocolTest {
         val phone = Phone()
         val commands = RemoteCommands(phone)
         val message = request("task.start", JSONObject().put("goal", "read page"))
-        assertEquals(id, commands.handle(message).getJSONObject("data").getString("taskId"))
-        assertTrue(commands.handle(message).getBoolean("ok"))
+        assertEquals(id, commands.call(message).getJSONObject("data").getString("taskId"))
+        assertTrue(commands.call(message).getBoolean("ok"))
         assertEquals(1, phone.starts)
-        val changed = commands.handle(request("task.start", JSONObject().put("goal", "different")))
+        val changed = commands.call(request("task.start", JSONObject().put("goal", "different")))
         assertFalse(changed.getBoolean("ok"))
         assertEquals(1, phone.starts)
     }
@@ -71,25 +85,25 @@ class RemoteProtocolTest {
     @Test fun stopForAnOldTaskCannotStopTheCurrentTask() {
         val phone = Phone().apply { current = RemoteSnapshot(id, TaskState(status = TaskStatus.RUNNING)) }
         val commands = RemoteCommands(phone)
-        assertFalse(commands.handle(request("task.stop", JSONObject().put("taskId", otherId))).getBoolean("ok"))
+        assertFalse(commands.call(request("task.stop", JSONObject().put("taskId", otherId))).getBoolean("ok"))
         assertEquals(0, phone.stops)
-        assertTrue(commands.handle(request("task.stop", JSONObject().put("taskId", id))).getBoolean("ok"))
+        assertTrue(commands.call(request("task.stop", JSONObject().put("taskId", id))).getBoolean("ok"))
         assertEquals(1, phone.stops)
     }
 
     @Test fun pausedTaskRemainsCurrentAndCanBeStoppedButNotOverwritten() {
         val phone = Phone().apply { current = RemoteSnapshot(id, TaskState(status = TaskStatus.PAUSED)) }
         val commands = RemoteCommands(phone)
-        val state = commands.handle(request("status.get")).getJSONObject("data")
+        val state = commands.call(request("status.get")).getJSONObject("data")
         assertEquals(id, state.getString("taskId"))
         assertEquals("PAUSED", state.getString("status"))
-        val start = commands.handle(request("task.start", JSONObject().put("goal", "new task"), otherId))
+        val start = commands.call(request("task.start", JSONObject().put("goal", "new task"), otherId))
         assertFalse(start.getBoolean("ok"))
         assertEquals(0, phone.starts)
         assertEquals(TaskStatus.PAUSED, phone.current.task.status)
-        assertFalse(commands.handle(request("task.stop", JSONObject().put("taskId", otherId))).getBoolean("ok"))
+        assertFalse(commands.call(request("task.stop", JSONObject().put("taskId", otherId))).getBoolean("ok"))
         assertEquals(0, phone.stops)
-        assertTrue(commands.handle(request("task.stop", JSONObject().put("taskId", id))).getBoolean("ok"))
+        assertTrue(commands.call(request("task.stop", JSONObject().put("taskId", id))).getBoolean("ok"))
         assertEquals(1, phone.stops)
         assertEquals(TaskStatus.STOPPED, phone.current.task.status)
     }
@@ -102,11 +116,11 @@ class RemoteProtocolTest {
             request("task.start", JSONObject().put("goal", "x".repeat(4001))),
             request("task.start", JSONObject().put("goal", "hello").put("apps", "all")),
             request("status.get", JSONObject().put("extra", true))).forEach {
-            assertFalse(it, commands.handle(it).getBoolean("ok"))
+            assertFalse(it, commands.call(it).getBoolean("ok"))
         }
         listOf("{}", "[]", request("status.get", requestId = "not-a-uuid"),
             " ".repeat(RemoteProtocol.MAX_FRAME_BYTES + 1)).forEach {
-            assertThrows(IllegalArgumentException::class.java) { commands.handle(it) }
+            assertThrows(IllegalArgumentException::class.java) { commands.call(it) }
         }
         assertEquals(0, phone.starts)
     }
@@ -118,7 +132,7 @@ class RemoteProtocolTest {
     @Test fun modelConfigReadsAndWritesNeverReturnKeysAndNullKeepsExistingKeys() {
         val phone = Phone()
         val commands = RemoteCommands(phone)
-        val read = commands.handle(request("config.get"))
+        val read = commands.call(request("config.get"))
         assertTrue(read.toString(), read.getBoolean("ok"))
         val data = read.getJSONObject("data")
         assertTrue(data.getBoolean("hasJevKey"))
@@ -127,14 +141,14 @@ class RemoteProtocolTest {
         assertFalse(data.has("chatKey"))
         assertFalse(read.toString().contains("secret"))
         val params = configParams(phone.config).put("chatModel", "new-model").put("language", "zh-CN")
-        val saved = commands.handle(request("config.set", params))
+        val saved = commands.call(request("config.set", params))
         assertTrue(saved.toString(), saved.getBoolean("ok"))
         assertFalse(saved.toString().contains("secret"))
         assertEquals("existing-chat-secret", phone.config.chatKey)
         assertEquals("new-model", phone.config.chatModel)
         assertEquals("zh-CN", phone.config.language)
         assertEquals(1, phone.configWrites)
-        val replaced = commands.handle(request("config.set", configParams(phone.config)
+        val replaced = commands.call(request("config.set", configParams(phone.config)
             .put("jevEndpoint", "https://other.example/v1").put("jevKey", "new-secret")))
         assertTrue(replaced.toString(), replaced.getBoolean("ok"))
         assertEquals("new-secret", phone.config.jevKey)
@@ -151,18 +165,80 @@ class RemoteProtocolTest {
             configParams(before).put("chatModel", ""), configParams(before).put("jevModel", "x".repeat(201)),
             configParams(before).put("language", "x".repeat(65)), configParams(before).put("apps", "all"),
             configParams(before).also { it.remove("jevKey") }).forEach {
-            assertFalse(commands.handle(request("config.set", it)).getBoolean("ok"))
+            assertFalse(commands.call(request("config.set", it)).getBoolean("ok"))
         }
         for (status in listOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) {
             phone.current = RemoteSnapshot(id, TaskState(status = status))
-            assertFalse(commands.handle(request("config.set", configParams(before))).getBoolean("ok"))
+            assertFalse(commands.call(request("config.set", configParams(before))).getBoolean("ok"))
         }
         assertEquals(before, phone.config)
         assertEquals(0, phone.configWrites)
         phone.current = RemoteSnapshot()
         phone.failSave = true
-        assertFalse(commands.handle(request("config.set", configParams(before))).getBoolean("ok"))
+        assertFalse(commands.call(request("config.set", configParams(before))).getBoolean("ok"))
         assertEquals(before, phone.config)
+    }
+
+    @Test fun resumeOnlyContinuesTheCurrentPausedTask() {
+        val phone = Phone().apply { current = RemoteSnapshot(id, TaskState(status = TaskStatus.RUNNING)) }
+        val commands = RemoteCommands(phone)
+        assertFalse(commands.call(request("task.resume", JSONObject().put("taskId", id))).getBoolean("ok"))
+        phone.current = RemoteSnapshot(id, TaskState(status = TaskStatus.PAUSED))
+        assertFalse(commands.call(request("task.resume", JSONObject().put("taskId", otherId))).getBoolean("ok"))
+        assertEquals(0, phone.resumes)
+        assertTrue(commands.call(request("task.resume", JSONObject().put("taskId", id))).getBoolean("ok"))
+        assertEquals(1, phone.resumes)
+        assertEquals(TaskStatus.RUNNING, phone.current.task.status)
+    }
+
+    @Test fun recordsAreDeletedOnlyWhenIdleAndPresent() {
+        val phone = Phone().apply { saved += Record(id, 10, "done", "COMPLETED", "ok") }
+        val commands = RemoteCommands(phone)
+        phone.current = RemoteSnapshot(otherId, TaskState(status = TaskStatus.PAUSED))
+        assertFalse(commands.call(request("records.delete", JSONObject().put("taskId", id))).getBoolean("ok"))
+        assertEquals(1, phone.saved.size)
+        phone.current = RemoteSnapshot()
+        assertFalse(commands.call(request("records.delete", JSONObject().put("taskId", otherId))).getBoolean("ok"))
+        assertTrue(commands.call(request("records.delete", JSONObject().put("taskId", id))).getBoolean("ok"))
+        assertTrue(phone.saved.isEmpty())
+    }
+
+    @Test fun connectionTestUsesFormValuesButNeverSendsSavedKeysToANewEndpoint() {
+        val phone = Phone()
+        val commands = RemoteCommands(phone)
+        val ok = commands.call(request("config.test", configParams(phone.config).put("chatModel", "draft")))
+        assertTrue(ok.toString(), ok.getBoolean("ok"))
+        assertEquals("draft", phone.tested.single().chatModel)
+        assertEquals("existing-chat-secret", phone.tested.single().chatKey)
+        assertFalse(commands.call(request("config.test", configParams(phone.config)
+            .put("chatEndpoint", "https://attacker.example/v1"))).getBoolean("ok"))
+        phone.current = RemoteSnapshot(id, TaskState(status = TaskStatus.RUNNING))
+        assertFalse(commands.call(request("config.test", configParams(phone.config))).getBoolean("ok"))
+        assertEquals(1, phone.tested.size)
+        assertEquals(0, phone.configWrites)
+    }
+
+    @Test fun appScopeListsTheCatalogAndAcceptsOnlyInstalledNonEmptySelections() {
+        val phone = Phone()
+        val commands = RemoteCommands(phone)
+        val read = commands.call(request("apps.get")).getJSONObject("data")
+        assertEquals(2, read.getJSONArray("apps").length())
+        assertFalse(read.getJSONArray("apps").getJSONObject(1).getBoolean("launchable"))
+        assertEquals("com.example.notes", read.getJSONArray("selected").getString(0))
+        assertFalse(read.getBoolean("consent"))
+        fun set(apps: List<Any>, consent: Any = true) = commands.call(request("apps.set",
+            JSONObject().put("apps", org.json.JSONArray(apps)).put("consent", consent))).getBoolean("ok")
+        assertFalse(set(emptyList()))
+        assertFalse(set(listOf("com.not.installed")))
+        assertFalse(set(listOf(42)))
+        assertFalse(set(listOf("com.example.notes"), "yes"))
+        phone.current = RemoteSnapshot(id, TaskState(status = TaskStatus.PAUSED))
+        assertFalse(set(listOf("com.google.android.gms")))
+        assertFalse(phone.access.consent)
+        phone.current = RemoteSnapshot()
+        assertTrue(set(listOf("com.example.notes", "com.google.android.gms")))
+        assertEquals(setOf("com.example.notes", "com.google.android.gms"), phone.access.selected)
+        assertTrue(phone.access.consent)
     }
 
     @Test fun historyListsAreBoundedWhileDetailAndLiveStateKeepDiagnostics() {
@@ -170,14 +246,14 @@ class RemoteProtocolTest {
         repeat(30) { phone.saved += Record(if (it == 0) id else java.util.UUID.randomUUID().toString(), 10,
             "中".repeat(4000), "COMPLETED", "文".repeat(6000), listOf("12:00 read browser.app")) }
         val commands = RemoteCommands(phone)
-        val list = commands.handle(request("records.list"))
+        val list = commands.call(request("records.list"))
         assertTrue(list.toString().toByteArray().size <= RemoteProtocol.MAX_FRAME_BYTES)
         assertFalse(list.getJSONArray("data").getJSONObject(0).has("log"))
-        val detail = commands.handle(request("records.get", JSONObject().put("taskId", id))).getJSONObject("data")
+        val detail = commands.call(request("records.get", JSONObject().put("taskId", id))).getJSONObject("data")
         assertEquals(4000, detail.getString("goal").length)
         assertEquals(6000, detail.getString("result").length)
         assertEquals("12:00 read browser.app", detail.getJSONArray("log").getString(0))
         phone.current = RemoteSnapshot(id, TaskState(trace = listOf("diagnostic"), log = listOf("short UI log")))
-        assertEquals("diagnostic", commands.handle(request("status.get")).getJSONObject("data").getJSONArray("log").getString(0))
+        assertEquals("diagnostic", commands.call(request("status.get")).getJSONObject("data").getJSONArray("log").getString(0))
     }
 }
