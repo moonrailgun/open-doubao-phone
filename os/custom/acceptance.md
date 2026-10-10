@@ -4,7 +4,7 @@
 
 ## 当前产物
 
-当前已刷入 v1.13（v1.12 加豆包输入法和设备型号 Open Doubao；v1.12 起包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
+当前已刷入 v1.14（v1.13 换上唤醒离线提示音与默认应用范围修复的助手，以及带新图标的 TTS；v1.13 为 v1.12 加豆包输入法和设备型号 Open Doubao；v1.12 起包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
 
 本地输出目录：`os/custom/out/v1.9/`，未纳入 Git。保留原始镜像和先前版本输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
@@ -180,6 +180,20 @@ b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xa1697000`，与
 b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xb00dd000`，与 manifest 一致。启动 25 秒完成，`ro.product.model` 为 Open Doubao。设备上五个写入文件摘要与 payload 一致；豆包输入法为 SYSTEM 应用，`primaryCpuAbi=arm64-v8a`，库目录 `/system/app/DoubaoIme/lib`，文件为 root:root/0644、`system_file`；助手仍为 SYSTEM、PERSISTENT 并持有默认助手角色，见 `device-checks.txt`。补授三项运行时权限；按旧 README 命令设置设备名只写入 `Open`（引号未传到手机），已改正命令并重设为 `Open Doubao`。
 
 用 `ime enable` / `ime set` 启用并设为默认后，在设置搜索框请求键盘，输入法进程启动并显示其用户协议页（`PrivacyStatementActivity`），日志无 FATAL、`UnsatisfiedLinkError` 或 dlopen 失败；AVC 拒绝只来自 `rild`（已知）和 `hal_graphics_composer_default`，见 `ime-first-run-logcat.txt`。随后用户在手机上完成首次引导，麦克风与通知权限为用户授予（USER_SET）。重启后在设置搜索框直接弹出拼音 26 键键盘，没有再出现协议页，默认输入法与麦克风授权保留，助手后台录音恢复且未被静音；未做真人唤醒检查。之后配方新增的 `default-permissions-doubaoime.xml`（默认授予输入法麦克风）未随 v1.13 刷入。
+
+## v1.14：唤醒离线提示音
+
+由提交 `63f8b23` 构建，工作区无未提交改动。助手含 `355128d`：检测到唤醒词立即从内置的「我在」「诶」「有什么指示」中随机播放一段（ElevenLabs `eleven_v3`、音色 `bhJUNIXWQQ94l8eI2VUf`，`android/tools/make_voice_prompts.py` 生成的 24 kHz 单声道 WAV），播完再录音；不再支持唤醒词后连着说任务。VAD 静音判定由 0.8 秒改为 2 秒；识别为空时播放「我没有听清楚，能再说一遍么」并重听一次，仍为空才提示重新唤醒。另含 `63f8b23`：后台任务（语音、悬浮窗、桌面）在未保存应用范围时按全部可启动应用执行，而不是报「请先选择本次任务允许访问的应用」。TTS 首次带上 `14e5414` 的新图标；Dao、豆包输入法与开机动画与 v1.13 相同。
+
+| 产物 | SHA-256 |
+|---|---|
+| `system.img` | `4d856b43c2ca20e294ca93d0b52043a8a7497581b53c44e517227eed2cc62277` |
+| `assistant.apk` | `d8fafb806e701685540d6632ab7980100bc436ef69e156993043b5d08579f7d9` |
+| `tts.apk` | `34740b8ba203ebeb8d8504d97439f4530528c5707ca142bd2921eb34a39dab88` |
+
+镜像为 2,954,178,560 字节，比 v1.13 多 483,328 字节；动态分区距上限余 106,283,008 字节。系统 APK lint 与单元测试、开机动画测试、小型 ext4 测试、读回摘要与 AVB 校验通过，见 `gradle.log`、`image-test.log`、`build.log`。
+
+b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xb0153000`，与 manifest 一致。启动 24 秒完成，型号 Open Doubao。设备上五个写入文件摘要与 payload 一致，助手 APK 含四段提示音；助手为 SYSTEM、PERSISTENT，持有默认助手与识别服务，无障碍服务已启用，默认输入法仍为豆包输入法，设备名保留为 Open Doubao；补授三项运行时权限；开机后后台录音未被静音，见 `device-checks.txt`。开机日志无助手崩溃；崩溃缓冲区只有 v1 起已有的 `init` 子进程 SIGABRT。未做真人唤醒、提示音实际听感和识别失败重试的现场检查。
 
 ## 唤醒失效反馈跟进
 
