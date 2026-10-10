@@ -13,7 +13,7 @@ cd android
 
 ## 构建镜像副本
 
-需要 Docker、Python 3.12+、Pillow（本次使用 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 40 GB 可用空间。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
+需要 Docker、Python 3.12+、FFmpeg、Pillow（测试使用，本次为 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 40 GB 可用空间。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
 
 ```sh
 export DOUXIAN_OUTPUT=/path/with/40GB/free/douxian-v1
@@ -116,8 +116,10 @@ adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
 
 ## 开机动画
 
-`boot_animation.py` 直接使用现有应用 Logo，生成 Android 原生 `ZIP_STORED` 归档：1440×3120 白底、居中的 512×512 Logo、30 fps，先从纯白淡入 0.8 秒，再循环 2 秒的轻微透明度变化，系统就绪时可立即结束。PNG 使用 `trim.txt` 定位，避免为每帧保存整块白色背景。格式遵循 [AOSP bootanimation 规范](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/FORMAT.md)。
+`boot_animation.py` 使用仓库内的 `boot-greeting.mp4`，通过 FFmpeg 生成 Android 原生 `ZIP_STORED` 归档：1440×3120 白底、居中的 512×512 头像、30 fps，按原速完整播放 4 秒（120 帧）的挥手招呼。素材为选定的 `artifacts/boot-h3-greeting-natural-4s-20261010/boot-greeting-4s.mp4` 原文件副本，SHA-256 为 `ef994545c0f03994c5eaceaf06bd467d9349d700148a0f3508b46f87b006c7bd`，构建不依赖被忽略的 artifacts 目录。
+
+开场使用 `c 1`，即使系统提前就绪也必须完整播完才显示后续主页；播完后若系统仍在启动，则用 `p 0` 保持最后一帧，直到系统就绪。PNG 使用 `trim.txt` 定位，避免为每帧保存整块白色背景。格式遵循 [AOSP bootanimation 规范](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/FORMAT.md)。
 
 动画随 payload 一起生成、校验 SHA-256，并写入 `/system/media/bootanimation.zip`，不修改 Bootloader 解锁提示。当前目标机未发现 APEX、product 或 OEM 的覆盖动画；更换系统基线后需要重新检查 [AOSP 的加载顺序](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/BootAnimation.cpp)。
 
-已验证归档 CRC、无压缩格式、帧数与顺序、PNG 尺寸、定位及原 Logo 保留，并确认了真机开机时的白底 Logo 动画。系统播放的是 PNG 帧序列；目前没有接入 AI 生成视频。
+测试覆盖归档 CRC、无压缩格式、完整播放指令、120 帧及顺序、PNG 尺寸与定位、视频首中尾帧一致性、末帧等待和拒绝覆盖。此前静态 Logo 动画已通过真机检查；这版视频动画尚未刷入手机验证。

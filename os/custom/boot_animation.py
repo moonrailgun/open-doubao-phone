@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Render the existing logo into Android's native, uncompressed boot archive."""
-from io import BytesIO
-import math
+"""Package the selected greeting video as a complete Android boot animation."""
 from pathlib import Path
+import subprocess
+import tempfile
 import zipfile
-
-from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 WIDTH, HEIGHT, FPS = 1440, 3120, 30
@@ -14,23 +12,26 @@ POSITION = ((WIDTH - LOGO_SIZE) // 2, (HEIGHT - LOGO_SIZE) // 2)
 
 
 def create(output):
-    logo = Image.open(ROOT / 'android/app/src/main/res/drawable-nodpi/app_logo.png').convert('RGB')
-    if logo.size != (LOGO_SIZE, LOGO_SIZE):
-        raise RuntimeError('Review boot animation layout after changing logo dimensions')
-    background = Image.new('RGB', logo.size, 'white')
-    with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_STORED) as archive:
-        def write(name, content):
-            info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
-            info.external_attr = 0o100644 << 16
-            archive.writestr(info, content)
-        write('desc.txt', f'{WIDTH} {HEIGHT} {FPS}\np 1 0 part0 #FFFFFF\np 0 0 part1 #FFFFFF\n')
-        for part, count in [('part0', 24), ('part1', 60)]:
-            for frame in range(count):
-                brightness = frame / (count - 1) if part == 'part0' else 0.96 + 0.04 * math.cos(2 * math.pi * frame / count)
-                buffer = BytesIO()
-                Image.blend(background, logo, brightness).save(buffer, format='PNG')
-                write(f'{part}/{frame:03}.png', buffer.getvalue())
-            write(f'{part}/trim.txt', f'{LOGO_SIZE}x{LOGO_SIZE}+{POSITION[0]}+{POSITION[1]}\n' * count)
+    with tempfile.TemporaryDirectory() as folder:
+        subprocess.run([
+            'ffmpeg', '-v', 'error', '-xerror', '-i', str(ROOT / 'os/custom/boot-greeting.mp4'),
+            '-map', '0:v:0', '-vf', f'fps={FPS},crop={LOGO_SIZE}:{LOGO_SIZE}:{POSITION[0]}:{POSITION[1]}',
+            '-pix_fmt', 'rgb24', '-start_number', '0', str(Path(folder) / '%03d.png'),
+        ], check=True)
+        frames = sorted(Path(folder).glob('*.png'))
+        if len(frames) != 4 * FPS:
+            raise RuntimeError('Boot greeting must contain exactly four seconds of frames')
+        with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_STORED) as archive:
+            def write(name, content):
+                info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+                info.external_attr = 0o100644 << 16
+                archive.writestr(info, content)
+            # c finishes the greeting even when Android requests an early exit.
+            write('desc.txt', f'{WIDTH} {HEIGHT} {FPS}\nc 1 0 part0 #FFFFFF\np 0 0 part1 #FFFFFF\n')
+            for part, images in [('part0', frames), ('part1', frames[-1:])]:
+                for frame, image in enumerate(images):
+                    write(f'{part}/{frame:03}.png', image.read_bytes())
+                write(f'{part}/trim.txt', f'{LOGO_SIZE}x{LOGO_SIZE}+{POSITION[0]}+{POSITION[1]}\n' * len(images))
 
 
 if __name__ == '__main__':
