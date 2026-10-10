@@ -24,6 +24,13 @@ class ImageRecipeTest(unittest.TestCase):
         declared = {node.get('{http://schemas.android.com/apk/res/android}name') for node in manifest.iter('uses-permission')}
         self.assertLessEqual(set(granted), declared)
 
+    def test_privileged_permissions(self):
+        # A privileged permission missing from the allowlist stops an enforcing system from booting.
+        (entry,) = ET.parse(ROOT / 'os/custom/privapp-permissions-douxian.xml').getroot()
+        manifest = ET.parse(ROOT / 'android/app/src/system/AndroidManifest.xml').getroot()
+        declared = {node.get('{http://schemas.android.com/apk/res/android}name') for node in manifest.iter('uses-permission')}
+        self.assertEqual({permission.get('name') for permission in entry}, declared)
+
     def test_replace_line(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

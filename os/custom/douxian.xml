@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <config>
     <allow-in-power-save package="com.moonrailgun.opendoubao.assistant" />
+    <!-- The Computer Control virtual display API is a hidden system API. -->
+    <hidden-api-whitelisted-app package="com.moonrailgun.opendoubao.assistant" />
 </config>

@@ -25,6 +25,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +67,9 @@ import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.CloudModels
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
 import com.moonrailgun.opendoubao.assistant.phone.catalogSelection
+import com.moonrailgun.opendoubao.assistant.phone.chooseForeground
+import com.moonrailgun.opendoubao.assistant.phone.foregroundChosen
+import com.moonrailgun.opendoubao.assistant.phone.virtualDisplayAvailable
 import com.moonrailgun.opendoubao.assistant.phone.loadAppCatalog
 import com.moonrailgun.opendoubao.assistant.phone.visibleAppCatalog
 import com.moonrailgun.opendoubao.assistant.remote.RemoteControls
@@ -310,9 +314,9 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     2 -> {
-                        PageTitle("设置", "配置模型服务、语音播报和远程连接。")
+                        PageTitle("设置", "配置模型服务、执行方式、语音播报和远程连接。")
                         PrimaryTabRow(settingsTab) {
-                            listOf("模型", "语音", "桌面远程").forEachIndexed { index, title ->
+                            listOf("模型", "语音", "桌面远程", "执行").forEachIndexed { index, title ->
                                 Tab(settingsTab == index, { settingsTab = index }, text = { Text(title) })
                             }
                         }
@@ -363,7 +367,8 @@ class MainActivity : ComponentActivity() {
                                 TtsControls(vault)
                                 VoiceControls()
                             }
-                            else -> RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                            2 -> RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                            else -> ExecutionControls()
                         }
                     }
                 }
@@ -450,6 +455,30 @@ class MainActivity : ComponentActivity() {
             content()
         }
     }
+
+/** Where new tasks act: an unseen virtual display when the system supports it, or the user's own screen. */
+@Composable private fun ExecutionControls() {
+    val context = LocalContext.current
+    val available = remember { virtualDisplayAvailable(context) }
+    var foreground by remember { mutableStateOf(foregroundChosen(context)) }
+    Section("执行方式", "新任务开始时按这里的选择执行，正在进行的任务不受影响。") {
+        listOf(false to ("虚拟屏（后台）" to "在看不见的独立屏幕上操作，你可以继续用手机。点开悬浮球能实时看到画面；需要手动处理时点「转到前台处理」。"),
+            true to ("前台" to "直接操作当前屏幕，任务进行时请不要操作手机。")).forEach { (value, text) ->
+            val selected = (foreground || !available) == value
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                .selectable(selected, enabled = value || available, role = Role.RadioButton) { foreground = value; chooseForeground(context, value) }
+                .padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected, null, Modifier.padding(horizontal = 8.dp), enabled = value || available)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(text.first, fontSize = 15.sp)
+                    Text(text.second, fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        if (!available) Text("当前系统不支持虚拟屏执行，任务会在前台操作。需要 Open Doubao 系统 v1.15 或更新版本。",
+            fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 /** The live view of the current task: dark so it reads as the one thing happening on the phone right now. */
 @Composable private fun RunPanel(task: TaskState, onResume: () -> Unit, onStop: () -> Unit) {

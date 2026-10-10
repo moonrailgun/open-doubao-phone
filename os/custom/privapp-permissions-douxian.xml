@@ -2,5 +2,6 @@
 <permissions>
     <privapp-permissions package="com.moonrailgun.opendoubao.assistant">
         <permission name="android.permission.WRITE_SECURE_SETTINGS" />
+        <permission name="android.permission.ACCESS_COMPUTER_CONTROL" />
     </privapp-permissions>
 </permissions>

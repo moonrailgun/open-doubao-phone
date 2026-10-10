@@ -42,21 +42,7 @@ class AndroidPhone(private val service: AssistantService) : Phone {
     private suspend fun window(): AccessibilityWindowInfo {
         repeat(10) {
             unlocked()
-            val windows = service.windows
-            if (windows.any { it.type == AccessibilityWindowInfo.TYPE_SYSTEM && (it.isActive || it.isFocused) &&
-                    !Rect().also(it::getBoundsInScreen).isEmpty }) {
-                throw PhoneUnavailableException("当前系统界面不支持自动操作，请手动处理后返回应用页面")
-            }
-            val target = windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-                .sortedWith(compareByDescending<AccessibilityWindowInfo> { it.isActive || it.isFocused }.thenByDescending { it.layer })
-                .firstOrNull()
-            // Never fall through to a readable background app when the foreground cannot be read.
-            if (target != null) {
-                val root = target.root
-                val available = root != null && !Rect().also(target::getBoundsInScreen).isEmpty
-                root?.recycle()
-                if (available) return target
-            }
+            pickWindow(service.windows)?.let { return it }
             // Activity transitions can briefly expose a window with no visible bounds or root.
             delay(100)
         }
@@ -66,39 +52,9 @@ class AndroidPhone(private val service: AssistantService) : Phone {
     override suspend fun observe(): Screen {
         currentCoroutineContext().ensureActive()
         val window = window()
-        val root = window.root ?: throw PhoneUnavailableException("当前页面没有可访问节点")
-        val elements = mutableListOf<Element>()
-        var truncated = false
-        var textBudget = 48_000
-        var visited = 0
-        fun visit(node: AccessibilityNodeInfo, id: String, depth: Int) {
-            if (++visited > 700 || elements.size >= 350 || depth > 35) { truncated = true; return }
-            val rect = Rect().also(node::getBoundsInScreen)
-            if (node.isVisibleToUser || node.isPassword) {
-                fun text(raw: CharSequence?): String {
-                    val out = raw?.toString().orEmpty().take(minOf(2000, textBudget))
-                    textBudget -= out.length
-                    return out
-                }
-                elements += Element(id, if (node.isPassword) "" else text(node.text),
-                    if (node.isPassword) "" else text(node.contentDescription), node.className?.toString().orEmpty(),
-                    node.viewIdResourceName.orEmpty(), Bounds(rect.left, rect.top, rect.right, rect.bottom),
-                    node.isClickable, node.isEditable, node.isScrollable, node.isEnabled, node.isPassword, node.isChecked)
-            }
-            for (i in 0 until node.childCount) {
-                if (visited >= 700 || elements.size >= 350) { truncated = true; break }
-                node.getChild(i)?.let { child -> visit(child, "$id.$i", depth + 1); child.recycle() }
-            }
-        }
-        val pkg = root.packageName?.toString().orEmpty()
-        try { visit(root, "0", 0) } finally { root.recycle() }
         val display = service.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
         val size = android.graphics.Point().also(display::getRealSize)
-        val bounds = Rect().also(window::getBoundsInScreen)
-        if (!bounds.intersect(0, 0, size.x, size.y)) throw ScreenChangedException()
-        lastPackage = pkg
-        return Screen(pkg, window.id, size.x, size.y, display.rotation, elements, truncated || textBudget == 0,
-            Bounds(bounds.left, bounds.top, bounds.right, bounds.bottom))
+        return readScreen(window, size.x, size.y, display.rotation).also { lastPackage = it.packageName }
     }
 
     override suspend fun screenshot(screen: Screen): String = capture(screen, restoreOverlay = true)
@@ -148,20 +104,7 @@ class AndroidPhone(private val service: AssistantService) : Phone {
             }
             try {
                 if (observe().fingerprint != screen.fingerprint) throw ScreenChangedException()
-                // Black outside the selected window while keeping the original display coordinate system.
-                val ratio = minOf(1f, 1440f / maxOf(screen.width, screen.height))
-                val scaled = Bitmap.createBitmap((screen.width * ratio).toInt(), (screen.height * ratio).toInt(), Bitmap.Config.ARGB_8888)
-                try {
-                    val canvas = Canvas(scaled)
-                    canvas.drawColor(Color.BLACK)
-                    canvas.scale(ratio, ratio)
-                    val source = if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else bounds
-                    canvas.drawBitmap(bitmap, source, bounds, null)
-                    return ByteArrayOutputStream().use { output ->
-                        if (!scaled.compress(Bitmap.CompressFormat.JPEG, 75, output)) throw PhoneUnavailableException("截图编码失败")
-                        Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
-                    }
-                } finally { scaled.recycle() }
+                return encodeScreenshot(bitmap, if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else bounds, bounds, screen)
             } finally { bitmap.recycle() }
         } finally { if (restoreOverlay) service.setOverlayVisible(true) }
     }
@@ -178,10 +121,8 @@ class AndroidPhone(private val service: AssistantService) : Phone {
             is Action.OpenApp -> launch(service.packageManager.getLaunchIntentForPackage(action.packageName)
                 ?: throw PhoneUnavailableException("该应用没有可直接打开的入口，请手动进入需要操作的页面"))
             is Action.OpenUrl -> launch(Intent(Intent.ACTION_VIEW, Uri.parse(action.url)).setPackage(action.packageName))
-            is Action.Click -> nodeAction(action.node, AccessibilityNodeInfo.ACTION_CLICK)
-            is Action.Type -> nodeAction(action.node, AccessibilityNodeInfo.ACTION_SET_TEXT,
-                Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, action.text) })
-            is Action.Scroll -> nodeAction(action.node, if (action.forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            is Action.Click, is Action.Type, is Action.Scroll ->
+                performOnNode(window().root ?: throw PhoneUnavailableException("当前页面没有可访问节点"), action)
             is Action.Tap -> gesture(Path().apply { moveTo(action.x.toFloat(), action.y.toFloat()) }, 80, expected!!, expectedImage!!, action.gestureBounds()!!)
             is Action.Swipe -> gesture(Path().apply { moveTo(action.x1.toFloat(), action.y1.toFloat()); lineTo(action.x2.toFloat(), action.y2.toFloat()) }, 400, expected!!, expectedImage!!, action.gestureBounds()!!)
             Action.Back -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
@@ -216,17 +157,6 @@ class AndroidPhone(private val service: AssistantService) : Phone {
         }
     }
 
-    private suspend fun nodeAction(id: String, action: Int, bundle: Bundle? = null): Boolean {
-        var node = window().root ?: throw PhoneUnavailableException("当前页面没有可访问节点")
-        try {
-            for (index in id.split('.').drop(1).map(String::toInt)) {
-                val child = node.getChild(index) ?: return false
-                node.recycle(); node = child
-            }
-            return node.isEnabled && !node.isPassword && node.performAction(action, bundle)
-        } finally { node.recycle() }
-    }
-
     private suspend fun gesture(path: Path, duration: Long, expected: Screen, expectedImage: String, region: Bounds): Boolean {
         service.setOverlayVisible(false)
         try {
@@ -255,4 +185,90 @@ class AndroidPhone(private val service: AssistantService) : Phone {
         val until = SystemClock.uptimeMillis() + 1200
         while (SystemClock.uptimeMillis() < until && SystemClock.uptimeMillis() - lastEvent < 250) delay(80)
     }
+}
+
+/** The readable foreground app window, or null while a transition hides it; active system UI is refused. */
+internal fun pickWindow(windows: List<AccessibilityWindowInfo>): AccessibilityWindowInfo? {
+    if (windows.any { it.type == AccessibilityWindowInfo.TYPE_SYSTEM && (it.isActive || it.isFocused) &&
+            !Rect().also(it::getBoundsInScreen).isEmpty }) {
+        throw PhoneUnavailableException("当前系统界面不支持自动操作，请手动处理后返回应用页面")
+    }
+    val target = windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+        .sortedWith(compareByDescending<AccessibilityWindowInfo> { it.isActive || it.isFocused }.thenByDescending { it.layer })
+        .firstOrNull() ?: return null
+    // Never fall through to a readable background app when the foreground cannot be read.
+    val root = target.root
+    val available = root != null && !Rect().also(target::getBoundsInScreen).isEmpty
+    root?.recycle()
+    return target.takeIf { available }
+}
+
+/** Reads a window's visible nodes, measured in the coordinates of its [width] by [height] display. */
+internal fun readScreen(window: AccessibilityWindowInfo, width: Int, height: Int, rotation: Int): Screen {
+    val root = window.root ?: throw PhoneUnavailableException("当前页面没有可访问节点")
+    val elements = mutableListOf<Element>()
+    var truncated = false
+    var textBudget = 48_000
+    var visited = 0
+    fun visit(node: AccessibilityNodeInfo, id: String, depth: Int) {
+        if (++visited > 700 || elements.size >= 350 || depth > 35) { truncated = true; return }
+        val rect = Rect().also(node::getBoundsInScreen)
+        if (node.isVisibleToUser || node.isPassword) {
+            fun text(raw: CharSequence?): String {
+                val out = raw?.toString().orEmpty().take(minOf(2000, textBudget))
+                textBudget -= out.length
+                return out
+            }
+            elements += Element(id, if (node.isPassword) "" else text(node.text),
+                if (node.isPassword) "" else text(node.contentDescription), node.className?.toString().orEmpty(),
+                node.viewIdResourceName.orEmpty(), Bounds(rect.left, rect.top, rect.right, rect.bottom),
+                node.isClickable, node.isEditable, node.isScrollable, node.isEnabled, node.isPassword, node.isChecked)
+        }
+        for (i in 0 until node.childCount) {
+            if (visited >= 700 || elements.size >= 350) { truncated = true; break }
+            node.getChild(i)?.let { child -> visit(child, "$id.$i", depth + 1); child.recycle() }
+        }
+    }
+    val pkg = root.packageName?.toString().orEmpty()
+    try { visit(root, "0", 0) } finally { root.recycle() }
+    val bounds = Rect().also(window::getBoundsInScreen)
+    if (!bounds.intersect(0, 0, width, height)) throw ScreenChangedException()
+    return Screen(pkg, window.id, width, height, rotation, elements, truncated || textBudget == 0,
+        Bounds(bounds.left, bounds.top, bounds.right, bounds.bottom))
+}
+
+/** Runs a click, type or scroll on the node it names under [root]; every node it visits is recycled. */
+internal fun performOnNode(root: AccessibilityNodeInfo, action: Action): Boolean {
+    val (id, code, bundle) = when (action) {
+        is Action.Click -> Triple(action.node, AccessibilityNodeInfo.ACTION_CLICK, null)
+        is Action.Type -> Triple(action.node, AccessibilityNodeInfo.ACTION_SET_TEXT,
+            Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, action.text) })
+        is Action.Scroll -> Triple(action.node, if (action.forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, null)
+        else -> { root.recycle(); return false }
+    }
+    var node = root
+    try {
+        for (index in id.split('.').drop(1).map(String::toInt)) {
+            val child = node.getChild(index) ?: return false
+            node.recycle(); node = child
+        }
+        return node.isEnabled && !node.isPassword && node.performAction(code, bundle)
+    } finally { node.recycle() }
+}
+
+/** JPEG of [source] drawn at [bounds], black elsewhere, keeping the original display coordinate system. */
+internal fun encodeScreenshot(bitmap: Bitmap, source: Rect, bounds: Rect, screen: Screen): String {
+    val ratio = minOf(1f, 1440f / maxOf(screen.width, screen.height))
+    val scaled = Bitmap.createBitmap((screen.width * ratio).toInt(), (screen.height * ratio).toInt(), Bitmap.Config.ARGB_8888)
+    try {
+        val canvas = Canvas(scaled)
+        canvas.drawColor(Color.BLACK)
+        canvas.scale(ratio, ratio)
+        canvas.drawBitmap(bitmap, source, bounds, null)
+        return ByteArrayOutputStream().use { output ->
+            if (!scaled.compress(Bitmap.CompressFormat.JPEG, 75, output)) throw PhoneUnavailableException("截图编码失败")
+            Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        }
+    } finally { scaled.recycle() }
 }

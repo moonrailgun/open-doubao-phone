@@ -13,7 +13,7 @@ cd android
 
 ## 构建镜像副本
 
-需要 Docker、Python 3.12+、FFmpeg、Pillow（测试使用，本次为 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 40 GB 可用空间。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
+需要 Docker、Python 3.12+、FFmpeg、Pillow（测试使用，本次为 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 40 GB 可用空间。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，用同一把开发密钥（`~/.android/debug.keystore`）生成虚拟屏 RRO，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
 
 ```sh
 export DOUXIAN_OUTPUT=/path/with/40GB/free/douxian-v1
@@ -32,13 +32,23 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
   douxian-image-tools python3 -B /work/os/custom/build_image.py /out
 ```
 
-配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入助手、TTS、Dao 浏览器、豆包输入法四个 APK（输入法另附解压出的原生库）、省电豁免、默认运行时权限和开机动画，并把 product 与 system_ext 的 `build.prop` 中的设备型号由 `AOSP on ARM64` 改为 `Open Doubao`。其余原有文件及其权限、xattrs 不经过解包重打包；被改写的 `build.prop` 保留原有的 0600 权限与 SELinux 标签；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
+配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入助手、TTS、Dao 浏览器、豆包输入法四个 APK（输入法另附解压出的原生库）、虚拟屏 RRO、省电豁免、默认运行时权限和开机动画，并把 product 与 system_ext 的 `build.prop` 中的设备型号由 `AOSP on ARM64` 改为 `Open Doubao`。其余原有文件及其权限、xattrs 不经过解包重打包；被改写的 `build.prop` 保留原有的 0600 权限与 SELinux 标签；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
 
 输出包括 `system.img`、`payload.json`、`manifest.json` 和 `avb-info.txt`。使用无签名 AVB 元数据，只适用于当前已解锁且关闭验证的开发设备；不能重新锁定 Bootloader。容量限制使用当前 Pixel 6 Pro 的 dynamic partition group 与其他分区实际尺寸，不能直接套用到其他手机。
 
 发布镜像或 TTS APK 时，同时提供 `voice-corresponding-source.tar.gz`。该包包含当前 Android 源码、构建脚本、原生依赖源码及许可证；每次代码变更后重新生成，不包含本地签名密钥和构建缓存。模型条款与来源见 [语音依赖说明](../../android/third_party/sherpa-onnx/README.md)。
 
 小型 ext4 测试已覆盖文件写入、权限和 SELinux 标签、拒绝覆盖、真实共享块展开、文件内容保留、缩容、AVB 校验及容量边界。完整 GSI 也已完成文件系统、容量、AVB 和启动检查；空间不足时构建会在复制原始镜像前退出。脚本不会自动刷机。刷写前保留上一份可启动镜像，使用下方的不清数据升级命令，不要复制 `os/flash-plan.md` 中首次安装所用的 `-w` 命令。
+
+## 虚拟屏执行
+
+助手在 Android 17 的 Computer Control 虚拟屏上执行任务，需要镜像提供三项配置：
+
+- `privapp-permissions-douxian.xml` 授予 `ACCESS_COMPUTER_CONTROL`（`internal|privileged`），system 变体的 Manifest 同时申请它；`test_image.py` 要求两边完全一致，因为白名单缺项会让强制模式的系统无法开机。
+- `douxian.xml` 用 `hidden-api-whitelisted-app` 放行隐藏 API：会话接口不在公开 SDK 中，编译时使用 `android/hidden` 的桩类。
+- `prepare_payload.py` 生成静态 RRO `com.moonrailgun.opendoubao.overlay.computercontrol`，写入 `/system/overlay/DouxianComputerControl/`，把 `config_computerControlKnownSuperAgents` 设为 `com.moonrailgun.opendoubao.assistant:<证书 SHA-256 大写>`。超级智能体免去 DeviceConfig 白名单（`computer_control/allowed_session_owner_apps`、`allowed_automatable_apps`），也不受同时一个会话的限制。证书摘要来自本机开发密钥，换密钥后必须重新生成镜像。
+
+助手还需持有默认数字助手角色。每个目标应用第一次在虚拟屏上运行时，系统会弹出授权页。
 
 ## Dao 浏览器
 

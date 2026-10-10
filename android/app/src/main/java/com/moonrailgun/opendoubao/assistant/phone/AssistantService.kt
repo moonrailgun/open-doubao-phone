@@ -25,6 +25,8 @@ import android.os.PowerManager
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
@@ -100,6 +102,10 @@ class AssistantService : AccessibilityService() {
     private var statusText: TextView? = null
     private var stopButton: View? = null
     private var resumeButton: View? = null
+    private var handOverButton: View? = null
+    private var peek: View? = null
+    private var mirror: AutoCloseable? = null
+    private var virtual: VirtualPhone? = null
     private var openButton: View? = null
     private var inputRow: View? = null
     private var input: EditText? = null
@@ -219,12 +225,17 @@ class AssistantService : AccessibilityService() {
         vault.record(record)
         active = record
         watcher?.cancel()
-        val next = TaskController(scope, phone, models)
+        virtual?.close()
+        // Chosen per task: the setting may change between tasks, and other systems always run in the foreground.
+        val offscreen = if (!foregroundChosen(this) && virtualDisplayAvailable(this)) VirtualPhone(this, phone) { controller?.fail(it) } else null
+        virtual = offscreen
+        val next = TaskController(scope, offscreen ?: phone, models)
         controller = next
         next.start(goal, apps)
         watcher = scope.launch {
             var persisted: String? = null
             next.state.collect { value ->
+                if (value.status in setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)) offscreen?.close()
                 mutable.value = value
                 remoteSnapshot.value = RemoteSnapshot(record.id, value)
                 renderOverlay(value)
@@ -254,6 +265,7 @@ class AssistantService : AccessibilityService() {
         requireUnlockedScreen()
         if (controller?.state?.value?.status != TaskStatus.PAUSED) return
         collapse()
+        virtual?.resume()
         controller?.resume()
     }
 
@@ -271,6 +283,7 @@ class AssistantService : AccessibilityService() {
 
     private fun disconnected() {
         controller?.fail("无障碍连接已断开")
+        virtual?.close()
         remote?.close()
         scope.cancel()
         if (connection.value === this) connection.value = null
@@ -402,6 +415,27 @@ class AssistantService : AccessibilityService() {
                 false
             }
         }
+        // Live view of the virtual display while the panel is open; the mirror exists only while it is on screen.
+        val peekSurface = SurfaceView(this).apply {
+            setZOrderOnTop(true)
+            holder.addCallback(object : SurfaceHolder.Callback {
+                override fun surfaceCreated(holder: SurfaceHolder) = Unit
+                override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                    if (mirror == null) mirror = virtual?.peek(surfaceControl, width, height)
+                }
+                override fun surfaceDestroyed(holder: SurfaceHolder) { mirror?.let { runCatching { it.close() } }; mirror = null }
+            })
+        }
+        peek = FrameLayout(this).apply {
+            background = rounded(Color.BLACK, 12)
+            // Visible only until the mirror draws over it.
+            addView(TextView(this@AssistantService).apply {
+                text = "正在连接虚拟屏画面"; textSize = 12f; gravity = Gravity.CENTER
+                setTextColor(Color.argb(150, 255, 255, 255))
+            }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            addView(peekSurface, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        }
+        card.addView(peek, LinearLayout.LayoutParams(dp(166), dp(360)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(10) })
         input = field
         // Status sits below the field: the hint disappears once the command has text.
         val status = TextView(this).apply {
@@ -428,6 +462,16 @@ class AssistantService : AccessibilityService() {
             addView(status)
         }
         card.addView(inputRow)
+        handOverButton = Button(this).apply {
+            text = "转到前台处理"; contentDescription = "把应用移到主屏幕手动处理"; textSize = 15f; isAllCaps = false
+            setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+            background = rounded(Color.argb(50, 255, 255, 255), 14)
+            stateListAnimator = null
+            setOnClickListener {
+                runCatching { virtual?.handOver() }.onSuccess { collapse() }.onFailure { statusText?.text = "无法转到前台：${it.message}" }
+            }
+        }
+        card.addView(handOverButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { bottomMargin = dp(8) })
         resumeButton = Button(this).apply {
             text = "继续"; contentDescription = "继续任务"; textSize = 15f; isAllCaps = false
             setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
@@ -535,6 +579,9 @@ class AssistantService : AccessibilityService() {
         panel?.visibility = if (expanded) View.VISIBLE else View.GONE
         stopButton?.visibility = if (running || paused) View.VISIBLE else View.GONE
         resumeButton?.visibility = if (paused) View.VISIBLE else View.GONE
+        val offscreen = virtual?.session != null
+        peek?.visibility = if (expanded && offscreen) View.VISIBLE else View.GONE
+        handOverButton?.visibility = if (paused && offscreen) View.VISIBLE else View.GONE
         // Keep the current app visible while automatic actions are running.
         openButton?.visibility = if (running) View.GONE else View.VISIBLE
         inputRow?.visibility = if (running || paused) View.GONE else View.VISIBLE

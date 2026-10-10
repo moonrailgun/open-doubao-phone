@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from boot_animation import create as create_boot_animation
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,6 +19,36 @@ DAO_SHA256 = '2645fa9570d8de423ccfa9642e4b604e6ed98b3d46d4eec2344c79f0240856e6'
 IME_APK = ROOT / 'os/doubao-ime-android-v1.5.1/doubaoime_v1.5.1_100501006_official_arm64_release.apk'
 IME_SHA256 = 'abb24d0a33cee91a9d96783243b75950151bc478ce47da629e5fdf8844607f26'
 IME_CERT_SHA256 = 'd47cafb450b9c8191180402795f35ce50ce2d8b37f1300b42e7d8633bc86b7df'
+OVERLAY_PACKAGE = 'com.moonrailgun.opendoubao.overlay.computercontrol'
+
+
+def build_overlay(tools, sdk, assistant_cert, target):
+    """Static framework RRO naming the assistant, pinned to its certificate, a known Computer Control super agent."""
+    with tempfile.TemporaryDirectory() as folder:
+        work = Path(folder)
+        (work / 'res/values').mkdir(parents=True)
+        (work / 'AndroidManifest.xml').write_text(f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="{OVERLAY_PACKAGE}" android:versionCode="1">
+    <overlay android:targetPackage="android" android:isStatic="true" android:priority="1" />
+    <application android:hasCode="false" />
+</manifest>
+''')
+        # SigningDetails compares upper-case SHA-256 digests.
+        (work / 'res/values/config.xml').write_text(f'''<resources>
+    <string-array name="config_computerControlKnownSuperAgents">
+        <item>com.moonrailgun.opendoubao.assistant:{assistant_cert.upper()}</item>
+    </string-array>
+</resources>
+''')
+        def tool(name, *args):
+            subprocess.check_call([str(tools / name), *map(str, args)])
+        tool('aapt2', 'compile', '--dir', work / 'res', '-o', work / 'res.zip')
+        tool('aapt2', 'link', '-o', work / 'unsigned.apk', '-I', sdk / 'platforms/android-36/android.jar',
+             '--manifest', work / 'AndroidManifest.xml', '--min-sdk-version', '30', '--target-sdk-version', '36', work / 'res.zip')
+        tool('zipalign', '-f', '-p', '4', work / 'unsigned.apk', work / 'aligned.apk')
+        # Same development key as the assistant; the overlay never updates outside the image.
+        tool('apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore', '--ks-pass', 'pass:android',
+             '--out', target, work / 'aligned.apk')
 
 
 def main(output):
@@ -52,6 +83,13 @@ def main(output):
         with system.open('rb') as stream:
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
         report[name] = dict(sha256=digest, certificate_sha256=system_cert, version_code=version)
+    overlay = output / 'computer-control-overlay.apk'
+    assistant_cert = report['assistant.apk']['certificate_sha256']
+    build_overlay(tools, sdk, assistant_cert, overlay)
+    if f'com.moonrailgun.opendoubao.assistant:{assistant_cert.upper()}' not in read('aapt2', 'dump', 'resources', overlay):
+        raise RuntimeError('overlay: super agent entry does not match the assistant certificate')
+    with overlay.open('rb') as stream:
+        report[overlay.name] = dict(sha256=hashlib.file_digest(stream, 'sha256').hexdigest(), certificate_sha256=cert(overlay))
     dao = output / 'dao.apk'
     shutil.copyfile(DAO_APK, dao)
     with dao.open('rb') as stream:

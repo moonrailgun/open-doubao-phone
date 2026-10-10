@@ -51,7 +51,7 @@ class TaskController(
         unchanged = 0
         remainingActiveMillis = TASK_TIMEOUT_MILLIS
         mutable.value = TaskState(goal = goal.trim())
-        trace("开始：${goal.trim()}（可用应用 ${apps.size} 个）")
+        trace("开始：${goal.trim()}（可用应用 ${apps.size} 个，${phone.mode}执行）")
         launchRun()
     }
 

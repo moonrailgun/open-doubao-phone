@@ -8,3 +8,4 @@ dependencyResolutionManagement {
 rootProject.name = "OpenDoubaoPhone"
 include(":app")
 include(":tts")
+include(":hidden")

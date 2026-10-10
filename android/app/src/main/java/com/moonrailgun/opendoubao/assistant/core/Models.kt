@@ -118,6 +118,8 @@ class ScreenChangedException : IllegalStateException("页面已变化")
 class PhoneUnavailableException(message: String) : IllegalStateException(message)
 
 interface Phone {
+    /** Where actions land, written to the task log once at the start. */
+    val mode: String get() = "前台"
     fun canLaunch(packageName: String): Boolean
     suspend fun observe(): Screen
     suspend fun screenshot(screen: Screen): String
