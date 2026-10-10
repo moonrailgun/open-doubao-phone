@@ -134,6 +134,8 @@ def main(output):
     install(image, ROOT / 'os/custom/douxian.xml', '/system/etc/sysconfig/douxian.xml')
     install(image, ROOT / 'os/custom/default-permissions-douxian.xml',
             '/system/etc/default-permissions/default-permissions-douxian.xml')
+    install(image, ROOT / 'os/custom/default-permissions-doubaoime.xml',
+            '/system/etc/default-permissions/default-permissions-doubaoime.xml')
     install(image, output / 'bootanimation.zip', '/system/media/bootanimation.zip')
     # ro.product.model comes from the product partition; system_ext keeps the fallback consistent.
     for partition in ('product', 'system_ext'):

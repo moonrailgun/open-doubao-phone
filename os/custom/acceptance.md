@@ -4,7 +4,7 @@
 
 ## 当前产物
 
-当前已刷入 v1.12（包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
+当前已刷入 v1.13（v1.12 加豆包输入法和设备型号 Open Doubao；v1.12 起包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
 
 本地输出目录：`os/custom/out/v1.9/`，未纳入 Git。保留原始镜像和先前版本输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
@@ -165,6 +165,21 @@ Dao 以系统应用冷启动打开 `https://example.com` 并正常渲染，Gecko
 b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xa1697000`，与 manifest 一致。启动 24 秒完成。设备上五个写入文件摘要与 payload 一致，助手 appId 10129，为 SYSTEM、PERSISTENT；TTS appId 10130，为 SYSTEM；无障碍服务开机自动启用到新组件，见 `device-checks.txt`。补授三项运行时权限，并用 adb 将默认助手、语音识别服务指向新包，见 `permissions.txt`、`voice-settings.txt`。启动日志未检出新包或 Douxian 相关的 AVC 拒绝；崩溃缓冲区只有已知的 `init` SIGABRT。
 
 包名变更不是原地升级：旧系统应用 `com.openodoubao.assistant` 随镜像移除，其模型配置、桌面绑定、记录和监听设置不会迁移，需要重新设置；数据分区里的旧 TTS 更新包和旧测试 APK 降为普通应用残留。未做升级测试（`SystemUpgradeTest` 只适用于同包名），也未做真人唤醒和长时间录音检查。
+
+## v1.13：内置豆包输入法
+
+由提交 `9d9a4af` 的配方构建。助手与 TTS 沿用 v1.12 的同一 APK（当时 `android/` 构建输出含未提交的语音提示改动，代码引用的 `voice/prompts/*.wav` 未打包，故不使用），新增豆包输入法 v1.5.1 及其解压的 76 个 arm64 原生库，并包含 `14e5414` 的设备型号改名；TTS 新图标未随本版交付。
+
+| 产物 | SHA-256 |
+|---|---|
+| `system.img` | `7b1409ef6647289fa001e94c6ab7618bfd237dceaa28ee1db3b81b69758d5c63` |
+| `doubao-ime.apk` | `abb24d0a33cee91a9d96783243b75950151bc478ce47da629e5fdf8844607f26` |
+
+镜像为 2,953,695,232 字节，比 v1.12 多 245,653,504 字节；动态分区合计 8,420,253,696 字节，距上限只余 106,766,336 字节，后续加内容需先腾空间。小型 ext4 测试（含原生库解压）、读回摘要与 AVB 校验通过，见 `image-test.log`、`build.log`。
+
+b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xb00dd000`，与 manifest 一致。启动 25 秒完成，`ro.product.model` 为 Open Doubao。设备上五个写入文件摘要与 payload 一致；豆包输入法为 SYSTEM 应用，`primaryCpuAbi=arm64-v8a`，库目录 `/system/app/DoubaoIme/lib`，文件为 root:root/0644、`system_file`；助手仍为 SYSTEM、PERSISTENT 并持有默认助手角色，见 `device-checks.txt`。补授三项运行时权限；按旧 README 命令设置设备名只写入 `Open`（引号未传到手机），已改正命令并重设为 `Open Doubao`。
+
+用 `ime enable` / `ime set` 启用并设为默认后，在设置搜索框请求键盘，输入法进程启动并显示其用户协议页（`PrivacyStatementActivity`），日志无 FATAL、`UnsatisfiedLinkError` 或 dlopen 失败；AVC 拒绝只来自 `rild`（已知）和 `hal_graphics_composer_default`，见 `ime-first-run-logcat.txt`。随后用户在手机上完成首次引导，麦克风与通知权限为用户授予（USER_SET）。重启后在设置搜索框直接弹出拼音 26 键键盘，没有再出现协议页，默认输入法与麦克风授权保留，助手后台录音恢复且未被静音；未做真人唤醒检查。之后配方新增的 `default-permissions-doubaoime.xml`（默认授予输入法麦克风）未随 v1.13 刷入。
 
 ## 唤醒失效反馈跟进
 

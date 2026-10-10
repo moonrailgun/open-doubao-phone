@@ -46,16 +46,19 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
 
 ## 豆包输入法
 
-AOSP GSI 只带 LatinIME，不支持中文，因此镜像内置字节跳动的[豆包输入法](https://shurufa.doubao.com/) Android v1.5.1（`com.bytedance.android.doubaoime`，versionCode 100501006）。它作为普通系统应用写入 `/system/app/DoubaoIme/`，不授予特权权限或默认运行时权限。它是闭源软件，使用条款以官方协议为准；对外分发包含它的镜像前需另行确认授权。
+AOSP GSI 只带 LatinIME，不支持中文，因此镜像内置字节跳动的[豆包输入法](https://shurufa.doubao.com/) Android v1.5.1（`com.bytedance.android.doubaoime`，versionCode 100501006）。它作为普通系统应用写入 `/system/app/DoubaoIme/`，不授予特权权限，只默认授予麦克风权限（`default-permissions-doubaoime.xml`），语音输入无需再弹授权框。它是闭源软件，使用条款以官方协议为准；对外分发包含它的镜像前需另行确认授权。
 
 官网下载按钮调用 `https://shurufa.doubao.com/api/v1/app/download_url?platform=android` 获取上方 APK 地址。官方没有公布摘要，`prepare_payload.py` 固定下载文件的 SHA-256 `abb24d0a…607f26`（与 CDN 返回的 MD5 ETag 一致）和签名证书 SHA-256 `d47cafb4…86b7df`（北京春田知韵科技有限公司）。这个 APK 压缩存放原生库（`extractNativeLibs=true`），而 PackageManager 不会为未更新过的系统应用解压，只会从 `/system/app/DoubaoIme/lib/arm64/` 加载，所以 `build_image.py` 把其中 76 个 arm64 `.so` 解压写入该目录。镜像因此增加约 250 MB（APK 171 MB，原生库 75 MB）。之后可通过应用商店用同签名的更高版本原地更新；升级内置版本时，同时修改脚本中的路径和两项摘要。
 
-新增的系统输入法不会自动启用。刷写并启动后执行以下命令，启用并切换为默认输入法：
+新增的系统输入法不会自动启用；和助手一样，默认授权也只在首次开机或 fingerprint 变化时生效。首次刷入后执行以下命令，启用、切换为默认输入法并补授麦克风权限：
 
 ```sh
 adb -s "$DOUXIAN_SERIAL" shell ime enable com.bytedance.android.doubaoime/.ImeService
 adb -s "$DOUXIAN_SERIAL" shell ime set com.bytedance.android.doubaoime/.ImeService
+adb -s "$DOUXIAN_SERIAL" shell pm grant com.bytedance.android.doubaoime android.permission.RECORD_AUDIO
 ```
+
+首次弹出键盘时，豆包输入法会先显示用户协议，需在手机上选择「同意并继续」（智能模式，部分输入加密上传云端；拒绝则为本地基础模式，缺少语音转文字等功能），键盘类型选拼音 26 键。协议状态和键盘类型保存在输入法自己的数据目录里，加固后的 APK 中也没有可供预装方预置的开关，系统镜像无法预设。不清数据刷写会保留这些设置和上面的启用、授权，因此只需在首次安装时设置一次；清除数据或恢复出厂后需重新设置。
 
 ## 不清数据刷写
 
@@ -101,7 +104,7 @@ done
 系统设置「关于手机」中的设备名称在首次开机时按当时的型号保存，不清数据刷写后仍显示 `AOSP on ARM64`，需手动改为新型号：
 
 ```sh
-adb -s "$DOUXIAN_SERIAL" shell settings put global device_name 'Open Doubao'
+adb -s "$DOUXIAN_SERIAL" shell "settings put global device_name 'Open Doubao'"
 ```
 
 ## 不清数据升级检查
