@@ -24,6 +24,7 @@ android {
     }
     sourceSets.getByName("main") {
         java.srcDir("../third_party/sherpa-onnx/recognition")
+        res.srcDir("../branding/res")
         assets.srcDir("../.voice/assistant-assets")
         jniLibs.srcDir("../.voice/assistant-jni")
     }

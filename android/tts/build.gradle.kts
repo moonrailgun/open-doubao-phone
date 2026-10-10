@@ -31,6 +31,7 @@ android {
     }
     sourceSets.getByName("main") {
         java.srcDir("../third_party/sherpa-onnx/tts")
+        res.srcDir("../branding/res")
         assets.srcDir("../.voice/tts-assets")
         jniLibs.srcDir("../.voice/tts-jni")
     }

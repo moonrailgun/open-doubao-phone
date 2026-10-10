@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:label="豆馅本地语音引擎" android:allowBackup="false" android:usesCleartextTraffic="false">
+    <application android:label="豆馅本地语音引擎" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:usesCleartextTraffic="false">
         <activity android:name=".EngineActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.speech.tts.engine.CHECK_TTS_DATA" />

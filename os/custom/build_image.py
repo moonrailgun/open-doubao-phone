@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -32,7 +33,7 @@ def debugfs(image, command, write=False):
     return run('debugfs', *(['-w'] if write else []), '-R', command, image)
 
 
-def install(image, source, target):
+def install(image, source, target, mode='0100644'):
     parts = Path(target).parts
     for end in range(2, len(parts)):
         directory = str(Path(*parts[:end]))
@@ -42,7 +43,7 @@ def install(image, source, target):
     if 'Inode:' in debugfs(image, f'stat {target}'):
         raise RuntimeError(f'Refusing to replace existing image file: {target}')
     debugfs(image, f'write {json.dumps(str(source))} {target}', True)
-    metadata(image, target, '0100644')
+    metadata(image, target, mode)
     stat = debugfs(image, f'stat {target}')
     if f'Size: {source.stat().st_size}' not in stat:
         raise RuntimeError(f'Image write failed for {target}: {stat}')
@@ -51,6 +52,22 @@ def install(image, source, target):
         debugfs(image, f'dump {target} {extracted}')
         if not extracted.exists() or sha256(extracted) != sha256(source):
             raise RuntimeError(f'Image read-back checksum mismatch: {target}')
+
+
+def replace_line(image, target, old, new):
+    """Rewrite one line of an existing system_file, keeping its mode and owner."""
+    stat = debugfs(image, f'stat {target}')
+    if 'User:     0   Group:     0' not in stat or 'u:object_r:system_file:s0' not in debugfs(image, f'ea_list {target}'):
+        raise RuntimeError(f'Unexpected owner or label: {target}')
+    with tempfile.TemporaryDirectory() as folder:
+        source = Path(folder) / 'replacement'
+        debugfs(image, f'dump {target} {source}')
+        lines = source.read_text().splitlines(keepends=True)
+        if lines.count(old + '\n') != 1:
+            raise RuntimeError(f'Expected exactly one {old!r} in {target}')
+        source.write_text(''.join(new + '\n' if line == old + '\n' else line for line in lines))
+        debugfs(image, f'rm {target}', True)
+        install(image, source, target, '010' + re.search(r'Mode:\s+(\d+)', stat).group(1))
 
 
 def metadata(image, target, mode):
@@ -105,6 +122,10 @@ def main(output):
     install(image, ROOT / 'os/custom/default-permissions-douxian.xml',
             '/system/etc/default-permissions/default-permissions-douxian.xml')
     install(image, output / 'bootanimation.zip', '/system/media/bootanimation.zip')
+    # ro.product.model comes from the product partition; system_ext keeps the fallback consistent.
+    for partition in ('product', 'system_ext'):
+        replace_line(image, f'/system/{partition}/etc/build.prop', f'ro.product.{partition}.model=AOSP on ARM64',
+                     f'ro.product.{partition}.model=Open Doubao')
     run('e2fsck', '-fy', image, codes=(0, 1))
     run('resize2fs', '-M', image)
     run('e2fsck', '-fn', image)

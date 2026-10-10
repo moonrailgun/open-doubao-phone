@@ -30,7 +30,7 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
   douxian-image-tools python3 -B /work/os/custom/build_image.py /out
 ```
 
-配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入助手、TTS、Dao 浏览器三个 APK、省电豁免、默认运行时权限和开机动画。原有文件及其权限、xattrs 不经过解包重打包；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
+配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入助手、TTS、Dao 浏览器三个 APK、省电豁免、默认运行时权限和开机动画，并把 product 与 system_ext 的 `build.prop` 中的设备型号由 `AOSP on ARM64` 改为 `Open Doubao`。其余原有文件及其权限、xattrs 不经过解包重打包；被改写的 `build.prop` 保留原有的 0600 权限与 SELinux 标签；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
 
 输出包括 `system.img`、`payload.json`、`manifest.json` 和 `avb-info.txt`。使用无签名 AVB 元数据，只适用于当前已解锁且关闭验证的开发设备；不能重新锁定 Bootloader。容量限制使用当前 Pixel 6 Pro 的 dynamic partition group 与其他分区实际尺寸，不能直接套用到其他手机。
 
@@ -81,6 +81,12 @@ os/tools/platform-tools/fastboot -s "$DOUXIAN_SERIAL" reboot
 for permission in RECORD_AUDIO CAMERA POST_NOTIFICATIONS; do
   adb -s "$DOUXIAN_SERIAL" shell pm grant com.moonrailgun.opendoubao.assistant android.permission.$permission
 done
+```
+
+系统设置「关于手机」中的设备名称在首次开机时按当时的型号保存，不清数据刷写后仍显示 `AOSP on ARM64`，需手动改为新型号：
+
+```sh
+adb -s "$DOUXIAN_SERIAL" shell settings put global device_name 'Open Doubao'
 ```
 
 ## 不清数据升级检查

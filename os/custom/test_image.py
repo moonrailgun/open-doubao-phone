@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
-from build_image import AVB, ROOT, GROUP_SIZE, OTHER_PARTITIONS, check_capacity, debugfs, install, run
+from build_image import AVB, ROOT, GROUP_SIZE, OTHER_PARTITIONS, check_capacity, debugfs, install, replace_line, run
 
 
 class ImageRecipeTest(unittest.TestCase):
@@ -22,6 +22,26 @@ class ImageRecipeTest(unittest.TestCase):
         manifest = ET.parse(ROOT / 'android/app/src/main/AndroidManifest.xml').getroot()
         declared = {node.get('{http://schemas.android.com/apk/res/android}name') for node in manifest.iter('uses-permission')}
         self.assertLessEqual(set(granted), declared)
+
+    def test_replace_line(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            image = root / 'system.img'
+            with image.open('wb') as stream:
+                stream.truncate(16 * 1024**2)
+            run('mke2fs', '-q', '-t', 'ext4', '-b', '4096', '-F', image)
+            source = root / 'build.prop'
+            source.write_text('ro.product.product.brand=Android\nro.product.product.model=AOSP on ARM64\n')
+            target = '/system/product/etc/build.prop'
+            install(image, source, target, '0100600')
+            replace_line(image, target, 'ro.product.product.model=AOSP on ARM64', 'ro.product.product.model=Open Doubao')
+            self.assertTrue(debugfs(image, f'cat {target}').endswith(
+                '\nro.product.product.brand=Android\nro.product.product.model=Open Doubao\n'))
+            self.assertIn('Mode:  0600', debugfs(image, f'stat {target}'))
+            self.assertIn('security.selinux (26)', debugfs(image, f'ea_list {target}'))
+            with self.assertRaises(RuntimeError):
+                replace_line(image, target, 'ro.product.product.model=AOSP on ARM64', 'unused')
+            run('e2fsck', '-fn', image)
 
     def test_write_and_preserve(self):
         with tempfile.TemporaryDirectory() as folder:
