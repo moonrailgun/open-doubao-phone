@@ -19,6 +19,8 @@ cd android
 export DOUXIAN_OUTPUT=/path/with/40GB/free/douxian-v1
 python3 android/tools/prepare_voice.py --assets-only --source-bundle
 python3 -B os/custom/test_boot_animation.py
+curl -fL --create-dirs -o os/dao-browser-android-v0.1.9/dao-browser-0.1.9-android-arm64-v8a.apk \
+  https://github.com/msgbyte/dao-browser/releases/download/android-v0.1.9/dao-browser-0.1.9-android-arm64-v8a.apk
 python3 os/custom/prepare_payload.py "$DOUXIAN_OUTPUT"
 cp android/.voice/voice-corresponding-source.tar.gz "$DOUXIAN_OUTPUT/"
 docker build -t douxian-image-tools os/custom
@@ -28,13 +30,17 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
   douxian-image-tools python3 -B /work/os/custom/build_image.py /out
 ```
 
-配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入两个 APK、省电豁免、默认运行时权限和开机动画。原有文件及其权限、xattrs 不经过解包重打包；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
+配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入助手、TTS、Dao 浏览器三个 APK、省电豁免、默认运行时权限和开机动画。原有文件及其权限、xattrs 不经过解包重打包；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
 
 输出包括 `system.img`、`payload.json`、`manifest.json` 和 `avb-info.txt`。使用无签名 AVB 元数据，只适用于当前已解锁且关闭验证的开发设备；不能重新锁定 Bootloader。容量限制使用当前 Pixel 6 Pro 的 dynamic partition group 与其他分区实际尺寸，不能直接套用到其他手机。
 
 发布镜像或 TTS APK 时，同时提供 `voice-corresponding-source.tar.gz`。该包包含当前 Android 源码、构建脚本、原生依赖源码及许可证；每次代码变更后重新生成，不包含本地签名密钥和构建缓存。模型条款与来源见 [语音依赖说明](../../android/third_party/sherpa-onnx/README.md)。
 
 小型 ext4 测试已覆盖文件写入、权限和 SELinux 标签、拒绝覆盖、真实共享块展开、文件内容保留、缩容、AVB 校验及容量边界。完整 GSI 也已完成文件系统、容量、AVB 和启动检查；空间不足时构建会在复制原始镜像前退出。脚本不会自动刷机。刷写前保留上一份可启动镜像，使用下方的不清数据升级命令，不要复制 `os/flash-plan.md` 中首次安装所用的 `-w` 命令。
+
+## Dao 浏览器
+
+镜像内置 [Dao 浏览器 Android v0.1.9](https://github.com/msgbyte/dao-browser/releases/tag/android-v0.1.9) 的 arm64 APK（`com.msgbyte.dao`，Gecko 内核），作为普通系统应用写入 `/system/app/DaoBrowser/`，不授予特权权限。`prepare_payload.py` 按发布页公布的 SHA-256 `2645fa95…0856e6` 核对文件，并要求原生库不压缩、16 KB 对齐（`extractNativeLibs=false`），因为只读系统分区上的应用不会解压原生库，只能直接从 APK 加载。APK 保留上游签名（证书 SHA-256 `eb66631c…383937`），之后可用同签名、更高版本号的 APK 原地更新。默认浏览器未改动，需在系统设置中手动切换。升级版本时同时修改脚本中的路径和摘要。
 
 ## 不清数据刷写
 

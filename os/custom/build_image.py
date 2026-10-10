@@ -79,7 +79,7 @@ def main(output):
     if sha256(original) != upstream['files']['system.img']:
         raise RuntimeError('Original GSI checksum mismatch')
     payload = json.loads((output / 'payload.json').read_text())
-    for name in ('assistant.apk', 'tts.apk', 'bootanimation.zip'):
+    for name in ('assistant.apk', 'tts.apk', 'dao.apk', 'bootanimation.zip'):
         if sha256(output / name) != payload[name]['sha256']:
             raise RuntimeError(f'Payload changed after APK verification: {name}')
     image = output / 'system.img'
@@ -98,6 +98,7 @@ def main(output):
         raise RuntimeError('Unexpected GSI directory layout')
     install(image, output / 'assistant.apk', '/system/priv-app/Douxian/Douxian.apk')
     install(image, output / 'tts.apk', '/system/app/DouxianTts/DouxianTts.apk')
+    install(image, output / 'dao.apk', '/system/app/DaoBrowser/DaoBrowser.apk')
     install(image, ROOT / 'os/custom/privapp-permissions-douxian.xml',
             '/system/etc/permissions/privapp-permissions-douxian.xml')
     install(image, ROOT / 'os/custom/douxian.xml', '/system/etc/sysconfig/douxian.xml')

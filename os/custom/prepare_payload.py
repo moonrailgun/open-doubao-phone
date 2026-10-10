@@ -11,6 +11,9 @@ import sys
 from boot_animation import create as create_boot_animation
 
 ROOT = Path(__file__).resolve().parents[2]
+# Prebuilt browser, pinned to the release's published SHA-256.
+DAO_APK = ROOT / 'os/dao-browser-android-v0.1.9/dao-browser-0.1.9-android-arm64-v8a.apk'
+DAO_SHA256 = '2645fa9570d8de423ccfa9642e4b604e6ed98b3d46d4eec2344c79f0240856e6'
 
 
 def main(output):
@@ -45,6 +48,16 @@ def main(output):
         with system.open('rb') as stream:
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
         report[name] = dict(sha256=digest, certificate_sha256=system_cert, version_code=version)
+    dao = output / 'dao.apk'
+    shutil.copyfile(DAO_APK, dao)
+    with dao.open('rb') as stream:
+        digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+    # Read-only /system cannot extract native code: libraries must load straight from the APK.
+    manifest = read('aapt', 'dump', 'xmltree', dao, 'AndroidManifest.xml')
+    if digest != DAO_SHA256 or 'extractNativeLibs(0x010104ea)=(type 0x12)0x0' not in manifest:
+        raise RuntimeError('dao: unexpected APK')
+    read('zipalign', '-c', '-P', '16', '4', dao)
+    report[dao.name] = dict(sha256=digest, certificate_sha256=cert(dao))
     animation = output / 'bootanimation.zip'
     create_boot_animation(animation)
     with animation.open('rb') as stream:
