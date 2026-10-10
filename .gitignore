@@ -8,6 +8,7 @@ local.properties
 .superpowers/
 artifacts/
 .env
+output
 android/.voice/
 desktop/node_modules/
 desktop/dist/
