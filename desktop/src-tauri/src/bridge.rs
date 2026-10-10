@@ -303,7 +303,7 @@ fn validate_request(method: &str, params: &Value) -> Result<(), String> {
                 return Err("任务 ID 无效".into());
             }
         }
-        "records.list" | "status.get" | "config.get" | "apps.get" if object.is_empty() => {}
+        "records.list" | "status.get" | "config.get" | "apps.get" | "tts.get" if object.is_empty() => {}
         "apps.set" if object.len() == 1 => {
             let apps = object
                 .get("apps")
@@ -336,6 +336,18 @@ fn validate_request(method: &str, params: &Value) -> Result<(), String> {
                 let text = value.as_str().ok_or("模型配置字段类型错误")?;
                 if text.chars().count() > limit {
                     return Err("模型配置字段过长".into());
+                }
+            }
+        }
+        "tts.set" if object.len() == 4 => {
+            for (field, limit) in [("endpoint", 2048), ("token", 8192), ("model", 200), ("voice", 200)] {
+                let value = object.get(field).ok_or("语音设置字段不完整")?;
+                if field == "token" && value.is_null() {
+                    continue;
+                }
+                let text = value.as_str().ok_or("语音设置字段类型错误")?;
+                if text.chars().count() > limit {
+                    return Err("语音设置字段过长".into());
                 }
             }
         }
@@ -813,6 +825,13 @@ mod tests {
         assert!(validate_request("apps.set", &json!({"apps":[""]})).is_err());
         assert!(validate_request("apps.set", &json!({"apps":[1]})).is_err());
         assert!(validate_request("apps.set", &json!({"apps":["a"], "consent":true})).is_err());
+        assert!(validate_request("tts.get", &json!({})).is_ok());
+        let tts = json!({"endpoint":"https://speech.example/v1/audio/speech", "token":null, "model":"m", "voice":"v"});
+        assert!(validate_request("tts.set", &tts).is_ok());
+        assert!(validate_request("tts.set", &json!({"endpoint":"", "token":"t", "model":"m", "voice":"v"})).is_ok());
+        assert!(validate_request("tts.set", &json!({"endpoint":"", "token":null, "model":null, "voice":"v"})).is_err());
+        assert!(validate_request("tts.set", &json!({"endpoint":"", "token":null, "model":"m"})).is_err());
+        assert!(validate_request("tts.set", &json!({"endpoint":"", "token":null, "model":"m", "voice":"v", "x":1})).is_err());
         let mut config = json!({"jevEndpoint":"https://jev.example", "jevModel":"jev", "jevKey":null,
             "chatEndpoint":"https://chat.example", "chatModel":"chat", "chatKey":"new-key", "language":""});
         assert!(validate_request("config.set", &config).is_ok());

@@ -25,6 +25,9 @@ let modelRequest = 0;
 let appAccess = null;
 let appsSaving = false;
 let appsRequest = 0;
+let ttsConfig = null;
+let ttsSaving = false;
+let ttsRequest = 0;
 let shownRecord = null;
 let deleting = false;
 const recordHeight = 96;
@@ -168,12 +171,20 @@ function controls() {
   $('apps-fields').disabled = !snapshot.connected || !appAccess || appsSaving || running || paused;
   $('apps-save').disabled = $('apps-fields').disabled || !appAccess.selected.size;
   $('apps-save').textContent = appsSaving ? '正在保存…' : running || paused ? '请先停止当前任务' : '保存到手机';
+  $('tts-open').disabled = !snapshot.connected;
+  $('tts-fields').disabled = !snapshot.connected || !ttsConfig || ttsSaving;
+  $('tts-save').disabled = $('tts-fields').disabled;
+  $('tts-save').textContent = ttsSaving ? '正在保存…' : '保存到手机';
   $('record-delete').hidden = !shownRecord;
   $('record-delete').disabled = !snapshot.connected || deleting || running || paused;
   $('record-delete').title = running || paused ? '请先停止当前任务' : '';
   if (modelConfig) {
     $('jev-key').required = !modelConfig.hasJevKey || $('jev-endpoint').value.trim() !== modelConfig.jevEndpoint;
     $('chat-key').required = !modelConfig.hasChatKey || $('chat-endpoint').value.trim() !== modelConfig.chatEndpoint;
+  }
+  if (ttsConfig) {
+    const endpoint = $('tts-endpoint').value.trim();
+    $('tts-token').required = ttsConfig.hasToken && endpoint !== '' && endpoint !== ttsConfig.endpoint;
   }
   $('compose-hint').textContent = !snapshot.device ? '绑定手机后即可下发任务' : !snapshot.connected ? '手机未连接，请检查网络与接收开关' : paused ? '任务已暂停，在手机处理后点击继续' : running ? '手机正在执行任务，完成后可继续下发' : '手机需保持解锁，使用手机端已保存的应用范围';
 }
@@ -191,6 +202,8 @@ function render(next) {
     clearModelConfig();
     $('apps-dialog').close();
     clearApps();
+    $('tts-dialog').close();
+    clearTts();
   }
   $('device-name').textContent = next.device?.name || '尚未绑定设备';
   $('connection-status').textContent = next.connected ? '已连接' : next.device ? '等待手机连接' : next.listening ? '可以绑定手机' : '连接服务未启动';
@@ -495,6 +508,51 @@ $('apps-form').addEventListener('submit', async (event) => {
     notice('应用范围已保存到手机，下一次任务生效。');
   } catch (error) { if (current === appsRequest) appsMessage(`保存失败：${message(error)}`, true); }
   finally { if (current === appsRequest) { appsSaving = false; controls(); } }
+});
+function clearTts() {
+  ttsRequest += 1;
+  ttsConfig = null;
+  ttsSaving = false;
+  $('tts-form').reset();
+  controls();
+}
+const ttsMessage = (text, error) => dialogMessage('tts-message', text, error);
+$('tts-dialog').addEventListener('close', clearTts);
+$('tts-form').addEventListener('input', controls);
+$('tts-open').addEventListener('click', async () => {
+  clearTts();
+  const current = ttsRequest;
+  ttsMessage('正在读取手机语音设置…');
+  $('tts-dialog').showModal();
+  try {
+    const tts = await invoke('request', { method: 'tts.get', params: {} });
+    if (current !== ttsRequest || !$('tts-dialog').open) return;
+    ttsConfig = tts;
+    $('tts-endpoint').value = tts.endpoint;
+    $('tts-token').placeholder = tts.hasToken ? '已设置，留空保留' : '未设置，使用本地播报';
+    $('tts-model').value = tts.model;
+    $('tts-voice').value = tts.voice;
+    ttsMessage('');
+  } catch (error) { if (current === ttsRequest) ttsMessage(`读取失败：${message(error)}`, true); }
+  finally { if (current === ttsRequest) controls(); }
+});
+$('tts-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if ($('tts-save').disabled) return;
+  const current = ttsRequest;
+  const params = { endpoint: $('tts-endpoint').value.trim(), token: $('tts-token').value.trim() || null,
+    model: $('tts-model').value.trim(), voice: $('tts-voice').value.trim() };
+  ttsSaving = true;
+  controls();
+  ttsMessage('');
+  try {
+    const saved = await invoke('request', { method: 'tts.set', params });
+    if (current !== ttsRequest) return;
+    $('tts-dialog').close();
+    clearTts();
+    notice(saved.hasToken ? '在线播报设置已保存到手机。' : '语音设置已保存到手机，使用本地播报。');
+  } catch (error) { if (current === ttsRequest) ttsMessage(`保存失败：${message(error)}`, true); }
+  finally { if (current === ttsRequest) { ttsSaving = false; controls(); } }
 });
 $('pair-open').addEventListener('click', () => {
   $('address').replaceChildren(...snapshot.addresses.map((address) => {

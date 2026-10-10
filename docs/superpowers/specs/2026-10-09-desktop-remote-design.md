@@ -30,13 +30,14 @@ All WebSocket frames are bounded JSON text, at most 256 KiB.
 - `config.get {}` returns endpoints, model names, language and `hasJevKey`/`hasChatKey`, never keys. `config.set {jevEndpoint,jevModel,jevKey,chatEndpoint,chatModel,chatKey,language}` saves it; a null key keeps the saved key only when its endpoint is unchanged.
 - `config.test` takes the same fields, applies the same key rule and asks the phone to call both services once without saving. The desktop waits up to 130 seconds for it.
 - `apps.get {}` returns `{apps:[{packageName,label,launchable}],selected}` from the phone's installed-app catalog. `apps.set {apps}` saves a non-empty set of installed packages.
+- `tts.get {}` returns `{endpoint,model,voice,hasToken}`, never the token. `tts.set {endpoint,token,model,voice}` saves online playback with the phone's own validation; a null token keeps the saved token only when the endpoint is unchanged, and an empty endpoint clears it for local playback. Allowed while a task runs, like on the phone.
 - Configuration, app scope and record deletion are refused while a task is running or paused.
 
 Only these methods are accepted. Phone network callbacks return to Main for Vault and task operations. A single task can run at a time, whether started locally or remotely. Late callbacks after receiver shutdown are ignored. Desktop response timeout is ten seconds (130 for `config.test`) and reports an unknown outcome rather than silently resending. TLS/hello handshake concurrency, timeout and message size are bounded.
 
 ## User interface
 
-Desktop: device sidebar with online status, pairing/forget, model configuration with a connection test, and app scope; task composer with stop and resume controls; live progress, reply and summary rendered from the phone's Markdown subset; history list, a detailed log reader and record deletion. A system notification reports a task that pauses or ends while the window is in the background. Use a restrained blue-gray workspace, native system Chinese type, clear labels, visible keyboard focus and selectable output. Render all device text as text, never HTML.
+Desktop: device sidebar with online status, pairing/forget, model configuration with a connection test, voice playback settings, and app scope; task composer with stop and resume controls; live progress, reply and summary rendered from the phone's Markdown subset; history list, a detailed log reader and record deletion. A system notification reports a task that pauses or ends while the window is in the background. Use a restrained blue-gray workspace, native system Chinese type, clear labels, visible keyboard focus and selectable output. Render all device text as text, never HTML.
 
 Phone: settings section for device-code entry, explicit bind, reception toggle, status, and unbind. Existing local tasks and settings remain available. Update privacy wording to explain that a bound desktop can read retained task history and logs.
 

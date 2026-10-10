@@ -13,6 +13,7 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
       { packageName: 'com.android.chrome', label: 'Chrome', launchable: true },
       { packageName: 'com.google.android.gms', label: 'Google Play 服务', launchable: false },
     ] };
+    window.testTts = { endpoint: 'https://speech.example/v1/audio/speech', model: 'eleven', voice: 'voice-1', hasToken: true };
     window.testSnapshot = {
       listening: true, addresses: ['192.168.1.20'], port: 38687, connected,
       device: connected ? { id: 'phone-1', name: '测试手机' } : null,
@@ -53,6 +54,11 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
           if (args.method === 'config.test') { if (window.testConnectionFailure) throw window.testConnectionFailure; return {}; }
           if (args.method === 'apps.get') return structuredClone(window.testApps);
           if (args.method === 'apps.set') { window.testApps.selected = args.params.apps; return { selected: args.params.apps.length }; }
+          if (args.method === 'tts.get') return structuredClone(window.testTts);
+          if (args.method === 'tts.set') {
+            const { endpoint, token, model, voice } = args.params;
+            return { endpoint, model, voice, hasToken: Boolean(token) || (endpoint !== '' && window.testTts.hasToken) };
+          }
         }
         throw new Error(`Unexpected command: ${command}`);
       },
@@ -487,6 +493,28 @@ test('app scope mirrors the phone picker and saves the selection', async ({ page
   await expect(page.locator('#notice')).toContainText('应用范围已保存到手机');
   expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'apps.set').args.params))
     .toEqual({ apps: ['com.android.chrome'] });
+});
+
+test('voice settings keep the hidden token and require a new one for a new endpoint', async ({ page }, testInfo) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: '语音播报', exact: true }).click();
+  const endpoint = page.getByLabel('在线播报接口地址');
+  const token = page.getByLabel('在线播报 Token');
+  await expect(endpoint).toHaveValue('https://speech.example/v1/audio/speech');
+  await expect(token).toHaveValue('');
+  await expect(token).toHaveAttribute('placeholder', '已设置，留空保留');
+  await endpoint.fill('https://other.example/v1/audio/speech');
+  await expect(token).toHaveAttribute('required', '');
+  await endpoint.fill('');
+  await expect(token).not.toHaveAttribute('required');
+  await page.getByLabel('音色 ID').fill(' voice-2 ');
+  await page.screenshot({ path: testInfo.outputPath('voice-settings.png'), fullPage: true });
+  await page.getByRole('button', { name: '保存到手机', exact: true }).click();
+  await expect(page.locator('#tts-dialog')).not.toBeVisible();
+  await expect(page.locator('#notice')).toContainText('使用本地播报');
+  expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'tts.set').args.params))
+    .toEqual({ endpoint: '', token: null, model: 'eleven', voice: 'voice-2' });
 });
 
 test('app scope cannot change during a task and closes on disconnect', async ({ page }) => {

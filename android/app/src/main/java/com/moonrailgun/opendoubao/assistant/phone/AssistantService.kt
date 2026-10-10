@@ -51,6 +51,9 @@ import com.moonrailgun.opendoubao.assistant.remote.RemoteSnapshot
 import com.moonrailgun.opendoubao.assistant.remote.RemoteTasks
 import com.moonrailgun.opendoubao.assistant.statusStyle
 import com.moonrailgun.opendoubao.assistant.voice.LocalVoiceInput
+import com.moonrailgun.opendoubao.assistant.voice.TtsSettings
+import com.moonrailgun.opendoubao.assistant.voice.tts
+import com.moonrailgun.opendoubao.assistant.voice.withTts
 import com.moonrailgun.opendoubao.assistant.voice.voiceAutoSend
 import com.moonrailgun.opendoubao.assistant.voice.taskScreenAvailable
 import kotlinx.coroutines.*
@@ -152,6 +155,11 @@ class AssistantService : AccessibilityService() {
                     override fun saveAccess(apps: Set<String>) {
                         check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改应用范围" }
                         vault.write(vault.read().copy(apps = apps, appsConfigured = true))
+                        remoteEdits.value++
+                    }
+                    override fun tts() = vault.read().tts()
+                    override fun saveTts(tts: TtsSettings) {
+                        vault.write(vault.read().withTts(tts))
                         remoteEdits.value++
                     }
                     override fun start(goal: String, taskId: String): String {

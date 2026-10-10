@@ -4,6 +4,7 @@ import com.moonrailgun.opendoubao.assistant.data.Record
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
 import com.moonrailgun.opendoubao.assistant.phone.InstalledApp
 import com.moonrailgun.opendoubao.assistant.remote.*
+import com.moonrailgun.opendoubao.assistant.voice.TtsSettings
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -62,6 +63,9 @@ class RemoteProtocolTest {
             setOf("com.example.notes"))
         override fun access() = access
         override fun saveAccess(apps: Set<String>) { access = access.copy(selected = apps) }
+        var tts = TtsSettings("https://speech.example/v1/audio/speech", "existing-tts-token", "eleven", "voice-1")
+        override fun tts() = tts
+        override fun saveTts(tts: TtsSettings) { this.tts = tts }
     }
 
     // Commands only suspend for connection tests; the fakes return immediately.
@@ -236,6 +240,28 @@ class RemoteProtocolTest {
         phone.current = RemoteSnapshot()
         assertTrue(set(listOf("com.example.notes", "com.google.android.gms")))
         assertEquals(setOf("com.example.notes", "com.google.android.gms"), phone.access.selected)
+    }
+
+    @Test fun ttsSettingsNeverReturnTheTokenAndKeepItOnlyForTheSameEndpoint() {
+        val phone = Phone()
+        val commands = RemoteCommands(phone)
+        val read = commands.call(request("tts.get")).getJSONObject("data")
+        assertEquals("https://speech.example/v1/audio/speech", read.getString("endpoint"))
+        assertTrue(read.getBoolean("hasToken"))
+        assertFalse(read.toString().contains("existing-tts-token"))
+        fun set(endpoint: String, token: Any? = JSONObject.NULL, model: String = "eleven") = commands.call(request("tts.set",
+            JSONObject().put("endpoint", endpoint).put("token", token).put("model", model).put("voice", " voice-2 ")))
+        assertTrue(set("https://speech.example/v1/audio/speech").getBoolean("ok"))
+        assertEquals(TtsSettings("https://speech.example/v1/audio/speech", "existing-tts-token", "eleven", "voice-2"), phone.tts)
+        assertFalse(set("https://other.example/v1/audio/speech").getBoolean("ok"))
+        assertFalse(set("http://speech.example/v1/audio/speech", "new").getBoolean("ok"))
+        assertFalse(set("https://speech.example/v1/audio/speech", model = " ").getBoolean("ok"))
+        assertEquals("existing-tts-token", phone.tts.token)
+        assertTrue(set("https://other.example/v1/audio/speech", "new-token").getBoolean("ok"))
+        assertEquals("new-token", phone.tts.token)
+        // Clearing the endpoint switches to local playback and drops the token.
+        assertFalse(set("").getJSONObject("data").getBoolean("hasToken"))
+        assertEquals(TtsSettings("", "", "eleven", "voice-2"), phone.tts)
     }
 
     @Test fun historyListsAreBoundedWhileDetailAndLiveStateKeepDiagnostics() {

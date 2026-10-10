@@ -5,6 +5,7 @@ import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.data.Record
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
 import com.moonrailgun.opendoubao.assistant.phone.InstalledApp
+import com.moonrailgun.opendoubao.assistant.voice.TtsSettings
 import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
@@ -86,6 +87,8 @@ interface RemoteTasks {
     suspend fun testConfig(config: ModelConfig)
     fun access(): AppAccess
     fun saveAccess(apps: Set<String>)
+    fun tts(): TtsSettings
+    fun saveTts(tts: TtsSettings)
 }
 
 class RemoteCommands(private val tasks: RemoteTasks) {
@@ -199,6 +202,25 @@ class RemoteCommands(private val tasks: RemoteTasks) {
                     tasks.saveAccess(apps)
                     JSONObject().put("selected", apps.size)
                 }
+                "tts.get" -> { params.exactFields(); tasks.tts().remoteJson() }
+                "tts.set" -> {
+                    params.exactFields("endpoint", "token", "model", "voice")
+                    fun field(name: String, limit: Int) = params.string(name).also { require(it.length <= limit) { "字段 $name 过长" } }.trim()
+                    val old = tasks.tts()
+                    val endpoint = field("endpoint", 2048)
+                    val token = when {
+                        !params.isNull("token") -> field("token", 8192)
+                        endpoint.isEmpty() -> "" // No endpoint means local playback.
+                        else -> {
+                            // Never forward an existing token to a remotely changed endpoint.
+                            require(endpoint == old.endpoint || old.token.isEmpty()) { "修改接口地址时请填写新的 Token" }
+                            old.token
+                        }
+                    }
+                    val tts = TtsSettings(endpoint, token, field("model", 200), field("voice", 200)).validated()
+                    tasks.saveTts(tts)
+                    tts.remoteJson()
+                }
                 else -> error("不支持的远程方法")
             }
             response.put("ok", true).put("data", data)
@@ -212,6 +234,9 @@ class RemoteCommands(private val tasks: RemoteTasks) {
 private fun ModelConfig.remoteJson(): JSONObject = JSONObject().put("jevEndpoint", jevEndpoint).put("jevModel", jevModel)
     .put("chatEndpoint", chatEndpoint).put("chatModel", chatModel).put("language", language)
     .put("hasJevKey", jevKey.isNotBlank()).put("hasChatKey", chatKey.isNotBlank())
+
+private fun TtsSettings.remoteJson(): JSONObject = JSONObject().put("endpoint", endpoint).put("model", model)
+    .put("voice", voice).put("hasToken", token.isNotEmpty())
 
 private fun Record.json(preview: Boolean = false): JSONObject = JSONObject().put("id", id).put("time", time)
     .put("goal", if (preview) goal.take(240) else goal).put("status", status)

@@ -11,31 +11,46 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.moonrailgun.opendoubao.assistant.data.Saved
 import com.moonrailgun.opendoubao.assistant.data.Vault
+import com.moonrailgun.opendoubao.assistant.phone.AssistantService
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+
+/** Online playback settings, saved from the phone or the desktop. An empty token means local playback. */
+data class TtsSettings(val endpoint: String, val token: String, val model: String, val voice: String) {
+    fun validated(): TtsSettings {
+        val tts = TtsSettings(endpoint.trim(), token.trim(), model.trim(), voice.trim())
+        if (tts.endpoint.isNotEmpty()) {
+            val url = tts.endpoint.toHttpUrlOrNull()
+            require(url != null && url.isHttps && url.username.isEmpty() && url.password.isEmpty() &&
+                url.query == null && url.fragment == null) { "请输入不含凭据、查询参数或片段的 HTTPS 接口地址" }
+        }
+        require(tts.token.isEmpty() || tts.endpoint.isNotEmpty()) { "请填写在线播报接口地址" }
+        require(tts.model.isNotEmpty() && tts.voice.isNotEmpty()) { "请填写在线播报模型和音色" }
+        return tts
+    }
+}
+
+fun Saved.tts() = TtsSettings(onlineTtsEndpoint, onlineTtsToken, onlineTtsModel, onlineTtsVoice)
+fun Saved.withTts(tts: TtsSettings) = copy(onlineTtsEndpoint = tts.endpoint, onlineTtsToken = tts.token,
+    onlineTtsModel = tts.model, onlineTtsVoice = tts.voice)
 
 @Composable
 fun TtsControls(vault: Vault) {
     val context = LocalContext.current
     val state by VoiceRuntime.state.collectAsState()
-    val initial = remember(vault) { runCatching { vault.read() } }
-    var endpoint by remember { mutableStateOf(initial.getOrNull()?.onlineTtsEndpoint.orEmpty()) }
-    var token by remember { mutableStateOf(initial.getOrNull()?.onlineTtsToken.orEmpty()) }
-    var model by remember { mutableStateOf(initial.getOrNull()?.onlineTtsModel ?: Saved.DEFAULT_TTS_MODEL) }
-    var voice by remember { mutableStateOf(initial.getOrNull()?.onlineTtsVoice ?: Saved.DEFAULT_TTS_VOICE) }
-    var status by remember { mutableStateOf(initial.exceptionOrNull()?.message.orEmpty()) }
-    var failed by remember { mutableStateOf(initial.isFailure) }
+    // Reload when the desktop saves new settings.
+    val remoteEdits by AssistantService.remoteEditVersion.collectAsState()
+    val initial = remember(vault, remoteEdits) { runCatching { vault.read() } }
+    var endpoint by remember(initial) { mutableStateOf(initial.getOrNull()?.onlineTtsEndpoint.orEmpty()) }
+    var token by remember(initial) { mutableStateOf(initial.getOrNull()?.onlineTtsToken.orEmpty()) }
+    var model by remember(initial) { mutableStateOf(initial.getOrNull()?.onlineTtsModel ?: Saved.DEFAULT_TTS_MODEL) }
+    var voice by remember(initial) { mutableStateOf(initial.getOrNull()?.onlineTtsVoice ?: Saved.DEFAULT_TTS_VOICE) }
+    var status by remember(initial) { mutableStateOf(initial.exceptionOrNull()?.message.orEmpty()) }
+    var failed by remember(initial) { mutableStateOf(initial.isFailure) }
 
     fun save(): Boolean = try {
-        endpoint = endpoint.trim(); token = token.trim(); model = model.trim(); voice = voice.trim()
-        if (endpoint.isNotEmpty()) {
-            val url = endpoint.toHttpUrlOrNull()
-            require(url != null && url.isHttps && url.username.isEmpty() && url.password.isEmpty() &&
-                url.query == null && url.fragment == null) { "请输入不含凭据、查询参数或片段的 HTTPS 接口地址" }
-        }
-        require(token.isEmpty() || endpoint.isNotEmpty()) { "请填写在线播报接口地址" }
-        require(model.isNotEmpty() && voice.isNotEmpty()) { "请填写在线播报模型和音色" }
-        vault.write(vault.read().copy(onlineTtsEndpoint = endpoint, onlineTtsToken = token,
-            onlineTtsModel = model, onlineTtsVoice = voice))
+        val tts = TtsSettings(endpoint, token, model, voice).validated()
+        endpoint = tts.endpoint; token = tts.token; model = tts.model; voice = tts.voice
+        vault.write(vault.read().withTts(tts))
         status = if (token.isEmpty()) "已保存，使用本地播报" else "在线播报设置已保存"
         failed = false
         true

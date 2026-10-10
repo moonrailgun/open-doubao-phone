@@ -165,6 +165,8 @@ class RemoteReceiverTest {
         override suspend fun testConfig(config: com.moonrailgun.opendoubao.assistant.model.ModelConfig) = Unit
         override fun access() = AppAccess(emptyList(), emptySet())
         override fun saveAccess(apps: Set<String>) = Unit
+        override fun tts() = com.moonrailgun.opendoubao.assistant.voice.TtsSettings("", "", "m", "v")
+        override fun saveTts(tts: com.moonrailgun.opendoubao.assistant.voice.TtsSettings) = Unit
     }
 
     private class Fixture(config: RemoteConfig) : AutoCloseable {
