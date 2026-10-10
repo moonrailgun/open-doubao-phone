@@ -54,8 +54,12 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
           if (args.method === 'config.test') { if (window.testConnectionFailure) throw window.testConnectionFailure; return {}; }
           if (args.method === 'apps.get') return structuredClone(window.testApps);
           if (args.method === 'apps.set') { window.testApps.selected = args.params.apps; return { selected: args.params.apps.length }; }
-          if (args.method === 'tts.get') return structuredClone(window.testTts);
+          if (args.method === 'tts.get') {
+            if (window.testTtsPending) await new Promise(resolve => { window.finishTts = resolve; });
+            return structuredClone(window.testTts);
+          }
           if (args.method === 'tts.set') {
+            if (window.testTtsFailure) throw window.testTtsFailure;
             const { endpoint, token, model, voice } = args.params;
             return { endpoint, model, voice, hasToken: Boolean(token) || (endpoint !== '' && window.testTts.hasToken) };
           }
@@ -515,6 +519,69 @@ test('voice settings keep the hidden token and require a new one for a new endpo
   await expect(page.locator('#notice')).toContainText('使用本地播报');
   expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'tts.set').args.params))
     .toEqual({ endpoint: '', token: null, model: 'eleven', voice: 'voice-2' });
+});
+
+test('voice settings save a new online token while a task runs', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.evaluate(() => { window.testSnapshot.state = { taskId: 'task-1', status: 'RUNNING', goal: 'x', message: '', steps: 1, result: '', log: [] }; });
+  await expect(page.locator('#task-badge')).toHaveText('正在执行');
+  await page.getByRole('button', { name: '语音播报', exact: true }).click();
+  await expect(page.locator('#tts-save')).toHaveText('保存到手机');
+  await expect(page.locator('#tts-save')).toBeEnabled();
+  await page.getByLabel('在线播报接口地址').fill(' https://other.example/v1/audio/speech ');
+  await page.getByLabel('在线播报 Token').fill(' new-token ');
+  await page.getByLabel('播报模型').fill('flash');
+  await page.getByRole('button', { name: '保存到手机', exact: true }).click();
+  await expect(page.locator('#tts-dialog')).not.toBeVisible();
+  await expect(page.locator('#notice')).toContainText('在线播报设置已保存到手机');
+  await expect(page.locator('#tts-token')).toHaveValue('');
+  expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'tts.set').args.params))
+    .toEqual({ endpoint: 'https://other.example/v1/audio/speech', token: 'new-token', model: 'flash', voice: 'voice-1' });
+  expect(await page.evaluate(() => localStorage.length)).toBe(0);
+});
+
+test('voice read and save failures stay visible, keep the draft, and disconnect clears the token', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.evaluate(() => { window.testFailure = '手机未响应'; });
+  await page.getByRole('button', { name: '语音播报', exact: true }).click();
+  await expect(page.locator('#tts-message')).toHaveClass(/error/);
+  await expect(page.locator('#tts-message')).toContainText('读取失败：手机未响应');
+  await expect(page.locator('#tts-endpoint')).toBeDisabled();
+  await expect(page.locator('#tts-save')).toBeDisabled();
+  await page.locator('#tts-dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  await page.evaluate(() => { window.testFailure = null; window.testTtsFailure = '语音设置无效'; });
+  await page.getByRole('button', { name: '语音播报', exact: true }).click();
+  await expect(page.locator('#tts-message')).toHaveText('');
+  await page.getByLabel('在线播报 Token').fill('draft-token');
+  await page.getByLabel('音色 ID').fill('voice-2');
+  await page.getByRole('button', { name: '保存到手机', exact: true }).click();
+  await expect(page.locator('#tts-message')).toContainText('保存失败：语音设置无效');
+  await expect(page.locator('#tts-save')).toBeEnabled();
+  await expect(page.locator('#tts-token')).toHaveValue('draft-token');
+  await expect(page.locator('#tts-voice')).toHaveValue('voice-2');
+  await page.evaluate(() => { window.testSnapshot.connected = false; });
+  await expect(page.locator('#tts-dialog')).not.toBeVisible();
+  await expect(page.locator('#tts-token')).toHaveValue('');
+  await expect(page.getByRole('button', { name: '语音播报', exact: true })).toBeDisabled();
+});
+
+test('a voice response arriving after closing is ignored and an unset token stays optional', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.evaluate(() => { window.testTtsPending = true; });
+  await page.getByRole('button', { name: '语音播报', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof window.finishTts)).toBe('function');
+  await page.locator('#tts-dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  await page.evaluate(() => { window.finishTts(); return new Promise(resolve => setTimeout(resolve)); });
+  await expect(page.locator('#tts-endpoint')).toHaveValue('');
+  await expect(page.locator('#tts-token')).not.toHaveAttribute('placeholder');
+  await page.evaluate(() => { window.testTtsPending = false; window.testTts.hasToken = false; });
+  await page.getByRole('button', { name: '语音播报', exact: true }).click();
+  await expect(page.locator('#tts-token')).toHaveAttribute('placeholder', '未设置，使用本地播报');
+  await page.getByLabel('在线播报接口地址').fill('https://other.example/v1/audio/speech');
+  await expect(page.locator('#tts-token')).not.toHaveAttribute('required');
 });
 
 test('app scope cannot change during a task and closes on disconnect', async ({ page }) => {
