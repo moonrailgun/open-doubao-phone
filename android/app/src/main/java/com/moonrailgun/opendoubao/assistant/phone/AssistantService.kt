@@ -310,7 +310,6 @@ class AssistantService : AccessibilityService() {
             setImageResource(R.drawable.app_logo)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
             clipToOutline = true
-            elevation = dp(6).toFloat()
             setOnClickListener { expanded = true; applyOverlay() }
         }
         val slop = ViewConfiguration.get(this).scaledTouchSlop
@@ -502,9 +501,13 @@ class AssistantService : AccessibilityService() {
             conversing -> VoiceRing
             else -> null
         }
-        ball.foreground = color?.let { GradientDrawable().apply {
-            shape = GradientDrawable.OVAL; setStroke((3 * resources.displayMetrics.density).toInt(), it.toArgb())
-        } }
+        val density = resources.displayMetrics.density
+        // No elevation: the small overlay window clips its shadow into a dark edge, so a hairline outlines the idle ball.
+        ball.foreground = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            if (color != null) setStroke((3 * density).toInt(), color.toArgb())
+            else setStroke(maxOf(1, density.toInt()), Color.argb(40, 0, 0, 0))
+        }
         ball.contentDescription = when {
             running -> "Open Doubao 正在操作手机，点按展开紧急停止"
             paused -> "Open Doubao 已暂停，点按展开继续任务"
