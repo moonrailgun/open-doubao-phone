@@ -126,8 +126,9 @@ def main(output):
         raise RuntimeError('Unexpected GSI directory layout')
     install(image, output / 'assistant.apk', '/system/priv-app/Douxian/Douxian.apk')
     install(image, output / 'tts.apk', '/system/app/DouxianTts/DouxianTts.apk')
+    # PackageManager never scans /system/overlay; the GSI's product overlay folder lives inside system.img.
     install(image, output / 'computer-control-overlay.apk',
-            '/system/overlay/DouxianComputerControl/DouxianComputerControl.apk')
+            '/system/product/overlay/DouxianComputerControl/DouxianComputerControl.apk')
     install(image, output / 'dao.apk', '/system/app/DaoBrowser/DaoBrowser.apk')
     install(image, output / 'doubao-ime.apk', '/system/app/DoubaoIme/DoubaoIme.apk')
     install_libraries(image, output / 'doubao-ime.apk', '/system/app/DoubaoIme')

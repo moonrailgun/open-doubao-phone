@@ -46,7 +46,7 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
 
 - `privapp-permissions-douxian.xml` 授予 `ACCESS_COMPUTER_CONTROL`（`internal|privileged`），system 变体的 Manifest 同时申请它；`test_image.py` 要求两边完全一致，因为白名单缺项会让强制模式的系统无法开机。
 - `douxian.xml` 用 `hidden-api-whitelisted-app` 放行隐藏 API：会话接口不在公开 SDK 中，编译时使用 `android/hidden` 的桩类。
-- `prepare_payload.py` 生成静态 RRO `com.moonrailgun.opendoubao.overlay.computercontrol`，写入 `/system/overlay/DouxianComputerControl/`，把 `config_computerControlKnownSuperAgents` 设为 `com.moonrailgun.opendoubao.assistant:<证书 SHA-256 大写>`。超级智能体免去 DeviceConfig 白名单（`computer_control/allowed_session_owner_apps`、`allowed_automatable_apps`），也不受同时一个会话的限制。证书摘要来自本机开发密钥，换密钥后必须重新生成镜像。
+- `prepare_payload.py` 生成静态 RRO `com.moonrailgun.opendoubao.overlay.computercontrol`，写入 `/system/product/overlay/DouxianComputerControl/`（PackageManager 不扫描 `/system/overlay`），把 `config_computerControlKnownSuperAgents` 设为 `com.moonrailgun.opendoubao.assistant:<证书 SHA-256 大写>`。超级智能体免去 DeviceConfig 白名单（`computer_control/allowed_session_owner_apps`、`allowed_automatable_apps`），也不受同时一个会话的限制。证书摘要来自本机开发密钥，换密钥后必须重新生成镜像。
 
 助手还需持有默认数字助手角色。每个目标应用第一次在虚拟屏上运行时，系统会弹出授权页。
 
