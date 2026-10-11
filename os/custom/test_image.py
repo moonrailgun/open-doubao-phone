@@ -4,7 +4,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 import zipfile
-from build_image import AVB, ROOT, GROUP_SIZE, OTHER_PARTITIONS, check_capacity, debugfs, install, install_libraries, replace_line, run
+from build_image import AVB, ROOT, GROUP_SIZE, OTHER_PARTITIONS, check_capacity, debugfs, install, install_libraries, replace_line, run, stamp_version
 
 
 class ImageRecipeTest(unittest.TestCase):
@@ -49,6 +49,23 @@ class ImageRecipeTest(unittest.TestCase):
             self.assertIn('security.selinux (26)', debugfs(image, f'ea_list {target}'))
             with self.assertRaises(RuntimeError):
                 replace_line(image, target, 'ro.product.product.model=AOSP on ARM64', 'unused')
+            run('e2fsck', '-fn', image)
+
+    def test_stamp_version(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            image = root / 'system.img'
+            with image.open('wb') as stream:
+                stream.truncate(16 * 1024**2)
+            run('mke2fs', '-q', '-t', 'ext4', '-b', '4096', '-F', image)
+            source = root / 'build.prop'
+            source.write_text('ro.build.id=CP3A.260905.010\nro.build.display.id=CP3A.260905.010\nro.build.type=user\n')
+            install(image, source, '/system/build.prop', '0100600')
+            stamp_version(image, 'v1.27', 'CP3A.260905.010')
+            self.assertIn('\nro.build.display.id=Open Doubao v1.27 (CP3A.260905.010)\nro.opendoubao.version=v1.27\nro.build.type=user\n',
+                          debugfs(image, 'cat /system/build.prop'))
+            with self.assertRaises(RuntimeError):
+                stamp_version(image, 'release 1', 'CP3A.260905.010')
             run('e2fsck', '-fn', image)
 
     def test_install_libraries(self):

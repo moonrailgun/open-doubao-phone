@@ -72,6 +72,14 @@ def replace_line(image, target, old, new):
         install(image, source, target, '010' + re.search(r'Mode:\s+(\d+)', stat).group(1))
 
 
+def stamp_version(image, version, build_id):
+    """Shows our release in Settings: the build number reads 'Open Doubao v1.27 (CP3A…)', and ro.opendoubao.version carries it alone."""
+    if not re.fullmatch(r'v\d+(\.\d+)*(-[a-z0-9]+)?', version):
+        raise RuntimeError(f'Version must look like v1.27, got {version!r}')
+    replace_line(image, '/system/build.prop', f'ro.build.display.id={build_id}',
+                 f'ro.build.display.id=Open Doubao {version} ({build_id})\nro.opendoubao.version={version}')
+
+
 def install_libraries(image, apk, directory):
     """Bundled apps never extract compressed native code; PackageManager loads it from <app>/lib/arm64."""
     with tempfile.TemporaryDirectory() as folder, zipfile.ZipFile(apk) as archive:
@@ -98,8 +106,9 @@ def check_capacity(system_size):
         raise RuntimeError(f'System image needs {system_size:,} bytes; available {GROUP_SIZE - OTHER_PARTITIONS:,}')
 
 
-def main(output):
+def main(output, version=None):
     output = output.resolve()
+    version = version or output.name
     output.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(output).free < MIN_FREE:
         raise RuntimeError('At least 10 GB free is required in the output filesystem')
@@ -145,6 +154,7 @@ def main(output):
     for partition in ('product', 'system_ext'):
         replace_line(image, f'/system/{partition}/etc/build.prop', f'ro.product.{partition}.model=AOSP on ARM64',
                      f'ro.product.{partition}.model=Open Doubao')
+    stamp_version(image, version, upstream['build_id'])
     run('e2fsck', '-fy', image, codes=(0, 1))
     run('resize2fs', '-M', image)
     run('e2fsck', '-fn', image)
@@ -165,7 +175,8 @@ def main(output):
     run(*AVB, 'verify_image', '--image', image)
     check_capacity(image.stat().st_size)
     (output / 'avb-info.txt').write_text(run(*AVB, 'info_image', '--image', image))
-    report = dict(upstream_sha256=upstream['files']['system.img'], system_sha256=sha256(image),
+    report = dict(version=version, display_id=f'Open Doubao {version} ({upstream["build_id"]})',
+                  upstream_sha256=upstream['files']['system.img'], system_sha256=sha256(image),
                   system_bytes=image.stat().st_size, group_bytes=GROUP_SIZE,
                   total_dynamic_bytes=image.stat().st_size + OTHER_PARTITIONS, payload=payload)
     (output / 'manifest.json').write_text(json.dumps(report, indent=2) + '\n')
@@ -173,6 +184,6 @@ def main(output):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        sys.exit('usage: build_image.py OUTPUT_DIRECTORY')
-    main(Path(sys.argv[1]))
+    if len(sys.argv) not in (2, 3):
+        sys.exit('usage: build_image.py OUTPUT_DIRECTORY [VERSION such as v1.27; defaults to the directory name]')
+    main(Path(sys.argv[1]), sys.argv[2] if len(sys.argv) == 3 else None)

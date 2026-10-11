@@ -125,6 +125,7 @@ class DebugActivity : ComponentActivity() {
                     val choice = remember { executionChoice(this@DebugActivity) }
                     val assistant = remember { Settings.Secure.getString(contentResolver, "voice_interaction_service").orEmpty() }
                     listOf(
+                        "系统版本" to Build.DISPLAY,
                         "虚拟屏可用" to if (virtualDisplayAvailable(this@DebugActivity)) "是" else "否",
                         "虚拟屏会话" to if (virtualActive) "进行中" else "无",
                         "执行方式设置" to when (choice) { EXECUTION_VIRTUAL -> "固定虚拟屏"; EXECUTION_FOREGROUND -> "固定前台"; else -> "自动判断" },
