@@ -22,8 +22,8 @@ IME_CERT_SHA256 = 'd47cafb450b9c8191180402795f35ce50ce2d8b37f1300b42e7d8633bc86b
 OVERLAY_PACKAGE = 'com.moonrailgun.opendoubao.overlay.computercontrol'
 
 
-def build_overlay(tools, sdk, assistant_cert, target):
-    """Static framework RRO naming the assistant, pinned to its certificate, a known Computer Control super agent."""
+def build_overlay(tools, sdk, target):
+    """Static framework RRO naming the assistant the system allowlist provider, so it may run Computer Control sessions."""
     with tempfile.TemporaryDirectory() as folder:
         work = Path(folder)
         (work / 'res/values').mkdir(parents=True)
@@ -33,18 +33,16 @@ def build_overlay(tools, sdk, assistant_cert, target):
     <application android:hasCode="false" />
 </manifest>
 ''')
-        # SigningDetails compares upper-case SHA-256 digests.
-        (work / 'res/values/config.xml').write_text(f'''<resources>
-    <string-array name="config_computerControlKnownSuperAgents">
-        <item>com.moonrailgun.opendoubao.assistant:{assistant_cert.upper()}</item>
-    </string-array>
+        # Super agents (config_computerControlKnownSuperAgents) only count on debuggable builds; user builds need a provider.
+        (work / 'res/values/config.xml').write_text('''<resources>
+    <string name="config_allowlistProviderServicePackage">com.moonrailgun.opendoubao.assistant</string>
 </resources>
 ''')
         def tool(name, *args):
             subprocess.check_call([str(tools / name), *map(str, args)])
         tool('aapt2', 'compile', '--dir', work / 'res', '-o', work / 'res.zip')
         tool('aapt2', 'link', '-o', work / 'unsigned.apk', '-I', sdk / 'platforms/android-36/android.jar',
-             '--manifest', work / 'AndroidManifest.xml', '--min-sdk-version', '30', '--target-sdk-version', '36', work / 'res.zip')
+             '--manifest', work / 'AndroidManifest.xml', '--min-sdk-version', '30', '--target-sdk-version', '37', work / 'res.zip')
         tool('zipalign', '-f', '-p', '4', work / 'unsigned.apk', work / 'aligned.apk')
         # Same development key as the assistant; the overlay never updates outside the image.
         tool('apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore', '--ks-pass', 'pass:android',
@@ -84,10 +82,9 @@ def main(output):
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
         report[name] = dict(sha256=digest, certificate_sha256=system_cert, version_code=version)
     overlay = output / 'computer-control-overlay.apk'
-    assistant_cert = report['assistant.apk']['certificate_sha256']
-    build_overlay(tools, sdk, assistant_cert, overlay)
-    if f'com.moonrailgun.opendoubao.assistant:{assistant_cert.upper()}' not in read('aapt2', 'dump', 'resources', overlay):
-        raise RuntimeError('overlay: super agent entry does not match the assistant certificate')
+    build_overlay(tools, sdk, overlay)
+    if '"com.moonrailgun.opendoubao.assistant"' not in read('aapt2', 'dump', 'resources', overlay):
+        raise RuntimeError('overlay: allowlist provider is not the assistant')
     with overlay.open('rb') as stream:
         report[overlay.name] = dict(sha256=hashlib.file_digest(stream, 'sha256').hexdigest(), certificate_sha256=cert(overlay))
     dao = output / 'dao.apk'

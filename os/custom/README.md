@@ -46,7 +46,9 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
 
 - `privapp-permissions-douxian.xml` 授予 `ACCESS_COMPUTER_CONTROL`（`internal|privileged`），system 变体的 Manifest 同时申请它；`test_image.py` 要求两边完全一致，因为白名单缺项会让强制模式的系统无法开机。
 - `douxian.xml` 用 `hidden-api-whitelisted-app` 放行隐藏 API：会话接口不在公开 SDK 中，编译时使用 `android/hidden` 的桩类。
-- `prepare_payload.py` 生成静态 RRO `com.moonrailgun.opendoubao.overlay.computercontrol`，写入 `/system/product/overlay/DouxianComputerControl/`（PackageManager 不扫描 `/system/overlay`），把 `config_computerControlKnownSuperAgents` 设为 `com.moonrailgun.opendoubao.assistant:<证书 SHA-256 大写>`。超级智能体免去 DeviceConfig 白名单（`computer_control/allowed_session_owner_apps`、`allowed_automatable_apps`），也不受同时一个会话的限制。证书摘要来自本机开发密钥，换密钥后必须重新生成镜像。
+- `prepare_payload.py` 生成静态 RRO `com.moonrailgun.opendoubao.overlay.computercontrol`，写入 `/system/product/overlay/DouxianComputerControl/`（PackageManager 不扫描 `/system/overlay`），把 `config_allowlistProviderServicePackage` 设为助手。系统随后绑定助手的 `AllowlistProvider` 服务（其他系统不会绑定它）：会话发起方名单（ID 4）只含助手及其证书，可自动化应用（ID 3）为通配符，拒绝名单（ID 5）为空，其他名单照旧返回失败。应用范围和系统的逐应用授权页仍然限制可操作的应用。
+
+`user` 构建只能走提供方这条路：超级智能体（`config_computerControlKnownSuperAgents`）仅在可调试构建生效，DeviceConfig 白名单（`computer_control/allowed_session_owner_apps` 等）也不接受 adb 写入；`cmd allowlist add-packages` 只能临时加入会话发起方，且未被电脑控制服务采纳。
 
 助手还需持有默认数字助手角色。每个目标应用第一次在虚拟屏上运行时，系统会弹出授权页。
 

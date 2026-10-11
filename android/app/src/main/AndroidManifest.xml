@@ -39,6 +39,12 @@
             <intent-filter><action android:name="android.speech.RecognitionService" /></intent-filter>
             <meta-data android:name="android.speech" android:resource="@xml/recognition_service" />
         </service>
+        <!-- Bound only when the Open Doubao image names this app the allowlist provider; declared here because a <service>
+             in the system variant's manifest makes lint misreport VoiceService's foregroundServiceType. -->
+        <service android:name=".phone.AllowlistProvider" android:exported="true"
+            android:permission="android.permission.BIND_ALLOWLIST_PROVIDER_SERVICE">
+            <intent-filter><action android:name="android.os.allowlist.action.ALLOWLIST_PROVIDER" /></intent-filter>
+        </service>
         <service android:name=".voice.VoiceService" android:exported="false"
             android:foregroundServiceType="microphone|mediaPlayback" />
         <service android:name=".voice.DouxianInteractionService" android:exported="true"
