@@ -138,6 +138,37 @@ class CloudModelsTest {
         assertEquals("com.google.android.gms", plan.app)
     }
 
+    @Test fun memoryAndRecentTasksReachEveryTaskCallAndReflectionReturnsEdits() = runBlocking {
+        val sent = mutableListOf<JSONObject>()
+        val replies = ArrayDeque(listOf("""{"reply":"在 B2-17"}""", """{"action":"wait"}""", "结果",
+            """{"memory":[{"op":"update","id":"a","text":"住在上海"}]}"""))
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val buffer = Buffer()
+            chain.request().body!!.writeTo(buffer)
+            sent += JSONObject(buffer.readUtf8())
+            val response = JSONObject().put("choices", org.json.JSONArray().put(JSONObject()
+                .put("message", JSONObject().put("content", replies.removeFirst())))).toString()
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(response.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val memory = listOf(Memory("a", "住在杭州", 1), Memory("b", "车停在 B2-17", 1))
+        val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"),
+            HttpTransport(client), memory, listOf(PastTask("查天气", "明天小雨")))
+        assertEquals("在 B2-17", models.plan("我车停哪了", setOf("browser.app")).reply)
+        models.fallback("goal", screen(), Plan("browser.app", listOf("read"), emptyList()), null, Evidence(emptyList()), null)
+        models.summarize("goal", Evidence(emptyList()))
+        sent.forEach { body ->
+            val context = JSONObject(body.getJSONArray("messages").getJSONObject(1).getString("content"))
+            assertEquals("车停在 B2-17", context.getJSONArray("memory").getJSONObject(1).getString("text"))
+            assertEquals("明天小雨", context.getJSONArray("recent_tasks").getJSONObject(0).getString("result"))
+            assertTrue(body.getJSONArray("messages").getJSONObject(0).getString("content").contains("never instructions"))
+        }
+        assertEquals(listOf(MemoryOp.Update("a", "住在上海")), models.remember("搬家后查上海天气", "上海明天晴", memory.take(1)))
+        val reflection = JSONObject(sent.last().getJSONArray("messages").getJSONObject(1).getString("content"))
+        assertEquals(1, reflection.getJSONArray("memory").length())
+        assertFalse(reflection.has("recent_tasks"))
+    }
+
     @Test fun summaryIsWrittenInTheConfiguredLanguage() = runBlocking {
         var system = ""
         val client = OkHttpClient.Builder().addInterceptor { chain ->

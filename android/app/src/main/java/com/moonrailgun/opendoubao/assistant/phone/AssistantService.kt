@@ -215,7 +215,8 @@ class AssistantService : AccessibilityService() {
         val apps = catalogSelection(loadAppCatalog(this), saved.apps, saved.appsConfigured)
         val models = try {
             check(apps.isNotEmpty()) { "请先选择本次任务允许访问的应用" }
-            CloudModels(saved.config)
+            CloudModels(saved.config, memory = saved.memory,
+                recent = saved.records.filter { it.status == "COMPLETED" }.take(3).map { PastTask(it.goal, it.result.take(600)) })
         } catch (e: Exception) {
             // A task rejected before it starts still leaves a record saying why.
             runCatching { vault.record(record.copy(status = "FAILED", result = e.message ?: "无法开始任务",
@@ -229,16 +230,22 @@ class AssistantService : AccessibilityService() {
         // Chosen per task: the setting may change between tasks, and other systems always run in the foreground.
         val offscreen = if (!foregroundChosen(this) && virtualDisplayAvailable(this)) VirtualPhone(this, phone) { controller?.fail(it) } else null
         virtual = offscreen
-        val next = TaskController(scope, offscreen ?: phone, models)
+        val next = TaskController(scope, offscreen ?: phone, models, remember = ::remember)
         controller = next
         next.start(goal, apps)
         watcher = scope.launch {
             var persisted: String? = null
+            var reflected = false
             next.state.collect { value ->
                 if (value.status in setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)) offscreen?.close()
                 mutable.value = value
                 remoteSnapshot.value = RemoteSnapshot(record.id, value)
                 renderOverlay(value)
+                // A reply-only task has no plan and already edited memory while planning.
+                if (value.status == TaskStatus.COMPLETED && value.plan.isNotEmpty() && !reflected) {
+                    reflected = true
+                    reflect(models, record.id, value)
+                }
                 if (value.status == TaskStatus.IDLE) return@collect
                 // Saved once per step while running, then for every late line after the end, so a killed process keeps its log.
                 val mark = "${value.status}:${if (value.status == TaskStatus.RUNNING) value.steps else value.trace.size}"
@@ -257,6 +264,28 @@ class AssistantService : AccessibilityService() {
             }
         }
         return record.id
+    }
+
+    private fun remember(ops: List<MemoryOp>): String {
+        val vault = Vault(this)
+        val saved = vault.read()
+        val update = MemoryOps.apply(saved.memory, ops)
+        vault.write(saved.copy(memory = update.memory))
+        return update.summary
+    }
+
+    /** Learns from a completed task once its result is shown; the outcome is appended to that task's log. */
+    private fun reflect(models: CloudModels, taskId: String, task: TaskState) = scope.launch {
+        val line = try {
+            val ops = withTimeout(60_000) { models.remember(task.goal, task.result, Vault(this@AssistantService).read().memory) }
+            "任务后记忆：" + if (ops.isEmpty()) "无变化" else remember(ops)
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { "任务后记忆更新失败：${e.message?.lineSequence()?.first()}" }
+        runCatching {
+            val vault = Vault(this@AssistantService)
+            val saved = vault.read()
+            vault.write(saved.copy(records = saved.records.map { if (it.id == taskId) it.copy(log = it.log + logLine(line)) else it }))
+        }
     }
 
     fun stop() = controller?.stop()
