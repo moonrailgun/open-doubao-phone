@@ -140,6 +140,9 @@ object VoiceRuntime {
         wakeJob = scope.launch {
             try {
                 withTimeout(5_000) { ready.await() }
+                // Both models stay resident once loaded, so loading them here moves the wait off the first command.
+                runCatching { withContext(worker) { engine(context).warm() } }
+                    .onFailure { if (it is CancellationException) throw it; mutableError.value = it.message ?: "语音模型加载失败" }
                 while (epoch == wakeEpoch) {
                     if (!microphoneAvailable(context)) {
                         mutableState.value = "麦克风暂停，等待恢复"

@@ -40,6 +40,9 @@ class LocalSpeechEngine(private val context: Context) {
         finally { check(prefs.edit().putBoolean(key, false).commit()) }
     }
 
+    /** Loads the recognizer and the VAD now (about 3 s for the 239 MB model), so the first command after boot is heard right after the prompt. */
+    fun warm() { recognizer; vad }
+
     /** [level] gets the microphone level per read on this worker; [partial], when given, the words heard so far on [captioner]. */
     fun recognize(keepGoing: () -> Boolean, stopRequested: () -> Boolean, level: (Float) -> Unit = {},
                   partial: ((String) -> Unit)? = null, ready: () -> Unit): String {
