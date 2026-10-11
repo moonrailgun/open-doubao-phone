@@ -102,15 +102,11 @@ class TaskController(
             try {
                 withTimeout(remainingActiveMillis) {
                     if (plan == null) {
-                        place?.let { choose ->
-                            update("正在判断执行方式")
-                            val (chosen, how) = timed("执行方式") { choose() }
-                            checkCurrent(token)
-                            phone = chosen
-                            trace("执行方式：${chosen.mode}（$how）")
-                        }
-                        update("正在理解任务、规划步骤")
+                        update(if (place == null) "正在理解任务、规划步骤" else "正在判断执行方式、规划步骤")
+                        // Both need only the goal, so the placement question runs beside the planning call.
+                        val placing = place?.let { choose -> async { timed("执行方式") { choose() } } }
                         val planned = timed("规划") { withTimeout(60_000) { models.plan(state.value.goal, apps, launchableApps) } }
+                        placing?.await()?.let { (chosen, how) -> phone = chosen; trace("执行方式：${chosen.mode}（$how）") }
                         checkCurrent(token)
                         if (planned.memory.isNotEmpty()) trace("记忆：${remember(planned.memory)}")
                         if (planned.reply != null) {
@@ -175,7 +171,7 @@ class TaskController(
                                 Decision(null, false, Effect.UNKNOWN)
                             }
                             checkCurrent(token)
-                            trace("Jev：${decision.action?.description(screen) ?: "无动作"}，完成=${decision.done}，上一步效果=${decision.effect}")
+                            trace("Jev：${decision.action?.description(screen) ?: "无动作"}，完成=${decision.done}（${"%.2f".format(decision.doneProbability)}），上一步效果=${decision.effect}")
                             var action = decision.action
                             var done = decision.done
                             var image: String? = null

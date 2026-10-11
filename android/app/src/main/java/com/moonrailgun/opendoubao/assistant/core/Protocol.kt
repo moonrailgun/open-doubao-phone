@@ -68,7 +68,8 @@ object JevProtocol {
         val choice = choice(next, ids)
         val done = answers.getJSONObject("done")
         require(done.getString("type") == "noul")
-        val finished = probability(done, "noul") >= .95
+        val doneProbability = probability(done, "noul")
+        val finished = doneProbability >= .95
         val effect = answers.getJSONObject("effect")
         val effectChoice = choice(effect, setOf("yes", "no", "unknown"))
         val confirmedEffect = if (probability(effect, "confidence") < .65) Effect.UNKNOWN else when (effectChoice) {
@@ -76,7 +77,7 @@ object JevProtocol {
         }
         val action = if (choice == "none" || probability(next, "confidence") < .65 || probability(next.getJSONObject("probabilities"), choice) < .65) null
             else candidates.single { it.id == choice }.action
-        Decision(action, finished, confirmedEffect)
+        Decision(action, finished, confirmedEffect, doneProbability)
     }
 
     private fun choice(answer: JSONObject, options: Set<String>): String {

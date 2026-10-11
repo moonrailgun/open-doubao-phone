@@ -304,6 +304,11 @@ async function poll() {
   }
 }
 $('goal').addEventListener('input', controls);
+$('record-dialog').addEventListener('click', (event) => {
+  if (event.target !== event.currentTarget) return;
+  const { left, right, top, bottom } = event.currentTarget.getBoundingClientRect();
+  if (event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom) event.currentTarget.close();
+});
 $('record-dialog').addEventListener('close', () => { detailRequest += 1; shownRecord = null; controls(); });
 $('record-delete').addEventListener('click', async () => {
   const taskId = shownRecord;

@@ -40,7 +40,7 @@ class TaskControllerTest {
         val controller = TaskController(this, start, models, place = { asked++; delay(100); chosen to "Jev" })
         controller.start("查天气", setOf("browser.app"))
         runCurrent()
-        assertEquals("正在判断执行方式", controller.state.value.message)
+        assertEquals("正在判断执行方式、规划步骤", controller.state.value.message)
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
         assertEquals(1, asked)
@@ -50,20 +50,16 @@ class TaskControllerTest {
         assertTrue(controller.state.value.trace.any { "执行方式：虚拟屏（Jev）" in it })
     }
 
-    @Test fun stoppingDuringThePlacementChoiceEndsTheTaskWithoutPlanning() = runTest {
+    @Test fun stoppingDuringThePlacementChoiceEndsTheTaskWithoutActing() = runTest {
         val phone = FakePhone()
-        var planned = false
-        val models = object : Models by FakeModels() {
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan { planned = true; return Plan("browser.app", listOf("s"), emptyList()) }
-        }
-        val controller = TaskController(this, phone, models, place = { delay(5_000); phone to "Jev" })
+        val controller = TaskController(this, phone, FakeModels(), place = { delay(5_000); phone to "Jev" })
         controller.start("查天气", setOf("browser.app"))
         advanceTimeBy(1_000)
         controller.stop()
         advanceUntilIdle()
         assertEquals(TaskStatus.STOPPED, controller.state.value.status)
-        assertFalse(planned)
         assertTrue(phone.actions.isEmpty())
+        assertTrue(controller.state.value.trace.none { "执行方式：" in it })
     }
 
     @Test fun aDirectReplyCompletesWithoutTouchingThePhoneAndSavesMemory() = runTest {
