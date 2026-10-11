@@ -73,6 +73,32 @@ class ProtocolTest {
         }
     }
 
+    @Test fun placementIsOneChoiceQuestionWithOnlyTheGoal() {
+        val request = JevProtocol.placementRequest("jev-latest", "帮我查明天天气")
+        assertEquals("jev-latest", request.getString("model"))
+        assertEquals("帮我查明天天气", request.getJSONObject("state").getString("goal"))
+        assertEquals(setOf("goal"), request.getJSONObject("state").keys().asSequence().toSet())
+        val question = request.getJSONObject("questions").getJSONObject("placement")
+        assertEquals("choice", question.getString("type"))
+        assertEquals(setOf("virtual", "foreground"), question.getJSONObject("criteria").keys().asSequence().toSet())
+    }
+
+    @Test fun placementAnswersCountOnlyWhenConfident() {
+        assertEquals(Placement.FOREGROUND, JevProtocol.parsePlacement(placementAnswer("foreground", .91)))
+        assertEquals(Placement.VIRTUAL, JevProtocol.parsePlacement(placementAnswer("virtual", .7)))
+        assertNull(JevProtocol.parsePlacement(placementAnswer("foreground", .5)))
+        assertThrows(IllegalArgumentException::class.java) { JevProtocol.parsePlacement(placementAnswer("desktop", .9)) }
+        assertEquals(Placement.FOREGROUND, ModelProtocol.parsePlacement("""```json
+{"placement":"foreground"}
+```"""))
+        assertEquals(Placement.VIRTUAL, ModelProtocol.parsePlacement("""{"placement":"virtual"}"""))
+        assertThrows(IllegalArgumentException::class.java) { ModelProtocol.parsePlacement("""{"placement":"later"}""") }
+    }
+
+    private fun placementAnswer(choice: String, confidence: Double) = """{"answers":{"placement":{"type":"choice","choice":"$choice",
+        "confidence":$confidence,"probabilities":{"virtual":${if (choice == "virtual") confidence else 1 - confidence},
+        "foreground":${if (choice == "foreground") confidence else 1 - confidence}}}}}"""
+
     private fun answer(choice: String, confidence: Double) = """{
       "model":"jev-1.13.0","answers":{
         "next":{"type":"choice","choice":"$choice","confidence":$confidence,

@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -42,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -70,8 +73,11 @@ import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.CloudModels
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
 import com.moonrailgun.opendoubao.assistant.phone.catalogSelection
-import com.moonrailgun.opendoubao.assistant.phone.chooseForeground
-import com.moonrailgun.opendoubao.assistant.phone.foregroundChosen
+import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_AUTO
+import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_FOREGROUND
+import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_VIRTUAL
+import com.moonrailgun.opendoubao.assistant.phone.chooseExecution
+import com.moonrailgun.opendoubao.assistant.phone.executionChoice
 import com.moonrailgun.opendoubao.assistant.phone.virtualDisplayAvailable
 import com.moonrailgun.opendoubao.assistant.phone.loadAppCatalog
 import com.moonrailgun.opendoubao.assistant.phone.visibleAppCatalog
@@ -256,6 +262,8 @@ class MainActivity : ComponentActivity() {
                             moveTaskToBack(true)
                             scope.launch { delay(300); attempt { service?.resume() } }
                         }, onStop = { service?.stop() })
+                        val virtualActive = service?.virtualActive?.collectAsState()?.value == true
+                        if (virtualActive) service?.let { VirtualPeek(it) }
                         if (!busy) {
                             Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, colors.outlineVariant)) {
                                 Column {
@@ -538,15 +546,17 @@ class MainActivity : ComponentActivity() {
 @Composable private fun ExecutionControls() {
     val context = LocalContext.current
     val available = remember { virtualDisplayAvailable(context) }
-    var foreground by remember { mutableStateOf(foregroundChosen(context)) }
+    var choice by remember { mutableStateOf(executionChoice(context)) }
     Section("执行方式", "新任务开始时按这里的选择执行，正在进行的任务不受影响。") {
-        listOf(false to ("虚拟屏（后台）" to "在看不见的独立屏幕上操作，你可以继续用手机。点开悬浮球能实时看到画面；需要手动处理时点「转到前台处理」。"),
-            true to ("前台" to "直接操作当前屏幕，任务进行时请不要操作手机。")).forEach { (value, text) ->
-            val selected = (foreground || !available) == value
+        listOf(EXECUTION_AUTO to ("自动判断（推荐）" to "开始前先由模型判断：需要你看或参与的任务（支付、登录验证、拍照、通话、播放、要展示给你看的）在前台执行，其余在虚拟屏执行。判断依据记在任务日志里。"),
+            EXECUTION_VIRTUAL to ("虚拟屏（后台）" to "在看不见的独立屏幕上操作，你可以继续用手机。任务页和悬浮球里能实时看到画面；需要手动处理时点「转到前台处理」。"),
+            EXECUTION_FOREGROUND to ("前台" to "直接操作当前屏幕，任务进行时请不要操作手机。")).forEach { (value, text) ->
+            val enabled = available || value == EXECUTION_FOREGROUND
+            val selected = if (available) choice == value else value == EXECUTION_FOREGROUND
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                .selectable(selected, enabled = value || available, role = Role.RadioButton) { foreground = value; chooseForeground(context, value) }
+                .selectable(selected, enabled = enabled, role = Role.RadioButton) { choice = value; chooseExecution(context, value) }
                 .padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected, null, Modifier.padding(horizontal = 8.dp), enabled = value || available)
+                RadioButton(selected, null, Modifier.padding(horizontal = 8.dp), enabled = enabled)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(text.first, fontSize = 15.sp)
                     Text(text.second, fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -555,6 +565,31 @@ class MainActivity : ComponentActivity() {
         }
         if (!available) Text("当前系统不支持虚拟屏执行，任务会在前台操作。需要 Open Doubao 系统 v1.15 或更新版本。",
             fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** The virtual display while a task runs there: the bubble's mirror in the app, view only, gone when the session ends. */
+@Composable private fun VirtualPeek(service: AssistantService) {
+    val metrics = LocalContext.current.resources.displayMetrics
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Box(Modifier.heightIn(max = 480.dp).aspectRatio(metrics.widthPixels.toFloat() / metrics.heightPixels, matchHeightConstraintsFirst = true)
+            .background(Color.Black, RoundedCornerShape(18.dp)), contentAlignment = Alignment.Center) {
+            // Visible only until the mirror draws over it.
+            Text("正在连接虚拟屏画面", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+            AndroidView(factory = { context ->
+                SurfaceView(context).apply {
+                    setZOrderOnTop(true)
+                    var mirror: AutoCloseable? = null
+                    holder.addCallback(object : SurfaceHolder.Callback {
+                        override fun surfaceCreated(holder: SurfaceHolder) = Unit
+                        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                            if (mirror == null) mirror = service.peekVirtual(surfaceControl, width, height)
+                        }
+                        override fun surfaceDestroyed(holder: SurfaceHolder) { mirror?.let { runCatching { it.close() } }; mirror = null }
+                    })
+                }
+            }, Modifier.fillMaxSize())
+        }
     }
 }
 

@@ -63,6 +63,41 @@ class CloudModelsTest {
         assertEquals("The chart shows 42 units.", controller.state.value.result)
     }
 
+    @Test fun placementAsksJevFirstAndTheChatModelOnlyWhenJevIsUnsureOrDown() = runBlocking {
+        var jevConfidence = .9; var jevDown = false; var chats = 0
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val buffer = Buffer()
+            chain.request().body!!.writeTo(buffer)
+            val body = JSONObject(buffer.readUtf8())
+            val reply = if (body.has("questions")) {
+                assertEquals("placement", body.getJSONObject("questions").keys().next())
+                if (jevDown) throw java.io.IOException("down")
+                """{"answers":{"placement":{"type":"choice","choice":"virtual","confidence":$jevConfidence,
+                    "probabilities":{"virtual":$jevConfidence,"foreground":${1 - jevConfidence}}}}}"""
+            } else {
+                chats++
+                val system = body.getJSONArray("messages").getJSONObject(0).getString("content")
+                assertTrue(system.startsWith("Decide where"))
+                assertEquals("付款", JSONObject(body.getJSONArray("messages").getJSONObject(1).getString("content")).getString("goal"))
+                """{"choices":[{"message":{"content":"{\"placement\":\"foreground\"}"}}]}"""
+            }
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(reply.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
+        assertEquals(Placement.VIRTUAL to "Jev", models.placement("付款"))
+        assertEquals(0, chats)
+        jevConfidence = .4
+        val unsure = models.placement("付款")
+        assertEquals(Placement.FOREGROUND, unsure.first)
+        assertTrue(unsure.second, unsure.second.startsWith("Chat 模型，Jev 不确定"))
+        jevDown = true
+        val down = models.placement("付款")
+        assertEquals(Placement.FOREGROUND, down.first)
+        assertTrue(down.second, down.second.startsWith("Chat 模型，Jev 不可用"))
+        assertEquals(2, chats)
+    }
+
     @Test fun fallbackUploadsRetainedSourcesAlongsideCurrentEditor() = runBlocking {
         var sent: JSONObject? = null
         val client = OkHttpClient.Builder().addInterceptor { chain ->

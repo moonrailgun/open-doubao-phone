@@ -25,6 +25,7 @@ import android.os.PowerManager
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.SurfaceControl
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
@@ -110,6 +111,11 @@ class AssistantService : AccessibilityService() {
     private var peek: View? = null
     private var mirror: AutoCloseable? = null
     private var virtual: VirtualPhone? = null
+    private val mutableVirtualActive = MutableStateFlow(false)
+    /** True while the current task has a virtual display session the app may show. */
+    val virtualActive = mutableVirtualActive.asStateFlow()
+    /** Mirrors the virtual display under [parent] for the app's live view; null when no session is open. */
+    fun peekVirtual(parent: SurfaceControl, width: Int, height: Int): AutoCloseable? = virtual?.peek(parent, width, height)
     private var openButton: View? = null
     private var inputRow: View? = null
     private var input: EditText? = null
@@ -239,17 +245,25 @@ class AssistantService : AccessibilityService() {
         active = record
         watcher?.cancel()
         virtual?.close()
+        virtual = null
+        fun offscreen() = VirtualPhone(this, phone, mutableVirtualActive) { controller?.fail(it) }.also { virtual = it }
         // Chosen per task: the setting may change between tasks, and other systems always run in the foreground.
-        val offscreen = if (!foregroundChosen(this) && virtualDisplayAvailable(this)) VirtualPhone(this, phone) { controller?.fail(it) } else null
-        virtual = offscreen
-        val next = TaskController(scope, offscreen ?: phone, models, remember = ::remember)
+        val choice = executionChoice(this)
+        val next = when {
+            !virtualDisplayAvailable(this) || choice == EXECUTION_FOREGROUND -> TaskController(scope, phone, models, remember = ::remember)
+            choice == EXECUTION_VIRTUAL -> TaskController(scope, offscreen(), models, remember = ::remember)
+            else -> TaskController(scope, phone, models, remember = ::remember, place = {
+                val (placement, how) = models.placement(goal)
+                (if (placement == Placement.VIRTUAL) offscreen() else phone) to how
+            })
+        }
         controller = next
         next.start(goal, apps)
         watcher = scope.launch {
             var persisted: String? = null
             var reflected = false
             next.state.collect { value ->
-                if (value.status in setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)) offscreen?.close()
+                if (value.status in setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)) virtual?.close()
                 mutable.value = value
                 remoteSnapshot.value = RemoteSnapshot(record.id, value)
                 renderOverlay(value)

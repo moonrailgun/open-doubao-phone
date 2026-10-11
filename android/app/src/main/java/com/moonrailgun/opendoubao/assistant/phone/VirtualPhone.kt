@@ -39,9 +39,14 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 private fun taskPrefs(context: Context) = context.getSharedPreferences("task", Context.MODE_PRIVATE)
-/** The user's choice in settings; the virtual display is used only when the system also supports it. */
-fun foregroundChosen(context: Context) = taskPrefs(context).getBoolean("foreground", false)
-fun chooseForeground(context: Context, value: Boolean) = taskPrefs(context).edit().putBoolean("foreground", value).apply()
+const val EXECUTION_AUTO = "auto"
+const val EXECUTION_VIRTUAL = "virtual"
+const val EXECUTION_FOREGROUND = "foreground"
+/** The user's choice in settings: let the models decide per task, always the virtual display, or always the user's screen. */
+fun executionChoice(context: Context): String = taskPrefs(context).getString("execution", null)
+    // The earlier two-way setting only recorded an explicit foreground choice.
+    ?: if (taskPrefs(context).getBoolean("foreground", false)) EXECUTION_FOREGROUND else EXECUTION_AUTO
+fun chooseExecution(context: Context, value: String) = taskPrefs(context).edit().putString("execution", value).remove("foreground").apply()
 
 /** True when this system lets the assistant open a Computer Control session; false on stock Android and older images. */
 fun virtualDisplayAvailable(context: Context): Boolean = Build.VERSION.SDK_INT >= 34 && runCatching {
@@ -57,7 +62,8 @@ fun virtualDisplayAvailable(context: Context): Boolean = Build.VERSION.SDK_INT >
  */
 @TargetApi(34)
 class VirtualPhone(private val service: AssistantService, private val foreground: AndroidPhone,
-    private val onLost: (String) -> Unit) : Phone {
+    /** True while a session is open, so the app can show the display; false again after the task ends or hands over. */
+    private val active: MutableStateFlow<Boolean>, private val onLost: (String) -> Unit) : Phone {
     private val executor: Executor = service.mainExecutor
     /** The live session for the peek window: null before the first app opens and after the task ends or is handed over. */
     var session: ComputerControlSession? = null
@@ -145,6 +151,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         closing = true
         handedOver = true
         session = null
+        active.value = false
     }
 
     /** Shows the virtual display under [parent], scaled to fit; view only, touches never reach the apps. */
@@ -167,6 +174,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
     fun close() {
         // Also set without a session, so a creation still pending at the end of the task never reports a loss.
         closing = true
+        active.value = false
         val live = session ?: return
         session = null
         runCatching { live.close() }
@@ -254,7 +262,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         val preview = PendingIntent.getActivity(service, 0,
             checkNotNull(service.packageManager.getLaunchIntentForPackage(service.packageName)), PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(service, CHANNEL).setSmallIcon(R.drawable.lucide_bot)
-            .setContentTitle("Open Doubao 正在虚拟屏上操作").setContentText("点开悬浮球可以查看画面或紧急停止")
+            .setContentTitle("Open Doubao 正在虚拟屏上操作").setContentText("点开查看画面；悬浮球可紧急停止")
             .setContentIntent(preview).setOngoing(true)
             // Sessions require a notification that may be promoted to a live update; SDK 36 has no setter for it yet.
             .addExtras(Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }).build()
@@ -308,6 +316,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         })
         targets += pkg
         session = created
+        active.value = true
         return created
     }
 
@@ -321,6 +330,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
 
     private fun ended(reason: Int?) {
         session = null
+        active.value = false
         if (closing) return
         closing = true
         onLost(when (reason) {

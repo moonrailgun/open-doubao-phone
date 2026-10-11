@@ -21,11 +21,14 @@ fun logLine(entry: String): String = clock.format(LocalTime.now()) + " " + entry
 
 /** Called on the main dispatcher; action dispatch and user controls share that single thread. */
 class TaskController(
-    private val scope: CoroutineScope, private val phone: Phone, private val models: Models,
+    private val scope: CoroutineScope, phone: Phone, private val models: Models,
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Saves the planner's memory edits and returns what changed, for the trace. */
     private val remember: (List<MemoryOp>) -> String = { "无变化" },
+    /** Picks where the task runs once per task, before planning: the phone to use and how it was chosen, for the trace. */
+    private val place: (suspend () -> Pair<Phone, String>)? = null,
 ) {
+    private var phone = phone
     private val mutable = MutableStateFlow(TaskState())
     val state = mutable.asStateFlow()
     private var job: Job? = null
@@ -53,7 +56,7 @@ class TaskController(
         unchanged = 0
         remainingActiveMillis = TASK_TIMEOUT_MILLIS
         mutable.value = TaskState(goal = goal.trim())
-        trace("开始：${goal.trim()}（可用应用 ${apps.size} 个，${phone.mode}执行）")
+        trace("开始：${goal.trim()}（可用应用 ${apps.size} 个，${if (place == null) "${phone.mode}执行" else "执行方式待判断"}）")
         launchRun()
     }
 
@@ -99,6 +102,13 @@ class TaskController(
             try {
                 withTimeout(remainingActiveMillis) {
                     if (plan == null) {
+                        place?.let { choose ->
+                            update("正在判断执行方式")
+                            val (chosen, how) = timed("执行方式") { choose() }
+                            checkCurrent(token)
+                            phone = chosen
+                            trace("执行方式：${chosen.mode}（$how）")
+                        }
                         update("正在理解任务、规划步骤")
                         val planned = timed("规划") { withTimeout(60_000) { models.plan(state.value.goal, apps, launchableApps) } }
                         checkCurrent(token)

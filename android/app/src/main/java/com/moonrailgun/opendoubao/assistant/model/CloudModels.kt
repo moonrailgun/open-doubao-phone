@@ -3,6 +3,7 @@ package com.moonrailgun.opendoubao.assistant.model
 import com.moonrailgun.opendoubao.assistant.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -195,6 +196,27 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
             Cite only source URLs actually present. Never invent URLs or claim a save without evidence.
             $CONTEXT_RULE Use bold and bullets only; no headings, tables or JSON. Write the summary in ${config.languageName}.
         """.trimIndent(), evidence.json().put("goal", goal).withContext().toString()) }.also { require(it.isNotBlank()) { "模型没有返回结果" } }
+
+    /**
+     * Where a task should run, with how it was decided for the trace: Jev first (one cheap question), the chat model when Jev
+     * is down or unsure, and the virtual display when both fail. Each call gets 8 s, so the judgement never stalls a task.
+     */
+    suspend fun placement(goal: String): Pair<Placement, String> {
+        val jev = runCatching { withTimeoutOrNull(8_000) { labelled("Jev 执行方式") {
+            JevProtocol.parsePlacement(http.post(config.jevEndpoint, config.jevKey, JevProtocol.placementRequest(config.jevModel, goal)))
+        } } }
+        jev.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+        jev.getOrNull()?.let { return it to "Jev" }
+        val why = jev.exceptionOrNull()?.let { "Jev 不可用：${it.message?.lineSequence()?.first()}" } ?: "Jev 不确定"
+        val chat = runCatching { withTimeoutOrNull(8_000) { labelled("执行方式") {
+            ModelProtocol.parsePlacement(chat("Decide where a phone assistant should run a task. Return only " +
+                """{"placement":"virtual"} or {"placement":"foreground"}. """ + JevProtocol.PLACEMENT_RULE,
+                JSONObject().put("goal", goal).toString()))
+        } } }
+        chat.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+        chat.getOrNull()?.let { return it to "Chat 模型，$why" }
+        return Placement.VIRTUAL to "默认，$why；Chat 模型${chat.exceptionOrNull()?.let { "失败：${it.message?.lineSequence()?.first()}" } ?: "超时"}"
+    }
 
     /** Retells a written summary as a short spoken reply; the full summary stays on screen. */
     suspend fun spoken(goal: String, summary: String): String = labelled("播报") { chat("""Turn this written task summary into what a

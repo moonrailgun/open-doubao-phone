@@ -104,6 +104,8 @@ data class Candidate(val id: String, val action: Action, val description: String
 data class Plan(val app: String, val steps: List<String>, val texts: List<String>, val urls: List<String> = emptyList(),
     val memory: List<MemoryOp> = emptyList(), val reply: String? = null)
 enum class Effect { YES, NO, UNKNOWN }
+/** Where a task runs: unseen on the virtual display, or on the user's own screen because they must watch or take part. */
+enum class Placement { VIRTUAL, FOREGROUND }
 data class Previous(val screen: Screen, val action: Action, val dispatched: Boolean)
 data class Decision(val action: Action?, val done: Boolean, val effect: Effect)
 data class ModelStep(val action: Action? = null, val done: Boolean = false, val handover: String? = null,
