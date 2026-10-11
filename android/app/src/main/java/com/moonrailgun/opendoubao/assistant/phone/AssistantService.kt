@@ -47,6 +47,7 @@ import com.moonrailgun.opendoubao.assistant.core.*
 import com.moonrailgun.opendoubao.assistant.data.Record
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.CloudModels
+import com.moonrailgun.opendoubao.assistant.model.HttpTransport
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
 import com.moonrailgun.opendoubao.assistant.remote.AppAccess
 import com.moonrailgun.opendoubao.assistant.remote.RemoteProtocol
@@ -220,6 +221,8 @@ class AssistantService : AccessibilityService() {
             log = state.value.trace + logLine("崩溃：" + error.stackTraceToString())))
     }
 
+    val taskId: String? get() = active?.id
+
     fun startTask(goal: String, taskId: String = UUID.randomUUID().toString()): String {
         requireUnlockedScreen()
         require(goal.isNotBlank() && goal.length <= 4000) { "请填写 1–4000 字的任务" }
@@ -233,7 +236,8 @@ class AssistantService : AccessibilityService() {
         val apps = catalogSelection(loadAppCatalog(this), saved.apps, saved.appsConfigured)
         val models = try {
             check(apps.isNotEmpty()) { "请先选择本次任务允许访问的应用" }
-            CloudModels(saved.config, memory = saved.memory,
+            CloudModels(saved.config, HttpTransport(secrets = saved.config.secrets, log = { vault.modelCalls.append(taskId, it) }),
+                memory = saved.memory,
                 recent = saved.records.filter { it.status == "COMPLETED" }.take(3).map { PastTask(it.goal, it.result.take(600)) })
         } catch (e: Exception) {
             // A task rejected before it starts still leaves a record saying why.
@@ -242,6 +246,10 @@ class AssistantService : AccessibilityService() {
             throw e
         }
         vault.record(record)
+        try { vault.modelCalls.create(taskId) } catch (e: Exception) {
+            vault.record(record.copy(status = "FAILED", result = "无法创建模型调试记录"))
+            throw e
+        }
         active = record
         watcher?.cancel()
         virtual?.close()

@@ -87,6 +87,8 @@ import com.moonrailgun.opendoubao.assistant.voice.voiceAutoSend
 import com.moonrailgun.opendoubao.assistant.voice.VoiceControls
 import com.moonrailgun.opendoubao.assistant.voice.TtsControls
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -169,6 +171,27 @@ class MainActivity : ComponentActivity() {
         var choosingApps by remember { mutableStateOf(false) }
         var testing by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
+        var exportTaskId by rememberSaveable { mutableStateOf<String?>(null) }
+        var exporting by remember { mutableStateOf(false) }
+        val exportLog = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            val taskId = exportTaskId
+            exportTaskId = null
+            if (uri != null && taskId != null) scope.launch {
+                exporting = true
+                try {
+                    val record = vault.read().records.firstOrNull { it.id == taskId }
+                    checkNotNull(record) { "任务记录已删除" }
+                    withContext(Dispatchers.IO) {
+                        checkNotNull(contentResolver.openOutputStream(uri, "wt")) { "无法打开导出文件" }.use {
+                            vault.modelCalls.export(record, it)
+                        }
+                    }
+                    message = "模型调试记录已导出"
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { message = "导出失败：${e.message}" }
+                finally { exporting = false }
+            }
+        }
         val scroll = rememberScrollState()
         LaunchedEffect(message) { if (message.isNotEmpty() && tab != SETTINGS) scroll.animateScrollTo(0) }
         LaunchedEffect(tab, settingsTab) { scroll.scrollTo(0) }
@@ -315,7 +338,10 @@ class MainActivity : ComponentActivity() {
                                     if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = colors.outlineVariant)
                                     val status = if (record.status in setOf("RUNNING", "PAUSED") && (!busy || task.goal != record.goal)) "INTERRUPTED" else record.status
                                     key(record.id) {
-                                        RecordRow(record, status, enabled = !busy) { attempt {
+                                        RecordRow(record, status, enabled = !busy && !exporting, export = {
+                                            exportTaskId = record.id
+                                            exportLog.launch("model-debug-${record.id}.zip")
+                                        }) { attempt {
                                             val fresh = vault.read()
                                             vault.write(fresh.copy(records = fresh.records.filterNot { it.id == record.id }))
                                             records = vault.read().records
@@ -639,7 +665,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun RecordRow(record: Record, status: String, enabled: Boolean, delete: () -> Unit) {
+@Composable private fun RecordRow(record: Record, status: String, enabled: Boolean, export: () -> Unit, delete: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val lines = if (expanded) Int.MAX_VALUE else 3
     Column(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(start = 16.dp, top = 8.dp, end = 4.dp, bottom = 14.dp),
@@ -663,6 +689,11 @@ class MainActivity : ComponentActivity() {
             maxLines = lines, overflow = TextOverflow.Ellipsis)
         if (record.result.isNotBlank()) Text(markdown(record.result), Modifier.padding(end = 12.dp), fontSize = 14.sp, lineHeight = 21.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = lines, overflow = TextOverflow.Ellipsis)
+        if (expanded) {
+            TextButton(export, enabled = enabled) { Text("导出模型调试记录") }
+            Text("导出包含完整提示词、屏幕文字及请求中的截图，请仅分享给可信的人。", Modifier.padding(end = 12.dp),
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (expanded && record.log.isNotEmpty()) Surface(Modifier.padding(top = 6.dp, end = 12.dp),
             color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(12.dp)) {
             SelectionContainer {

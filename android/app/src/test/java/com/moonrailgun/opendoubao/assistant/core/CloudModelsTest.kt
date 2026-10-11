@@ -125,6 +125,7 @@ class CloudModelsTest {
 
     @Test fun oneMalformedVisionReplyIsRetriedWithTheParserComplaint() = runBlocking {
         val sent = mutableListOf<JSONObject>()
+        val events = mutableListOf<JSONObject>()
         fun models(vararg replies: String): CloudModels {
             val queue = ArrayDeque(replies.toList())
             val client = OkHttpClient.Builder().addInterceptor { chain ->
@@ -136,12 +137,16 @@ class CloudModelsTest {
                 Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
                     .body(response.toResponseBody("application/json".toMediaType())).build()
             }.build()
-            return CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
+            return CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client, log = { events += it }))
         }
         val plan = Plan("browser.app", listOf("read"), emptyList())
         val step = models("""{"action":"scroll","node":"0.1","direction":"down"}""", """{"action":"scroll","node":"0.1","forward":true}""")
             .fallback("read", screen(), plan, null, Evidence(emptyList()), null)
         assertEquals(Action.Scroll("0.1", true), step.action)
+        assertEquals(listOf("视觉模型", "视觉模型", "视觉模型重试", "视觉模型重试"), events.map { it.getString("stage") })
+        assertEquals(2, events.map { it.getString("callId") }.distinct().size)
+        assertTrue(events[1].getString("body").contains("direction"))
+        assertTrue(events[2].getString("body").contains("previous_reply_rejected"))
         assertEquals(2, sent.size)
         assertTrue(sent[1].getJSONArray("messages").getJSONObject(1).getString("content").contains("forward"))
         sent.clear()

@@ -34,6 +34,7 @@ data class Saved(val config: ModelConfig = ModelConfig(), val apps: Set<String> 
 class Vault(context: Context) {
     private val file = AtomicFile(File(context.noBackupFilesDir, "assistant.enc"))
     private val alias = "open-odoubao-v1"
+    val modelCalls = ModelCallLog(File(context.noBackupFilesDir, "model-calls"), ::key)
 
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -91,6 +92,7 @@ class Vault(context: Context) {
         val stream = file.startWrite()
         try { stream.write(bytes); file.finishWrite(stream) }
         catch (e: Exception) { file.failWrite(stream); throw IllegalStateException("保存失败，原记录已保留", e) }
+        modelCalls.retain(saved.records.take(30).map { it.id }.toSet())
     }
 
     fun record(record: Record) {
