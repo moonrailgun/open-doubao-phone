@@ -103,6 +103,7 @@ class AssistantService : AccessibilityService() {
     private var watcher: Job? = null
     private var overlay: FrameLayout? = null
     private var bubble: View? = null
+    private var bubbleRing: BubbleRing? = null
     private var panel: View? = null
     private var statusIcon: ImageView? = null
     private var statusText: TextView? = null
@@ -385,6 +386,7 @@ class AssistantService : AccessibilityService() {
         val ball = ImageView(this).apply {
             setImageResource(R.drawable.app_logo)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
+            foreground = BubbleRing(resources.displayMetrics.density).also { bubbleRing = it }
             clipToOutline = true
             setOnClickListener { expanded = true; applyOverlay() }
         }
@@ -647,18 +649,13 @@ class AssistantService : AccessibilityService() {
     /** The collapsed bubble's border shows a running or paused task, else a voice conversation. */
     private fun ringBubble() {
         val ball = bubble ?: return
-        val color = when {
-            running -> statusStyle(TaskStatus.RUNNING.name).second
-            paused -> statusStyle(TaskStatus.PAUSED.name).second
-            conversing -> VoiceRing
-            else -> null
-        }
-        val density = resources.displayMetrics.density
-        // No elevation: the small overlay window clips its shadow into a dark edge, so a hairline outlines the idle ball.
-        ball.foreground = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            if (color != null) setStroke((3 * density).toInt(), color.toArgb())
-            else setStroke(maxOf(1, density.toInt()), Color.argb(40, 0, 0, 0))
+        bubbleRing?.run {
+            when {
+                running -> show(BubbleRing.Mode.RUNNING, statusStyle(TaskStatus.RUNNING.name).second.toArgb())
+                paused -> show(BubbleRing.Mode.PAUSED, statusStyle(TaskStatus.PAUSED.name).second.toArgb())
+                conversing -> show(BubbleRing.Mode.VOICE, VoiceRing.toArgb())
+                else -> show(BubbleRing.Mode.IDLE, Color.TRANSPARENT)
+            }
         }
         ball.contentDescription = when {
             running -> "Open Doubao 正在操作手机，点按展开紧急停止"
