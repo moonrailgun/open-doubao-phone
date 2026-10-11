@@ -43,9 +43,16 @@ const val EXECUTION_AUTO = "auto"
 const val EXECUTION_VIRTUAL = "virtual"
 const val EXECUTION_FOREGROUND = "foreground"
 /** The user's choice in settings: let the models decide per task, always the virtual display, or always the user's screen. */
-fun executionChoice(context: Context): String = taskPrefs(context).getString("execution", null)
-    // The earlier two-way setting only recorded an explicit foreground choice.
-    ?: if (taskPrefs(context).getBoolean("foreground", false)) EXECUTION_FOREGROUND else EXECUTION_AUTO
+fun executionChoice(context: Context): String {
+    val prefs = taskPrefs(context)
+    return executionFrom(prefs.getString("execution", null), if (prefs.contains("foreground")) prefs.getBoolean("foreground", false) else null)
+}
+/** The stored choice; failing that, what the earlier two-way setting meant when it was ever saved, and auto on a fresh install. */
+internal fun executionFrom(stored: String?, legacyForeground: Boolean?): String = stored ?: when (legacyForeground) {
+    null -> EXECUTION_AUTO
+    true -> EXECUTION_FOREGROUND
+    false -> EXECUTION_VIRTUAL
+}
 fun chooseExecution(context: Context, value: String) = taskPrefs(context).edit().putString("execution", value).remove("foreground").apply()
 
 /** True when this system lets the assistant open a Computer Control session; false on stock Android and older images. */
@@ -330,9 +337,10 @@ class VirtualPhone(private val service: AssistantService, private val foreground
 
     private fun ended(reason: Int?) {
         session = null
-        active.value = false
+        // A closed or handed-over session may still report its end after the next task's session went live.
         if (closing) return
         closing = true
+        active.value = false
         onLost(when (reason) {
             ComputerControlSession.CLOSE_REASON_USER_INITIATED -> "已从系统通知结束虚拟屏操作"
             ComputerControlSession.CLOSE_REASON_SESSION_TIMED_OUT -> "虚拟屏会话超时"

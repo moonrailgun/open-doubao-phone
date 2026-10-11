@@ -202,12 +202,14 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
      * is down or unsure, and the virtual display when both fail. Each call gets 8 s, so the judgement never stalls a task.
      */
     suspend fun placement(goal: String): Pair<Placement, String> {
+        // Wrapped in a list so a timeout (null) stays apart from an unsure answer (a list holding null).
         val jev = runCatching { withTimeoutOrNull(8_000) { labelled("Jev 执行方式") {
-            JevProtocol.parsePlacement(http.post(config.jevEndpoint, config.jevKey, JevProtocol.placementRequest(config.jevModel, goal)))
+            listOf(JevProtocol.parsePlacement(http.post(config.jevEndpoint, config.jevKey, JevProtocol.placementRequest(config.jevModel, goal))))
         } } }
         jev.exceptionOrNull()?.let { if (it is CancellationException) throw it }
-        jev.getOrNull()?.let { return it to "Jev" }
-        val why = jev.exceptionOrNull()?.let { "Jev 不可用：${it.message?.lineSequence()?.first()}" } ?: "Jev 不确定"
+        jev.getOrNull()?.firstOrNull()?.let { return it to "Jev" }
+        val why = jev.exceptionOrNull()?.let { "Jev 不可用：${it.message?.lineSequence()?.first()}" }
+            ?: if (jev.getOrNull() == null) "Jev 超时" else "Jev 不确定"
         val chat = runCatching { withTimeoutOrNull(8_000) { labelled("执行方式") {
             ModelProtocol.parsePlacement(chat("Decide where a phone assistant should run a task. Return only " +
                 """{"placement":"virtual"} or {"placement":"foreground"}. """ + JevProtocol.PLACEMENT_RULE,

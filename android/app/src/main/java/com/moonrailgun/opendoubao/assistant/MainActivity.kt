@@ -548,7 +548,7 @@ class MainActivity : ComponentActivity() {
     val available = remember { virtualDisplayAvailable(context) }
     var choice by remember { mutableStateOf(executionChoice(context)) }
     Section("执行方式", "新任务开始时按这里的选择执行，正在进行的任务不受影响。") {
-        listOf(EXECUTION_AUTO to ("自动判断（推荐）" to "开始前先由模型判断：需要你看或参与的任务（支付、登录验证、拍照、通话、播放、要展示给你看的）在前台执行，其余在虚拟屏执行。判断依据记在任务日志里。"),
+        listOf(EXECUTION_AUTO to ("自动判断（推荐）" to "开始前先由模型判断：需要你看或参与的任务（支付、登录验证、拍照、通话、播放、要展示给你看的）在前台执行，其余在虚拟屏执行；两个模型都判断失败时按虚拟屏执行。判断依据记在任务日志里。"),
             EXECUTION_VIRTUAL to ("虚拟屏（后台）" to "在看不见的独立屏幕上操作，你可以继续用手机。任务页和悬浮球里能实时看到画面；需要手动处理时点「转到前台处理」。"),
             EXECUTION_FOREGROUND to ("前台" to "直接操作当前屏幕，任务进行时请不要操作手机。")).forEach { (value, text) ->
             val enabled = available || value == EXECUTION_FOREGROUND
