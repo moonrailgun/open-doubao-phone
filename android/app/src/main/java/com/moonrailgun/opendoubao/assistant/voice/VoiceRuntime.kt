@@ -19,7 +19,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import java.util.concurrent.Executors
+
+/** What the voice card shows: the words heard so far, the microphone level, and a hint until words arrive. */
+data class Listening(val text: String = "", val level: Float = 0f, val hearing: Boolean = false, val hint: String = "我在，请说出任务")
 
 object VoiceRuntime {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -39,6 +43,9 @@ object VoiceRuntime {
     private var active: Long?
         get() = mutableActive.value
         set(value) { mutableActive.value = value }
+    private val mutableListening = MutableStateFlow<Listening?>(null)
+    /** Non-null from the wake word until the spoken command is dispatched, given up or cancelled. */
+    val listening = mutableListening.asStateFlow()
     /** True while a request listens, speaks or loads for one; waiting for the wake word does not count. */
     val conversing = mutableActive.map { it != null }
     private var wakeJob: Job? = null
@@ -191,36 +198,57 @@ object VoiceRuntime {
         }
         return id
     }
-    private suspend fun record(context: Context, id: Long, onReady: () -> Unit = {}) = runCatching {
+    private suspend fun record(context: Context, id: Long, level: (Float) -> Unit = {}, partial: (String) -> Unit = {},
+                               onReady: () -> Unit = {}) = runCatching {
         withTimeout(5_000) { ready.await() }
         withContext(worker) {
-            engine(context).recognize({ requests.accepts(id) && microphoneAvailable(context) }, { stopRequested }) {
+            engine(context).recognize({ requests.accepts(id) && microphoneAvailable(context) }, { stopRequested }, level, partial) {
                 scope.launch { if (requests.accepts(id)) { mutableState.value = "正在听，请说话"; onReady() } }
             }
         }
     }
     fun listenForTask(context: Context, retry: Boolean = true) {
-        if (!screenAvailable(context)) { speakUnlock(context); return }
-        if (!hasMic(context)) { mutableError.value = "请先在应用中授权麦克风"; return }
-        val id = begin(context, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE, "正在加载本地语音") ?: return
+        if (!screenAvailable(context)) { mutableListening.value = null; speakUnlock(context); return }
+        if (!hasMic(context)) { mutableListening.value = null; mutableError.value = "请先在应用中授权麦克风"; return }
+        val id = begin(context, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE, "正在加载本地语音")
+            ?: run { mutableListening.value = null; return }
+        // The assist gesture listens without a wake word, so the card may open here.
+        if (mutableListening.value == null) mutableListening.value = Listening()
         scope.launch {
-            val result = record(context, id)
-            if (finish(id)) result.fold({ dispatch(context, it, retry) }, { mutableError.value = it.message ?: "识别失败" })
+            // The engine reports from its worker; update {} keeps a card that was just closed from reopening.
+            val result = record(context, id, level = { level -> mutableListening.update { it?.copy(level = level) } },
+                partial = { text -> mutableListening.update { it?.copy(text = text) } }) {
+                mutableListening.update { it?.copy(hearing = true, hint = "正在听…") }
+            }
+            if (finish(id)) result.fold({ text ->
+                mutableListening.update { it?.copy(text = text, level = 0f, hearing = false) }
+                dispatch(context, text, retry)
+            }, { mutableListening.value = null; mutableError.value = it.message ?: "识别失败" })
+            else mutableListening.value = null
         }
     }
     /** Answers the wake word at once with a bundled prompt, then listens for the task. */
     internal fun respondToWake(context: Context) {
-        speak(context, "我在", false, "voice/prompts/wake-${(1..3).random()}.wav") { listenForTask(context) }
+        mutableListening.value = Listening()
+        if (!speak(context, "我在", false, "voice/prompts/wake-${(1..3).random()}.wav") { listenForTask(context) }) mutableListening.value = null
+    }
+    /** Leaves the final words on the card briefly, so the sentence can be read before it folds away. */
+    private fun closeCard() {
+        val shown = mutableListening.value ?: return
+        scope.launch { delay(1_200); mutableListening.compareAndSet(shown, null) }
     }
     private fun dispatch(context: Context, text: String, retry: Boolean) {
-        if (!screenAvailable(context)) { speakUnlock(context); return }
+        if (!screenAvailable(context)) { mutableListening.value = null; speakUnlock(context); return }
         val command = parseVoiceCommand(text)
         if (command == VoiceCommand.Empty) {
             // Ask once more, then give up so an empty room cannot keep the microphone open.
-            if (retry) speak(context, "我没有听清楚，能再说一遍么", false, "voice/prompts/retry.wav") { listenForTask(context, false) }
-            else speak(context, "没有听清，请重新唤醒后说出任务。")
+            if (retry) {
+                mutableListening.value = Listening(hint = "没有听清，请再说一遍")
+                if (!speak(context, "我没有听清楚，能再说一遍么", false, "voice/prompts/retry.wav") { listenForTask(context, false) }) mutableListening.value = null
+            } else { mutableListening.value = null; speak(context, "没有听清，请重新唤醒后说出任务。") }
             return
         }
+        closeCard()
         runCatching {
             val service = checkNotNull(AssistantService.connected.value) { "请先在设置中启用豆馅无障碍服务" }
             when (command) {
@@ -272,6 +300,7 @@ object VoiceRuntime {
     fun stopListening(id: Long?) { if (active == id) stopRequested = true }
     fun cancel(id: Long? = active) {
         if (id != active) return
+        mutableListening.value = null
         requests.cancel(id)
         speech?.stop()
     }
