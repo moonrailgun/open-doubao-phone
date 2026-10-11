@@ -73,7 +73,10 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
         active = id
         val (rate, pcm) = runCatching { wavPcm(context.assets.open(asset).use { it.readBytes() }) }
             .getOrElse { stop("语音提示 $asset 不可用：${it.message}"); return }
-        startPlayback(rate, AudioFormat.ENCODING_PCM_16BIT, 1)
+        // A streaming track starts only once its buffer holds the start threshold, by default the whole buffer, so a
+        // prompt shorter than the 0.5 s buffer never played. A buffer the size of the clip is full after the one write.
+        startPlayback(rate, AudioFormat.ENCODING_PCM_16BIT, 1, pcm.size)
+        handler.postDelayed({ if (active == id) stop("语音提示播放超时") }, pcm.size * 1000L / (2 * rate) + 5_000)
         if (active == id) { queueAudio(id, pcm); completeAudio(id) }
     }
 
@@ -134,11 +137,12 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
     private fun completeAudio(id: String) {
         playback.execute {
             val frames = writtenFrames
-            handler.post { if (active == id) awaitPlayback(id, frames) }
+            val underruns = player?.underrunCount ?: 0
+            handler.post { if (active == id) awaitPlayback(id, frames, underruns) }
         }
     }
 
-    private fun startPlayback(sampleRate: Int, format: Int, channels: Int) {
+    private fun startPlayback(sampleRate: Int, format: Int, channels: Int, bufferBytes: Int = sampleRate) {
         if (!canPlay()) { stop(); return }
         if (audio.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) { stop("系统暂不允许播报"); return }
         try {
@@ -148,17 +152,21 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
             player = AudioTrack.Builder().setAudioAttributes(attributes)
                 .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(format)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                .setBufferSizeInBytes(maxOf(minimum, sampleRate)).setTransferMode(AudioTrack.MODE_STREAM).build()
+                .setBufferSizeInBytes(maxOf(minimum, bufferBytes)).setTransferMode(AudioTrack.MODE_STREAM).build()
+            // Start once the HAL minimum is buffered rather than the whole buffer, so short replies are not held back.
+            if (Build.VERSION.SDK_INT >= 31) player!!.setStartThresholdInFrames(maxOf(1, minimum / 2))
             player!!.play()
         } catch (e: Exception) { stop(e.message ?: "播放失败") }
     }
 
-    private fun awaitPlayback(id: String, frames: Long) {
+    private fun awaitPlayback(id: String, frames: Long, underruns: Int) {
         val track = player
         if (track == null || frames == 0L) { stop("合成未返回音频"); return }
-        // Synthesis completion can precede the last audible sample; only then may listening resume.
-        if ((track.playbackHeadPosition.toLong() and 0xffffffffL) >= frames) stop()
-        else handler.postDelayed({ if (active == id) awaitPlayback(id, frames) }, 25)
+        // Synthesis completion can precede the last audible sample; only then may listening resume. While another app's
+        // audio plays ducked under ours, the mixer can leave a final fragment shorter than one period unplayed and the
+        // head position short of the total; the underrun it reports after the last write then marks the end.
+        val played = (track.playbackHeadPosition.toLong() and 0xffffffffL) >= frames || track.underrunCount > underruns
+        if (played) stop() else handler.postDelayed({ if (active == id) awaitPlayback(id, frames, underruns) }, 25)
     }
 
     private fun canPlay() = unlockPrompt || (context.getSystemService(PowerManager::class.java).isInteractive &&
