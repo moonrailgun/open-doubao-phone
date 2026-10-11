@@ -13,7 +13,8 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 GROUP_SIZE = 8_527_020_032
 OTHER_PARTITIONS = 443_674_624 + 4_315_308_032 + 651_722_752 + 55_853_056
-MIN_FREE = 40_000_000_000
+# The build peaks near 7 GB: the GSI copy grows to 6 GiB while the payload is written, then shrinks back.
+MIN_FREE = 10_000_000_000
 AVB = ['python3', '/usr/local/bin/avbtool.py']
 
 
@@ -101,7 +102,7 @@ def main(output):
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(output).free < MIN_FREE:
-        raise RuntimeError('At least 40 GB free is required in the output filesystem')
+        raise RuntimeError('At least 10 GB free is required in the output filesystem')
     upstream = json.loads((ROOT / 'os/upstream.json').read_text())
     original = ROOT / 'os' / f'aosp-{upstream["build_id"]}' / 'system.img'
     if sha256(original) != upstream['files']['system.img']:

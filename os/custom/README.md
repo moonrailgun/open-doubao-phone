@@ -13,10 +13,10 @@ cd android
 
 ## 构建镜像副本
 
-需要 Docker、Python 3.12+、FFmpeg、Pillow（测试使用，本次为 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 40 GB 可用空间。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，用同一把开发密钥（`~/.android/debug.keystore`）生成虚拟屏 RRO，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
+需要 Docker、Python 3.12+、FFmpeg、Pillow（测试使用，本次为 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 10 GB 可用空间（构建峰值约 7 GB：GSI 副本先扩到 6 GiB 写入 payload，再缩回约 3 GB）。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，用同一把开发密钥（`~/.android/debug.keystore`）生成虚拟屏 RRO，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
 
 ```sh
-export DOUXIAN_OUTPUT=/path/with/40GB/free/douxian-v1
+export DOUXIAN_OUTPUT=/path/with/10GB/free/douxian-v1
 python3 android/tools/prepare_voice.py --assets-only --source-bundle
 python3 -B os/custom/test_boot_animation.py
 curl -fL --create-dirs -o os/dao-browser-android-v0.1.9/dao-browser-0.1.9-android-arm64-v8a.apk \
