@@ -597,6 +597,10 @@ class AssistantService : AccessibilityService() {
         listening = value
         voiceWave?.level = value?.level ?: 0f
         if (value == null) { caption = ""; captionQueued = false; voiceCaption?.removeCallbacks(typeCaption) }
+        // The final result may rewrite the head of the live caption; show it whole, since the card closes 1.2 s later.
+        else if (!value.hearing && value.text.isNotEmpty()) {
+            voiceCaption?.removeCallbacks(typeCaption); captionQueued = false; caption = value.text; stepCaption()
+        }
         else if (!captionQueued) stepCaption()
         if (opening || value == null) applyOverlay()
         // Grows out of the bubble's corner.

@@ -198,7 +198,7 @@ object VoiceRuntime {
         }
         return id
     }
-    private suspend fun record(context: Context, id: Long, level: (Float) -> Unit = {}, partial: (String) -> Unit = {},
+    private suspend fun record(context: Context, id: Long, level: (Float) -> Unit = {}, partial: ((String) -> Unit)? = null,
                                onReady: () -> Unit = {}) = runCatching {
         withTimeout(5_000) { ready.await() }
         withContext(worker) {

@@ -24,6 +24,10 @@ class VoiceCaptionTest {
         assertEquals("查天气", mergeCaption("那我看", "查天气。"))
         assertEquals("我", mergeCaption("帮", "我"))
         assertEquals("", mergeCaption("帮我", "。"))
+        // A repeated head is an extension, never a lost syllable.
+        assertEquals("哈哈", mergeCaption("哈哈", "哈哈"))
+        assertEquals("查一查天气", mergeCaption("查一查", "查一查天气。"))
+        assertEquals("帮我看一下", mergeCaption("帮我看一下明天", "帮我看一下"))
     }
 
     @Test fun levelIsSilentForSilenceAndSaturatesForShouting() {

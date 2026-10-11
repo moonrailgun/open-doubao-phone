@@ -40,9 +40,9 @@ class LocalSpeechEngine(private val context: Context) {
         finally { check(prefs.edit().putBoolean(key, false).commit()) }
     }
 
-    /** [level] gets the microphone level per read and [partial] the words heard so far, both on this worker. */
+    /** [level] gets the microphone level per read on this worker; [partial], when given, the words heard so far on [captioner]. */
     fun recognize(keepGoing: () -> Boolean, stopRequested: () -> Boolean, level: (Float) -> Unit = {},
-                  partial: (String) -> Unit = {}, ready: () -> Unit): String {
+                  partial: ((String) -> Unit)? = null, ready: () -> Unit): String {
         // Warm ASR before announcing readiness, so model loading cannot discard the first words.
         recognizer
         vad.reset()
@@ -72,7 +72,7 @@ class LocalSpeechEngine(private val context: Context) {
     }
 
     private fun capture(record: AudioRecord, keepGoing: () -> Boolean, stopRequested: () -> Boolean,
-                        level: (Float) -> Unit, partial: (String) -> Unit): String {
+                        level: (Float) -> Unit, partial: ((String) -> Unit)?): String {
         val started = SystemClock.elapsedRealtime()
         // Simulated streaming: once speech starts, everything heard so far is decoded again for live captions, each pass
         // taking the newest audio as soon as the previous one ends. Decoding runs on its own thread, so reading, the VAD
@@ -89,7 +89,7 @@ class LocalSpeechEngine(private val context: Context) {
                 if (size + samples.size <= heard.size) { samples.copyInto(heard, size); size += samples.size }
                 // Start 0.4 s before detection, so the first syllable is in the captions.
                 if (start < 0 && vad.isSpeechDetected()) start = maxOf(0, size - 6400)
-                if (start >= 0 && size - decoded >= 4800 && inflight?.isDone != false) {
+                if (partial != null && start >= 0 && size - decoded >= 4800 && inflight?.isDone != false) {
                     decoded = size
                     val snapshot = heard.copyOfRange(start, size)
                     inflight = captioner.submit {
@@ -154,6 +154,9 @@ class LocalSpeechEngine(private val context: Context) {
  */
 internal fun mergeCaption(previous: String, decoded: String): String {
     val text = decoded.trimEnd { it in "，。！？、,.!?" }
+    if (text.startsWith(previous)) return text
+    // ponytail: a dropped first syllable and a corrected one look the same here, so a wrong head can stick until the final
+    // whole-segment decode replaces the line; vote across passes if that shows.
     for (drop in 1..2) if (previous.length > drop && text.startsWith(previous.drop(drop))) return previous.take(drop) + text
     return text
 }
