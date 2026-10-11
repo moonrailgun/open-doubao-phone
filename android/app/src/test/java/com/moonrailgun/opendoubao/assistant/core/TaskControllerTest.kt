@@ -28,6 +28,26 @@ class TaskControllerTest {
         assertEquals("Observed result", controller.state.value.result)
     }
 
+    @Test fun aDirectReplyCompletesWithoutTouchingThePhoneAndSavesMemory() = runTest {
+        val phone = FakePhone()
+        val saved = mutableListOf<MemoryOp>()
+        val models = object : Models by FakeModels() {
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) =
+                Plan("", emptyList(), emptyList(), memory = listOf(MemoryOp.Add("车停在 B2-17")), reply = "好的，记住了")
+            override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision =
+                error("A reply must not observe or decide")
+        }
+        val controller = TaskController(this, phone, models, remember = { saved += it; "新增 1 条" })
+        controller.start("记住我车停在 B2-17", setOf("browser.app"))
+        advanceUntilIdle()
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals("好的，记住了", controller.state.value.result)
+        assertEquals(listOf(MemoryOp.Add("车停在 B2-17")), saved)
+        assertTrue(phone.actions.isEmpty())
+        assertTrue(controller.state.value.plan.isEmpty())
+        assertTrue(controller.state.value.trace.any { "记忆：新增 1 条" in it })
+    }
+
     @Test fun ineffectiveActionUsesVisualRecoveryAndFinishes() = runTest {
         val phone = FakePhone()
         val models = object : Models by FakeModels() {

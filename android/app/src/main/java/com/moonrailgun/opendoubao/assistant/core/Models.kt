@@ -100,7 +100,9 @@ sealed interface Action {
 
 private fun requireNode(id: String) = require(id.length <= 200 && id.matches(Regex("0(\\.[0-9]+)*"))) { "无效节点引用" }
 data class Candidate(val id: String, val action: Action, val description: String)
-data class Plan(val app: String, val steps: List<String>, val texts: List<String>, val urls: List<String> = emptyList())
+/** A non-null [reply] answers the goal without touching the phone; [app] and [steps] are then empty. */
+data class Plan(val app: String, val steps: List<String>, val texts: List<String>, val urls: List<String> = emptyList(),
+    val memory: List<MemoryOp> = emptyList(), val reply: String? = null)
 enum class Effect { YES, NO, UNKNOWN }
 data class Previous(val screen: Screen, val action: Action, val dispatched: Boolean)
 data class Decision(val action: Action?, val done: Boolean, val effect: Effect)

@@ -23,6 +23,8 @@ fun logLine(entry: String): String = clock.format(LocalTime.now()) + " " + entry
 class TaskController(
     private val scope: CoroutineScope, private val phone: Phone, private val models: Models,
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
+    /** Saves the planner's memory edits and returns what changed, for the trace. */
+    private val remember: (List<MemoryOp>) -> String = { "无变化" },
 ) {
     private val mutable = MutableStateFlow(TaskState())
     val state = mutable.asStateFlow()
@@ -100,6 +102,13 @@ class TaskController(
                         update("正在理解任务、规划步骤")
                         val planned = timed("规划") { withTimeout(60_000) { models.plan(state.value.goal, apps, launchableApps) } }
                         checkCurrent(token)
+                        if (planned.memory.isNotEmpty()) trace("记忆：${remember(planned.memory)}")
+                        if (planned.reply != null) {
+                            trace("直接回复，不操作手机")
+                            mutable.value = state.value.copy(result = planned.reply)
+                            finish(TaskStatus.COMPLETED, "任务已完成")
+                            return@withTimeout
+                        }
                         trace("规划结果：${planned.app}；步骤：${planned.steps.joinToString(" / ")}；待输入 ${planned.texts.size} 段，网址 ${planned.urls.size} 个")
                         require(planned.app in apps) { "规划选择了未授权应用" }
                         plan = planned

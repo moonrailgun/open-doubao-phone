@@ -77,6 +77,12 @@ object JevProtocol {
 object ModelProtocol {
     fun parsePlan(raw: String, apps: Set<String>): Plan = parseSafely {
         val obj = JSONObject(unfence(raw))
+        val memory = memoryOps(obj.optJSONArray("memory"))
+        if (obj.has("reply")) {
+            val reply = obj.strictString("reply")
+            require(reply.length <= 2000) { "回复过长" }
+            return@parseSafely Plan("", emptyList(), emptyList(), memory = memory, reply = reply)
+        }
         val app = obj.strictString("app")
         require(app in apps) { "规划选择了未授权应用" }
         val steps = strings(obj.getJSONArray("steps"), 12, 400)
@@ -84,7 +90,23 @@ object ModelProtocol {
         val texts = strings(obj.getJSONArray("texts"), 8, 8000)
         val urls = obj.optJSONArray("urls")?.let { strings(it, 5, 4096) } ?: emptyList()
         urls.forEach { Action.OpenUrl(it, app).validate() }
-        Plan(app, steps, texts, urls)
+        Plan(app, steps, texts, urls, memory)
+    }
+
+    fun parseMemory(raw: String): List<MemoryOp> = parseSafely { memoryOps(JSONObject(unfence(raw)).getJSONArray("memory")) }
+
+    /** Memory edits are a side channel: malformed entries are dropped instead of failing the plan or task. */
+    private fun memoryOps(array: JSONArray?): List<MemoryOp> = (0 until minOf(array?.length() ?: 0, 20)).mapNotNull { index ->
+        runCatching {
+            val op = array!!.getJSONObject(index)
+            fun text() = op.strictString("text").also { require(it.length <= 1000) }
+            when (op.strictString("op")) {
+                "add" -> MemoryOp.Add(text())
+                "update" -> MemoryOp.Update(op.strictString("id"), text())
+                "delete" -> MemoryOp.Delete(op.strictString("id"))
+                else -> null
+            }
+        }.getOrNull()
     }
 
     fun parseStep(raw: String): ModelStep = parseSafely {
