@@ -212,8 +212,9 @@ object VoiceRuntime {
         if (!hasMic(context)) { mutableListening.value = null; mutableError.value = "请先在应用中授权麦克风"; return }
         val id = begin(context, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE, "正在加载本地语音")
             ?: run { mutableListening.value = null; return }
-        // The assist gesture listens without a wake word, so the card may open here.
-        if (mutableListening.value == null) mutableListening.value = Listening()
+        // The assist gesture listens without a wake word, so the card may open here; a final result still on display from
+        // the previous command is replaced, or its close timer would fold this card away.
+        mutableListening.update { if (it == null || (!it.hearing && it.text.isNotEmpty())) Listening() else it }
         scope.launch {
             // The engine reports from its worker; update {} keeps a card that was just closed from reopening.
             val result = record(context, id, level = { level -> mutableListening.update { it?.copy(level = level) } },
