@@ -293,7 +293,11 @@ object VoiceRuntime {
                 if (!requests.accepts(id)) { finish(id); return@launch }
                 speech = FileSpeech(context.applicationContext, unlockPrompt) { error ->
                     speech = null
-                    if (error != null) mutableError.value = error
+                    if (error != null) {
+                        mutableError.value = error
+                        // A prompt that should have led into listening failed: fold the card it opened.
+                        if (after != null) mutableListening.value = null
+                    }
                     finish(id, if (error == null) after else null)
                 }
                 if (clip != null) speech?.play(clip) else speech?.speak(text)

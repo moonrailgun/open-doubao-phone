@@ -74,7 +74,8 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
         val (rate, pcm) = runCatching { wavPcm(context.assets.open(asset).use { it.readBytes() }) }
             .getOrElse { stop("语音提示 $asset 不可用：${it.message}"); return }
         // A streaming track starts only once its buffer holds the start threshold, by default the whole buffer, so a
-        // prompt shorter than the 0.5 s buffer never played. A buffer the size of the clip is full after the one write.
+        // prompt shorter than the 0.5 s buffer never played. A buffer the size of the clip is full after the one write;
+        // completeAudio() also lowers the threshold to what was written, for systems that support it.
         startPlayback(rate, AudioFormat.ENCODING_PCM_16BIT, 1, pcm.size)
         handler.postDelayed({ if (active == id) stop("语音提示播放超时") }, pcm.size * 1000L / (2 * rate) + 5_000)
         if (active == id) { queueAudio(id, pcm); completeAudio(id) }
@@ -137,8 +138,12 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
     private fun completeAudio(id: String) {
         playback.execute {
             val frames = writtenFrames
-            val underruns = player?.underrunCount ?: 0
-            handler.post { if (active == id) awaitPlayback(id, frames, underruns) }
+            // Everything is written: let a short clip or reply start even though it never filled the buffer. Lowering the
+            // threshold also restarts a track AudioFlinger disabled after waiting for data.
+            if (Build.VERSION.SDK_INT >= 31) player?.let { track ->
+                runCatching { track.setStartThresholdInFrames(frames.coerceIn(1, track.bufferSizeInFrames.toLong()).toInt()) }
+            }
+            handler.post { if (active == id) awaitPlayback(id, frames, -1, SystemClock.uptimeMillis()) }
         }
     }
 
@@ -153,20 +158,26 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
                 .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(format)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
                 .setBufferSizeInBytes(maxOf(minimum, bufferBytes)).setTransferMode(AudioTrack.MODE_STREAM).build()
-            // Start once the HAL minimum is buffered rather than the whole buffer, so short replies are not held back.
-            if (Build.VERSION.SDK_INT >= 31) player!!.setStartThresholdInFrames(maxOf(1, minimum / 2))
             player!!.play()
         } catch (e: Exception) { stop(e.message ?: "播放失败") }
     }
 
-    private fun awaitPlayback(id: String, frames: Long, underruns: Int) {
+    /** Polls until every written frame played; [last] and [since] track how long the head position has stood still. */
+    private fun awaitPlayback(id: String, frames: Long, last: Long, since: Long) {
         val track = player
         if (track == null || frames == 0L) { stop("合成未返回音频"); return }
-        // Synthesis completion can precede the last audible sample; only then may listening resume. While another app's
-        // audio plays ducked under ours, the mixer can leave a final fragment shorter than one period unplayed and the
-        // head position short of the total; the underrun it reports after the last write then marks the end.
-        val played = (track.playbackHeadPosition.toLong() and 0xffffffffL) >= frames || track.underrunCount > underruns
-        if (played) stop() else handler.postDelayed({ if (active == id) awaitPlayback(id, frames, underruns) }, 25)
+        // Synthesis completion can precede the last audible sample; only then may listening resume. With everything
+        // written, a head position that stops short of the total means the mixer left a final fragment shorter than one
+        // period unplayed (it does so while another app's audio is ducked under ours) or the track never started.
+        val position = track.playbackHeadPosition.toLong() and 0xffffffffL
+        val now = SystemClock.uptimeMillis()
+        when {
+            position >= frames -> stop()
+            position != last -> handler.postDelayed({ if (active == id) awaitPlayback(id, frames, position, now) }, 25)
+            now - since < 1_000 -> handler.postDelayed({ if (active == id) awaitPlayback(id, frames, last, since) }, 25)
+            position == 0L -> stop("播放未开始")
+            else -> stop()
+        }
     }
 
     private fun canPlay() = unlockPrompt || (context.getSystemService(PowerManager::class.java).isInteractive &&
