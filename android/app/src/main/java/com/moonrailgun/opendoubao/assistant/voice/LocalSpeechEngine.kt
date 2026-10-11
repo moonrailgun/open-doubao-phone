@@ -6,11 +6,18 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.SystemClock
+import android.util.Log
 import com.k2fsa.sherpa.onnx.*
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import kotlin.math.sqrt
 
-/** Native objects and the recorder are confined to VoiceRuntime's one worker. */
+/**
+ * Native objects and the recorder are confined to VoiceRuntime's one worker, except live captions: they decode on
+ * [captioner] while the worker keeps reading, and the worker waits for the last one before it touches the recognizer again.
+ */
 class LocalSpeechEngine(private val context: Context) {
+    private val captioner = Executors.newSingleThreadExecutor()
     private val recognizer by lazy { initialize("asr") {
         OfflineRecognizer(context.assets, OfflineRecognizerConfig(modelConfig = OfflineModelConfig(
             senseVoice = OfflineSenseVoiceModelConfig(model = "voice/asr/model.int8.onnx"),
@@ -67,22 +74,35 @@ class LocalSpeechEngine(private val context: Context) {
     private fun capture(record: AudioRecord, keepGoing: () -> Boolean, stopRequested: () -> Boolean,
                         level: (Float) -> Unit, partial: (String) -> Unit): String {
         val started = SystemClock.elapsedRealtime()
-        // Simulated streaming: once speech starts, everything heard so far is decoded again every 0.3 s for live captions.
+        // Simulated streaming: once speech starts, everything heard so far is decoded again for live captions, each pass
+        // taking the newest audio as soon as the previous one ends. Decoding runs on its own thread, so reading, the VAD
+        // and the level never pause for the model; an inline decode froze the lines exactly while the user spoke.
         // ponytail: each pass re-decodes the whole utterance, so long ones refresh slower; decode only the tail if that shows.
         val heard = FloatArray(16000 * 21)
         var size = 0; var start = -1; var decoded = 0; var caption = ""
-        while (keepGoing() && !stopRequested() && vad.empty() && SystemClock.elapsedRealtime() - started < 20_000) {
-            val samples = read(record)
-            level(voiceLevel(samples))
-            vad.acceptWaveform(samples)
-            if (size + samples.size <= heard.size) { samples.copyInto(heard, size); size += samples.size }
-            // Start 0.4 s before detection, so the first syllable is in the captions.
-            if (start < 0 && vad.isSpeechDetected()) start = maxOf(0, size - 6400)
-            if (start >= 0 && size - decoded >= 4800) {
-                decoded = size
-                val text = decode(heard.copyOfRange(start, size))
-                if (text.isNotEmpty() && text != caption) { caption = text; partial(text) }
+        var inflight: Future<*>? = null
+        try {
+            while (keepGoing() && !stopRequested() && vad.empty() && SystemClock.elapsedRealtime() - started < 20_000) {
+                val samples = read(record)
+                level(voiceLevel(samples))
+                vad.acceptWaveform(samples)
+                if (size + samples.size <= heard.size) { samples.copyInto(heard, size); size += samples.size }
+                // Start 0.4 s before detection, so the first syllable is in the captions.
+                if (start < 0 && vad.isSpeechDetected()) start = maxOf(0, size - 6400)
+                if (start >= 0 && size - decoded >= 4800 && inflight?.isDone != false) {
+                    decoded = size
+                    val snapshot = heard.copyOfRange(start, size)
+                    inflight = captioner.submit {
+                        val begun = SystemClock.elapsedRealtime()
+                        val text = decode(snapshot)
+                        Log.i("LocalSpeech", "caption decode ${snapshot.size / 16000f} s audio in ${SystemClock.elapsedRealtime() - begun} ms")
+                        if (text.isNotEmpty() && text != caption) { caption = text; partial(text) }
+                    }
+                }
             }
+        } finally {
+            // The last caption lands before the final result or the next session, so stale words never overwrite them.
+            runCatching { inflight?.get() }
         }
         if (!keepGoing()) return ""
         vad.flush()
