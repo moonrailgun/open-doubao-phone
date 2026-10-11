@@ -76,8 +76,16 @@ def stamp_version(image, version, build_id):
     """Shows our release in Settings: the build number reads 'Open Doubao v1.27 (CP3A…)', and ro.opendoubao.version carries it alone."""
     if not re.fullmatch(r'v\d+(\.\d+)*(-[a-z0-9]+)?', version):
         raise RuntimeError(f'Version must look like v1.27, got {version!r}')
-    replace_line(image, '/system/build.prop', f'ro.build.display.id={build_id}',
-                 f'ro.build.display.id=Open Doubao {version} ({build_id})\nro.opendoubao.version={version}')
+    old = f'ro.build.display.id={build_id}'
+    new = f'ro.build.display.id=Open Doubao {version} ({build_id})'
+    # init merges every partition's build.prop and the later product file wins, so each copy of the line changes.
+    stamped = 0
+    for target in ('/system/build.prop', '/system/system_ext/etc/build.prop', '/system/product/etc/build.prop'):
+        if 'Inode:' in debugfs(image, f'stat {target}') and old + '\n' in debugfs(image, f'cat {target}'):
+            replace_line(image, target, old, new + (f'\nro.opendoubao.version={version}' if stamped == 0 else ''))
+            stamped += 1
+    if stamped == 0:
+        raise RuntimeError(f'No build.prop carries {old}')
 
 
 def install_libraries(image, apk, directory):

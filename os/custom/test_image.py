@@ -61,9 +61,14 @@ class ImageRecipeTest(unittest.TestCase):
             source = root / 'build.prop'
             source.write_text('ro.build.id=CP3A.260905.010\nro.build.display.id=CP3A.260905.010\nro.build.type=user\n')
             install(image, source, '/system/build.prop', '0100600')
+            # The product copy loads after the system one and would win, so it must change too.
+            install(image, source, '/system/product/etc/build.prop', '0100600')
             stamp_version(image, 'v1.27', 'CP3A.260905.010')
             self.assertIn('\nro.build.display.id=Open Doubao v1.27 (CP3A.260905.010)\nro.opendoubao.version=v1.27\nro.build.type=user\n',
                           debugfs(image, 'cat /system/build.prop'))
+            self.assertIn('\nro.build.display.id=Open Doubao v1.27 (CP3A.260905.010)\nro.build.type=user\n',
+                          debugfs(image, 'cat /system/product/etc/build.prop'))
+            self.assertNotIn('ro.opendoubao.version', debugfs(image, 'cat /system/product/etc/build.prop'))
             with self.assertRaises(RuntimeError):
                 stamp_version(image, 'release 1', 'CP3A.260905.010')
             run('e2fsck', '-fn', image)

@@ -32,7 +32,7 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
   douxian-image-tools python3 -B /work/os/custom/build_image.py /out v1.27
 ```
 
-配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入助手、TTS、Dao 浏览器、豆包输入法四个 APK（输入法另附解压出的原生库）、虚拟屏 RRO、省电豁免、默认运行时权限和开机动画，并把 product 与 system_ext 的 `build.prop` 中的设备型号由 `AOSP on ARM64` 改为 `Open Doubao`；再把 `/system/build.prop` 的 `ro.build.display.id` 改为 `Open Doubao v1.27 (CP3A.260905.010)` 并追加 `ro.opendoubao.version=v1.27`，于是设置 → 关于手机 → 版本号直接显示我们的版本，`adb shell getprop ro.opendoubao.version` 也能查到；版本号来自 `build_image.py` 的第二个参数，缺省取输出目录名，必须形如 `v1.27`，指纹不变。其余原有文件及其权限、xattrs 不经过解包重打包；被改写的 `build.prop` 保留原有的 0600 权限与 SELinux 标签；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
+配方只修改镜像副本：移除旧 AVB footer、扩容、展开真实共享块，再写入助手、TTS、Dao 浏览器、豆包输入法四个 APK（输入法另附解压出的原生库）、虚拟屏 RRO、省电豁免、默认运行时权限和开机动画，并把 product 与 system_ext 的 `build.prop` 中的设备型号由 `AOSP on ARM64` 改为 `Open Doubao`；再把 system、system_ext、product 三处 `build.prop` 里凡有的 `ro.build.display.id` 都改为 `Open Doubao v1.27 (CP3A.260905.010)`（init 合并时后加载的 product 会覆盖 system，只改一处无效）并在 system 的追加 `ro.opendoubao.version=v1.27`，于是设置 → 关于手机 → 版本号直接显示我们的版本，`adb shell getprop ro.opendoubao.version` 也能查到；版本号来自 `build_image.py` 的第二个参数，缺省取输出目录名，必须形如 `v1.27`，指纹不变。其余原有文件及其权限、xattrs 不经过解包重打包；被改写的 `build.prop` 保留原有的 0600 权限与 SELinux 标签；新增目录为 root:root/0755，文件为 root:root/0644，并写入带 NUL 终止符的 `system_file` SELinux 标签。写入内容会从镜像读回并核对 SHA-256。随后执行文件系统检查、缩容、容量检查和 AVB hashtree 重建及验证。
 
 输出包括 `system.img`、`payload.json`、`manifest.json` 和 `avb-info.txt`。使用无签名 AVB 元数据，只适用于当前已解锁且关闭验证的开发设备；不能重新锁定 Bootloader。容量限制使用当前 Pixel 6 Pro 的 dynamic partition group 与其他分区实际尺寸，不能直接套用到其他手机。
 
