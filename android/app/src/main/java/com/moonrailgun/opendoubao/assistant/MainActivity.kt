@@ -69,9 +69,11 @@ import com.moonrailgun.opendoubao.assistant.core.MemoryOps
 import com.moonrailgun.opendoubao.assistant.core.TaskState
 import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.data.Record
+import com.moonrailgun.opendoubao.assistant.data.Saved
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.CloudModels
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
+import com.moonrailgun.opendoubao.assistant.phone.InstalledApp
 import com.moonrailgun.opendoubao.assistant.phone.catalogSelection
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_AUTO
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_FOREGROUND
@@ -146,7 +148,10 @@ class MainActivity : ComponentActivity() {
 
     @Composable private fun AssistantApp(refresh: Int) {
         val vault = remember { Vault(this) }
-        val initial = remember { runCatching { vault.read() } }
+        // Decrypting the vault and listing the installed apps take long enough to drop frames: load them off the main thread.
+        var loaded by remember { mutableStateOf<Pair<Result<Saved>, List<InstalledApp>>?>(null) }
+        LaunchedEffect(Unit) { loaded = withContext(Dispatchers.IO) { runCatching { vault.read() } to loadAppCatalog(this@MainActivity) } }
+        val (initial, installed) = loaded ?: run { Surface(Modifier.fillMaxSize()) {}; return }
         if (initial.isFailure) {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.systemBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -158,7 +163,6 @@ class MainActivity : ComponentActivity() {
             return
         }
         val saved = initial.getOrThrow()
-        val installed = remember { loadAppCatalog(this) }
         val allApps = remember { installed.map { it.packageName }.toSet() }
         val launcherApps = remember { installed.filter { it.launchable }.map { it.packageName }.toSet() }
         var config by remember { mutableStateOf(saved.config) }
