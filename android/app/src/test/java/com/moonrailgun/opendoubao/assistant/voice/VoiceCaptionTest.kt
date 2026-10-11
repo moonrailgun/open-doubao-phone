@@ -14,6 +14,18 @@ class VoiceCaptionTest {
         assertEquals("查天气", typewriterStep("查天气", "查天气"))
     }
 
+    @Test fun captionsKeepTheirHeadAndDropTrailingPunctuationAcrossPasses() {
+        assertEquals("帮我看一下明", mergeCaption("帮我看一下", "帮我看一下明。"))
+        // The next pass lost the first syllable but heard more: keep the head, take the new tail.
+        assertEquals("帮我看一下明天上午", mergeCaption("帮我看一下明", "我看一下明天上午，"))
+        // A pass that regains the head simply wins.
+        assertEquals("帮我看一下明天", mergeCaption("我看一下明", "帮我看一下明天"))
+        // Unrelated text replaces the caption; nothing is invented from an empty or one-character history.
+        assertEquals("查天气", mergeCaption("那我看", "查天气。"))
+        assertEquals("我", mergeCaption("帮", "我"))
+        assertEquals("", mergeCaption("帮我", "。"))
+    }
+
     @Test fun levelIsSilentForSilenceAndSaturatesForShouting() {
         assertEquals(0f, voiceLevel(FloatArray(0)), 0f)
         assertEquals(0f, voiceLevel(FloatArray(512)), 0f)

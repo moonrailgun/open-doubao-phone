@@ -94,7 +94,7 @@ class LocalSpeechEngine(private val context: Context) {
                     val snapshot = heard.copyOfRange(start, size)
                     inflight = captioner.submit {
                         val begun = SystemClock.elapsedRealtime()
-                        val text = decode(snapshot)
+                        val text = mergeCaption(caption, decode(snapshot))
                         Log.i("LocalSpeech", "caption decode ${snapshot.size / 16000f} s audio in ${SystemClock.elapsedRealtime() - begun} ms")
                         if (text.isNotEmpty() && text != caption) { caption = text; partial(text) }
                     }
@@ -145,6 +145,17 @@ class LocalSpeechEngine(private val context: Context) {
             return recognizer.getResult(stream).text.trim()
         } finally { stream.release() }
     }
+}
+
+/**
+ * Each caption pass decodes the whole utterance again, and the edges drift: trailing punctuation comes and goes and the
+ * first syllable can drop out of one pass, which made the typed line collapse and retype. Drop the punctuation and keep
+ * the previous head when the new text only lost a character or two at the front.
+ */
+internal fun mergeCaption(previous: String, decoded: String): String {
+    val text = decoded.trimEnd { it in "，。！？、,.!?" }
+    for (drop in 1..2) if (previous.length > drop && text.startsWith(previous.drop(drop))) return previous.take(drop) + text
+    return text
 }
 
 // ponytail: RMS × 6 then a square root puts ordinary speech near the phone around 0.4–0.9; re-tune VOICE_GAIN on real voices.
