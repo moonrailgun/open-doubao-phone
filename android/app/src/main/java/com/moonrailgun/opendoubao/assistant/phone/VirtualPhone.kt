@@ -255,7 +255,9 @@ class VirtualPhone(private val service: AssistantService, private val foreground
             checkNotNull(service.packageManager.getLaunchIntentForPackage(service.packageName)), PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(service, CHANNEL).setSmallIcon(R.drawable.lucide_bot)
             .setContentTitle("Open Doubao 正在虚拟屏上操作").setContentText("点开悬浮球可以查看画面或紧急停止")
-            .setContentIntent(preview).setOngoing(true).build()
+            .setContentIntent(preview).setOngoing(true)
+            // Sessions require a notification that may be promoted to a live update; SDK 36 has no setter for it yet.
+            .addExtras(Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }).build()
         // Version 5 is the minimum the system accepts and makes every field below mandatory.
         val params = ComputerControlSessionParams.Builder()
             .setName("Open Doubao ${UUID.randomUUID()}")
