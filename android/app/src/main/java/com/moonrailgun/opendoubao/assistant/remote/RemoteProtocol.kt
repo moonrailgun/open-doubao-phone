@@ -56,6 +56,8 @@ data class RemoteSnapshot(val taskId: String? = null, val task: TaskState = Task
 
 object RemoteProtocol {
     const val MAX_FRAME_BYTES = 256 * 1024
+    /** Raw bytes per records.export chunk: 150 KiB is 200 KiB of base64, inside one frame with its envelope. */
+    const val EXPORT_CHUNK = 150 * 1024
     fun json(text: String): JSONObject {
         require(text.toByteArray(Charsets.UTF_8).size <= MAX_FRAME_BYTES) { "消息超过 256 KiB" }
         return try { JSONObject(text) } catch (_: Exception) { throw IllegalArgumentException("消息必须是 JSON 对象") }
@@ -89,6 +91,8 @@ interface RemoteTasks {
     fun saveAccess(apps: Set<String>)
     fun tts(): TtsSettings
     fun saveTts(tts: TtsSettings)
+    /** The task's model calls packed as a ZIP in app storage; [fresh] rebuilds it, later chunks read the one just built. */
+    fun exportCalls(taskId: String, fresh: Boolean): java.io.File
 }
 
 class RemoteCommands(private val tasks: RemoteTasks) {
@@ -169,6 +173,21 @@ class RemoteCommands(private val tasks: RemoteTasks) {
                     check(tasks.records().any { it.id == taskId }) { "未找到任务记录" }
                     tasks.deleteRecord(taskId)
                     JSONObject().put("taskId", taskId)
+                }
+                "records.export" -> {
+                    params.exactFields("taskId", "offset")
+                    val taskId = RemoteProtocol.uuid(params.string("taskId"))
+                    val offset = params.opt("offset")
+                    require((offset is Int || offset is Long) && (offset as Number).toLong() >= 0) { "offset 无效" }
+                    val start = offset.toLong()
+                    check(tasks.records().any { it.id == taskId }) { "未找到任务记录" }
+                    val file = tasks.exportCalls(taskId, fresh = start == 0L)
+                    val size = file.length()
+                    require(start <= size) { "offset 超出文件" }
+                    val bytes = ByteArray(minOf(RemoteProtocol.EXPORT_CHUNK.toLong(), size - start).toInt())
+                    java.io.RandomAccessFile(file, "r").use { it.seek(start); it.readFully(bytes) }
+                    JSONObject().put("size", size).put("offset", start).put("eof", start + bytes.size >= size)
+                        .put("data", java.util.Base64.getEncoder().encodeToString(bytes))
                 }
                 "status.get" -> { params.exactFields(); tasks.snapshot().json() }
                 "config.get" -> { params.exactFields(); tasks.config().remoteJson() }

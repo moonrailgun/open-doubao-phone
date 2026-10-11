@@ -74,6 +74,20 @@ mod desktop {
         bridge.forget_device().await
     }
 
+    #[tauri::command]
+    async fn download_calls(
+        task_id: String,
+        app: tauri::AppHandle,
+        bridge: State<'_, Arc<Bridge>>,
+    ) -> Result<String, String> {
+        let directory = app
+            .path()
+            .download_dir()
+            .map_err(|error| format!("无法定位下载目录：{error}"))?;
+        let path = bridge.download_calls(&task_id, &directory).await?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
     pub fn run() {
         tauri::Builder::default()
             .plugin(tauri_plugin_notification::init())
@@ -95,7 +109,8 @@ mod desktop {
                 get_snapshot,
                 create_pairing,
                 request,
-                forget_device
+                forget_device,
+                download_calls
             ])
             .run(tauri::generate_context!())
             .expect("failed to run Open Doubao desktop");

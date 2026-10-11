@@ -282,6 +282,32 @@ fn authorize(inner: &Inner, hello: &Hello, now: u64) -> Result<bool, String> {
     }
 }
 
+/// Standard base64 with padding, as java.util.Base64 writes it; no crate for twenty lines.
+fn decode_base64(text: &str) -> Result<Vec<u8>, String> {
+    let mut out = Vec::with_capacity(text.len() / 4 * 3);
+    let (mut buffer, mut bits) = (0u32, 0u32);
+    for byte in text.bytes() {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => break,
+            b'\r' | b'\n' => continue,
+            _ => return Err("数据块不是 base64".into()),
+        };
+        buffer = (buffer << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+            buffer &= (1 << bits) - 1;
+        }
+    }
+    Ok(out)
+}
+
 fn validate_request(method: &str, params: &Value) -> Result<(), String> {
     let object = params.as_object().ok_or("参数必须是对象")?;
     match method {
@@ -302,6 +328,16 @@ fn validate_request(method: &str, params: &Value) -> Result<(), String> {
             if task_id.is_empty() || task_id.len() > 128 {
                 return Err("任务 ID 无效".into());
             }
+        }
+        "records.export" if object.len() == 2 => {
+            let task_id = object
+                .get("taskId")
+                .and_then(Value::as_str)
+                .ok_or("缺少任务 ID")?;
+            if task_id.is_empty() || task_id.len() > 128 {
+                return Err("任务 ID 无效".into());
+            }
+            object.get("offset").and_then(Value::as_u64).ok_or("偏移无效")?;
         }
         "records.list" | "status.get" | "config.get" | "apps.get" | "tts.get" if object.is_empty() => {}
         "apps.set" if object.len() == 1 => {
@@ -481,6 +517,33 @@ impl Bridge {
                 })
             }
         }
+    }
+
+    /// Pulls one task's model calls, the ZIP the phone builds, 150 KiB a chunk, into `directory`; returns the file path.
+    pub async fn download_calls(&self, task_id: &str, directory: &Path) -> Result<PathBuf, String> {
+        let mut bytes = Vec::new();
+        loop {
+            let reply = self
+                .request("records.export", json!({"taskId": task_id, "offset": bytes.len() as u64}))
+                .await?;
+            let offset = reply.get("offset").and_then(Value::as_u64).ok_or("手机返回的数据块无效")?;
+            let data = reply.get("data").and_then(Value::as_str).ok_or("手机返回的数据块无效")?;
+            if offset != bytes.len() as u64 {
+                return Err("数据块顺序错误".into());
+            }
+            bytes.extend(decode_base64(data)?);
+            if bytes.len() > 512 * 1024 * 1024 {
+                return Err("导出文件过大".into());
+            }
+            if reply.get("eof").and_then(Value::as_bool).unwrap_or(false) {
+                break;
+            }
+        }
+        std::fs::create_dir_all(directory).map_err(|error| format!("无法创建下载目录：{error}"))?;
+        let short: String = task_id.chars().take(8).collect();
+        let path = directory.join(format!("open-doubao-model-calls-{short}.zip"));
+        std::fs::write(&path, &bytes).map_err(|error| format!("无法写入文件：{error}"))?;
+        Ok(path)
     }
 
     pub async fn serve(self: Arc<Self>) {
@@ -737,6 +800,15 @@ mod tests {
             state: None,
             error: None,
         }
+    }
+
+    #[test]
+    fn base64_decodes_padded_and_unpadded_text() {
+        assert_eq!(decode_base64("aGVsbG8=").unwrap(), b"hello");
+        assert_eq!(decode_base64("aGk=").unwrap(), b"hi");
+        assert_eq!(decode_base64("YWJj").unwrap(), b"abc");
+        assert_eq!(decode_base64("").unwrap(), b"");
+        assert!(decode_base64("a*b").is_err());
     }
 
     #[test]

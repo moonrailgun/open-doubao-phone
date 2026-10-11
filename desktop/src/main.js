@@ -290,6 +290,20 @@ async function showRecord(taskId) {
     $('record-content').replaceChildren(element('h3', record.goal), element('p', `${labels[record.status] || record.status} · ${date(record.time)}`, 'muted'), result, element('h2', '执行与访问日志'), log);
     addCopyButton(result, '复制任务结果');
     addCopyButton(log, '复制执行与访问日志');
+    const download = element('button', '下载模型调用记录（zip）', 'button');
+    const hint = element('p', '包含这条任务完整的模型请求与响应：提示词、屏幕文字和截图。保存到「下载」文件夹，便于排查或交给 AI 分析；只分享给可信的人。', 'muted');
+    download.addEventListener('click', async () => {
+      download.disabled = true;
+      $('record-message').textContent = '';
+      hint.textContent = '正在从手机下载…';
+      try {
+        hint.textContent = `已保存：${await invoke('download_calls', { taskId })}`;
+      } catch (error) {
+        hint.textContent = '';
+        $('record-message').textContent = `下载失败：${message(error)}`;
+      } finally { download.disabled = false; }
+    });
+    $('record-content').append(element('h2', '模型调用记录'), download, hint);
   } catch (error) {
     if (current === detailRequest) $('record-content').replaceChildren(element('p', message(error), 'error'));
   }

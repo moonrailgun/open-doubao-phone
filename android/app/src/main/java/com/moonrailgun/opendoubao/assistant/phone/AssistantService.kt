@@ -68,6 +68,8 @@ import com.moonrailgun.opendoubao.assistant.voice.taskScreenAvailable
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 
 private val VoiceRing = androidx.compose.ui.graphics.Color(0xFF3DBB82)
@@ -209,6 +211,14 @@ class AssistantService : AccessibilityService() {
                         val saved = vault.read()
                         vault.write(saved.copy(records = saved.records.filterNot { it.id == taskId }))
                         remoteEdits.value++
+                    }
+                    override fun exportCalls(taskId: String, fresh: Boolean): File {
+                        val file = File(File(cacheDir, "remote-export").apply { mkdirs() }, "$taskId.zip")
+                        if (fresh || !file.isFile) {
+                            val record = vault.read().records.firstOrNull { it.id == taskId } ?: error("未找到任务记录")
+                            FileOutputStream(file).use { vault.modelCalls.export(record, it) }
+                        }
+                        return file
                     }
                 }, remoteSnapshot, android.os.Build.MODEL)
         }.onFailure { remoteError = it.message ?: "远程接收初始化失败" }

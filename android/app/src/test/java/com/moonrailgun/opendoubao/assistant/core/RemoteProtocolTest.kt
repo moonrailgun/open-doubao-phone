@@ -66,6 +66,28 @@ class RemoteProtocolTest {
         var tts = TtsSettings("https://speech.example/v1/audio/speech", "existing-tts-token", "eleven", "voice-1")
         override fun tts() = tts
         override fun saveTts(tts: TtsSettings) { this.tts = tts }
+        val exports = mutableListOf<Boolean>()
+        val exportFile = java.io.File.createTempFile("calls", ".zip").apply { writeBytes(ByteArray(160 * 1024) { it.toByte() }); deleteOnExit() }
+        override fun exportCalls(taskId: String, fresh: Boolean): java.io.File { exports += fresh; return exportFile }
+    }
+
+    @Test fun modelCallExportsStreamInChunksAndRebuildOnlyFromTheStart() {
+        val phone = Phone().apply { saved += Record(id, 1, "goal", "COMPLETED", "") }
+        val commands = RemoteCommands(phone)
+        fun export(offset: Any) = commands.call(request("records.export", JSONObject().put("taskId", id).put("offset", offset)))
+        val first = export(0).getJSONObject("data")
+        assertEquals(160 * 1024L, first.getLong("size"))
+        assertFalse(first.getBoolean("eof"))
+        val chunk = java.util.Base64.getDecoder().decode(first.getString("data"))
+        assertEquals(RemoteProtocol.EXPORT_CHUNK, chunk.size)
+        assertEquals(5.toByte(), chunk[5])
+        val last = export(RemoteProtocol.EXPORT_CHUNK).getJSONObject("data")
+        assertTrue(last.getBoolean("eof"))
+        assertEquals(10 * 1024, java.util.Base64.getDecoder().decode(last.getString("data")).size)
+        assertEquals(listOf(true, false), phone.exports)
+        assertFalse(export(200 * 1024).getBoolean("ok"))
+        assertFalse(export(-1).getBoolean("ok"))
+        assertFalse(commands.call(request("records.export", JSONObject().put("taskId", "11111111-1111-4111-8111-111111111111").put("offset", 0))).getBoolean("ok"))
     }
 
     // Commands only suspend for connection tests; the fakes return immediately.
