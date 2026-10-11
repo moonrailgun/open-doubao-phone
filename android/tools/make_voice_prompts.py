@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthesize the bundled wake and retry prompts as mono PCM16 24 kHz WAV, the format of the app's online playback.
+"""Synthesize bundled fixed prompts as mono PCM16 24 kHz WAV. Existing clips are kept unless --overwrite is set.
 
 TTS_TOKEN=... python3 tools/make_voice_prompts.py https://<gateway>/v1/audio/speech
 """
@@ -11,14 +11,15 @@ import pathlib
 import urllib.request
 import wave
 
-PROMPTS = {"wake-1": "我在", "wake-2": "诶", "wake-3": "有什么指示", "retry": "我没有听清楚，能再说一遍么"}
 OUT = pathlib.Path(__file__).resolve().parent.parent / "app/src/main/assets/voice/prompts"
+PROMPTS = json.loads((OUT / "prompts.json").read_text())
 RATE = 24_000
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("endpoint")
 parser.add_argument("--model", default="elevenlabs/eleven_v3")
 parser.add_argument("--voice", default="bhJUNIXWQQ94l8eI2VUf")
+parser.add_argument("--overwrite", action="store_true", help="regenerate existing clips too")
 args = parser.parse_args()
 token = os.environ["TTS_TOKEN"]
 
@@ -50,10 +51,20 @@ def trim(pcm):
 
 OUT.mkdir(parents=True, exist_ok=True)
 for name, text in PROMPTS.items():
+    assert name and all(c in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in name), name
+    assert isinstance(text, str) and text.strip(), name
+    target = OUT / f"{name}.wav"
+    if target.exists() and not args.overwrite:
+        with wave.open(str(target), "rb") as file:
+            assert (file.getnchannels(), file.getsampwidth(), file.getframerate()) == (1, 2, RATE), name
+            assert file.getnframes() > 0, name
+        continue
     pcm = trim(synthesize(text))
-    with wave.open(str(OUT / f"{name}.wav"), "wb") as file:
+    temporary = target.with_suffix(".wav.tmp")
+    with wave.open(str(temporary), "wb") as file:
         file.setnchannels(1)
         file.setsampwidth(2)
         file.setframerate(RATE)
         file.writeframes(pcm)
+    temporary.replace(target)
     print(f"{name}.wav  {text}  {len(pcm) / 2 / RATE:.2f}s")

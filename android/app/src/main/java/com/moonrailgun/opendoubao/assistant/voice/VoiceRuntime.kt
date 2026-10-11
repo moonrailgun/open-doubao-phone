@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import org.json.JSONObject
 import java.util.concurrent.Executors
 
 /** What the voice card shows: the words heard so far, the microphone level, and a hint until words arrive. */
@@ -248,7 +249,7 @@ object VoiceRuntime {
             // Ask once more, then give up so an empty room cannot keep the microphone open.
             if (retry) {
                 mutableListening.value = Listening(hint = "没有听清，请再说一遍")
-                if (!speak(context, "我没有听清楚，能再说一遍么", false, "voice/prompts/retry.wav") { listenForTask(context, false) }) mutableListening.value = null
+                if (!speak(context, "我没有听清楚，能再说一遍么", false, after = { listenForTask(context, false) })) mutableListening.value = null
             } else { mutableListening.value = null; speak(context, "没有听清，请重新唤醒后说出任务。") }
             return
         }
@@ -291,6 +292,9 @@ object VoiceRuntime {
             try {
                 withTimeout(5_000) { ready.await() }
                 if (!requests.accepts(id)) { finish(id); return@launch }
+                val prompt = clip ?: context.assets.open("voice/prompts/prompts.json").bufferedReader().use {
+                    voicePrompt(text, JSONObject(it.readText()))
+                }
                 speech = FileSpeech(context.applicationContext, unlockPrompt) { error ->
                     speech = null
                     if (error != null) {
@@ -300,7 +304,7 @@ object VoiceRuntime {
                     }
                     finish(id, if (error == null) after else null)
                 }
-                if (clip != null) speech?.play(clip) else speech?.speak(text)
+                if (prompt != null) speech?.play(prompt) else speech?.speak(text)
             } catch (e: Exception) { mutableError.value = e.message ?: "播报失败"; finish(id) }
         }
         return true
@@ -321,3 +325,7 @@ object VoiceRuntime {
         refresh(context)
     }
 }
+
+/** Exact matches keep dynamic results and the settings audition on the configured synthesizer. */
+internal fun voicePrompt(text: String, prompts: JSONObject): String? = prompts.keys().asSequence()
+    .firstOrNull { prompts.getString(it) == text }?.let { "voice/prompts/$it.wav" }

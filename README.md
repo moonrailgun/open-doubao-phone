@@ -117,6 +117,8 @@ cargo check --locked
 - 任务和所选应用的可访问文字会发给配置的服务；必要时还会发送截图。密钥、配置及最多 30 条任务记录使用 Android Keystore 加密存储，禁止备份；截图只在内存中处理。
 - 每条任务记录附带执行日志：带毫秒时间戳的规划结果、每次页面读取、模型调用及耗时、动作与结果、超时所在的调用和异常堆栈；启动前检查未通过的任务也会留下记录。日志不含截图和屏幕全文，单条约 24,000 字以内，可在「记录」页展开查看和复制。
 
+固定语音提示的文案和音频位于 `android/app/src/main/assets/voice/prompts/`。`prompts.json` 同时供生成脚本和播放匹配使用：唤醒、重听、停止、解锁及固定任务状态/错误提示直接播放内置 WAV，无需网络或实时合成；动态结果、含具体应用或错误详情的提示仍走 TTS。设置页试听始终用于验证当前配置的 TTS 音色。修改固定文案时，用 `TTS_TOKEN=... python3 android/tools/make_voice_prompts.py <TTS 接口地址>` 生成缺失片段；需要重录已有片段时加 `--overwrite`。音频统一为单声道 PCM16、24 kHz。
+
 ## Android 本地构建与验证
 
 使用 JDK 17、Android SDK 36 和项目自带 Gradle wrapper。将 `sdk.dir` 写入本地 `android/local.properties`，不要提交该文件。从仓库根目录执行：
