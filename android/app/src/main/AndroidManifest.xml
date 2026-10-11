@@ -26,6 +26,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".DebugActivity" android:exported="false" />
         <activity android:name=".remote.PairingCaptureActivity" android:exported="false"
             android:screenOrientation="portrait" android:theme="@style/zxing_CaptureTheme"
             android:windowSoftInputMode="stateAlwaysHidden" />

@@ -8,6 +8,7 @@ import android.media.MediaRecorder
 import android.os.SystemClock
 import android.util.Log
 import com.k2fsa.sherpa.onnx.*
+import com.moonrailgun.opendoubao.assistant.core.Diagnostics
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import kotlin.math.sqrt
@@ -98,7 +99,9 @@ class LocalSpeechEngine(private val context: Context) {
                     inflight = captioner.submit {
                         val begun = SystemClock.elapsedRealtime()
                         val text = mergeCaption(caption, decode(snapshot))
-                        Log.i("LocalSpeech", "caption decode ${snapshot.size / 16000f} s audio in ${SystemClock.elapsedRealtime() - begun} ms")
+                        val took = SystemClock.elapsedRealtime() - begun
+                        Log.i("LocalSpeech", "caption decode ${snapshot.size / 16000f} s audio in $took ms")
+                        Diagnostics.log("字幕解码 ${snapshot.size / 16000f} s 音频，$took ms")
                         if (text.isNotEmpty() && text != caption) { caption = text; partial(text) }
                     }
                 }

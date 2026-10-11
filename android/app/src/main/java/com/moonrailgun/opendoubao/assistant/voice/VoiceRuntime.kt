@@ -10,6 +10,7 @@ import android.media.AudioManager
 import android.os.*
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
+import com.moonrailgun.opendoubao.assistant.core.Diagnostics
 import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.CloudModels
@@ -169,6 +170,7 @@ object VoiceRuntime {
                     if (result.isFailure) continue
                     val text = result.getOrNull()
                     if (text == "") continue
+                    Diagnostics.log(if (text == null) "唤醒词命中，但屏幕未点亮或未解锁" else "唤醒词命中：$text")
                     wakeJob = null
                     if (text == null) speakUnlock(context) else respondToWake(context)
                     startWake()
@@ -212,7 +214,8 @@ object VoiceRuntime {
             }
         }
     }
-    fun listenForTask(context: Context, retry: Boolean = true) {
+    /** With [dispatch] off the words are only shown and logged, for the debug page's recognition check. */
+    fun listenForTask(context: Context, retry: Boolean = true, dispatch: Boolean = true) {
         if (!screenAvailable(context)) { mutableListening.value = null; speakUnlock(context); return }
         if (!hasMic(context)) { mutableListening.value = null; mutableError.value = "请先在应用中授权麦克风"; return }
         val id = begin(context, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE, "正在加载本地语音")
@@ -224,12 +227,14 @@ object VoiceRuntime {
             // The engine reports from its worker; update {} keeps a card that was just closed from reopening.
             val result = record(context, id, level = { level -> mutableListening.update { it?.copy(level = level) } },
                 partial = { text -> mutableListening.update { it?.copy(text = text) } }) {
+                Diagnostics.log("开始收听")
                 mutableListening.update { it?.copy(hearing = true, hint = "正在听…") }
             }
             if (finish(id)) result.fold({ text ->
+                Diagnostics.log("识别结果：${text.ifBlank { "（空）" }}")
                 mutableListening.update { it?.copy(text = text, level = 0f, hearing = false) }
-                dispatch(context, text, retry)
-            }, { mutableListening.value = null; mutableError.value = it.message ?: "识别失败" })
+                if (dispatch) dispatch(context, text, retry) else closeCard()
+            }, { Diagnostics.log("识别失败：${it.message}"); mutableListening.value = null; mutableError.value = it.message ?: "识别失败" })
             else mutableListening.value = null
         }
     }
@@ -291,6 +296,8 @@ object VoiceRuntime {
     }
 
     fun speak(context: Context, text: String) = speak(context, text, false)
+    /** Plays one bundled prompt through the normal playback path, for the debug page. */
+    fun playPrompt(context: Context, clip: String) = speak(context, "", false, clip)
     private fun speakUnlock(context: Context) = speak(context, "请先点亮并解锁手机，然后重新下达指令。", true)
     private fun speak(context: Context, text: String, unlockPrompt: Boolean, clip: String? = null, after: (() -> Unit)? = null): Boolean {
         if (!unlockPrompt && !screenAvailable(context)) return false
@@ -302,8 +309,11 @@ object VoiceRuntime {
                 val prompt = clip ?: context.assets.open("voice/prompts/prompts.json").bufferedReader().use {
                     voicePrompt(text, JSONObject(it.readText()))
                 }
+                val started = SystemClock.uptimeMillis()
                 speech = FileSpeech(context.applicationContext, unlockPrompt) { error ->
                     speech = null
+                    Diagnostics.log((if (error == null) "播报完成" else "播报失败：$error") +
+                        "（${prompt ?: text.take(20)}，${SystemClock.uptimeMillis() - started} ms）")
                     if (error != null) {
                         mutableError.value = error
                         // A prompt that should have led into listening failed: fold the card it opened.

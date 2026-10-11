@@ -413,6 +413,10 @@ class MainActivity : ComponentActivity() {
                             2 -> RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                             else -> ExecutionControls()
                         }
+                        OutlinedButton({ startActivity(Intent(this@MainActivity, DebugActivity::class.java)) }, Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)) { Text("调试") }
+                        Text("试播提示音、测试播报、模拟唤醒与识别自检、试算执行方式判断，查看运行状态和最近语音事件。",
+                            Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                     }
                 }
                 Spacer(Modifier.height(8.dp))

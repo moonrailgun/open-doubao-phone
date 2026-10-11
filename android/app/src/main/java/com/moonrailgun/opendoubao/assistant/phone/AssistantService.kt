@@ -263,6 +263,7 @@ class AssistantService : AccessibilityService() {
             choice == EXECUTION_VIRTUAL -> TaskController(scope, offscreen(), models, remember = ::remember)
             else -> TaskController(scope, phone, models, remember = ::remember, place = {
                 val (placement, how) = models.placement(goal)
+                Diagnostics.log("执行方式：${if (placement == Placement.VIRTUAL) "虚拟屏" else "前台"}（$how）")
                 (if (placement == Placement.VIRTUAL) offscreen() else phone) to how
             })
         }
