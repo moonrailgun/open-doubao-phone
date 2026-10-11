@@ -7,6 +7,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.SystemClock
 import com.k2fsa.sherpa.onnx.*
+import kotlin.math.sqrt
 
 /** Native objects and the recorder are confined to VoiceRuntime's one worker. */
 class LocalSpeechEngine(private val context: Context) {
@@ -32,13 +33,15 @@ class LocalSpeechEngine(private val context: Context) {
         finally { check(prefs.edit().putBoolean(key, false).commit()) }
     }
 
-    fun recognize(keepGoing: () -> Boolean, stopRequested: () -> Boolean, ready: () -> Unit): String {
+    /** [level] gets the microphone level per read and [partial] the words heard so far, both on this worker. */
+    fun recognize(keepGoing: () -> Boolean, stopRequested: () -> Boolean, level: (Float) -> Unit = {},
+                  partial: (String) -> Unit = {}, ready: () -> Unit): String {
         // Warm ASR before announcing readiness, so model loading cannot discard the first words.
         recognizer
         vad.reset()
         return recording { record ->
             ready()
-            capture(record, keepGoing, stopRequested)
+            capture(record, keepGoing, stopRequested, level, partial)
         }
     }
 
@@ -61,10 +64,25 @@ class LocalSpeechEngine(private val context: Context) {
         } finally { stream.release() }
     }
 
-    private fun capture(record: AudioRecord, keepGoing: () -> Boolean, stopRequested: () -> Boolean): String {
+    private fun capture(record: AudioRecord, keepGoing: () -> Boolean, stopRequested: () -> Boolean,
+                        level: (Float) -> Unit, partial: (String) -> Unit): String {
         val started = SystemClock.elapsedRealtime()
+        // Simulated streaming: once speech starts, everything heard so far is decoded again every 0.3 s for live captions.
+        // ponytail: each pass re-decodes the whole utterance, so long ones refresh slower; decode only the tail if that shows.
+        val heard = FloatArray(16000 * 21)
+        var size = 0; var start = -1; var decoded = 0; var caption = ""
         while (keepGoing() && !stopRequested() && vad.empty() && SystemClock.elapsedRealtime() - started < 20_000) {
-            vad.acceptWaveform(read(record))
+            val samples = read(record)
+            level(voiceLevel(samples))
+            vad.acceptWaveform(samples)
+            if (size + samples.size <= heard.size) { samples.copyInto(heard, size); size += samples.size }
+            // Start 0.4 s before detection, so the first syllable is in the captions.
+            if (start < 0 && vad.isSpeechDetected()) start = maxOf(0, size - 6400)
+            if (start >= 0 && size - decoded >= 4800) {
+                decoded = size
+                val text = decode(heard.copyOfRange(start, size))
+                if (text.isNotEmpty() && text != caption) { caption = text; partial(text) }
+            }
         }
         if (!keepGoing()) return ""
         vad.flush()
@@ -85,7 +103,8 @@ class LocalSpeechEngine(private val context: Context) {
         val record = AudioRecord.Builder().setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
             .setAudioFormat(AudioFormat.Builder().setSampleRate(16000).setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-            .setBufferSizeInBytes(maxOf(4096, AudioRecord.getMinBufferSize(16000,
+            // Two seconds of headroom: a caption decode blocks this thread for up to a few hundred milliseconds.
+            .setBufferSizeInBytes(maxOf(64_000, AudioRecord.getMinBufferSize(16000,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT))).build()
         try {
             check(record.state == AudioRecord.STATE_INITIALIZED) { "麦克风不可用" }
@@ -106,6 +125,16 @@ class LocalSpeechEngine(private val context: Context) {
             return recognizer.getResult(stream).text.trim()
         } finally { stream.release() }
     }
+}
+
+// ponytail: RMS × 6 then a square root puts ordinary speech near the phone around 0.4–0.9; re-tune VOICE_GAIN on real voices.
+internal const val VOICE_GAIN = 6f
+
+/** Loudness of one read as 0..1 for the voice card's lines. */
+internal fun voiceLevel(samples: FloatArray): Float {
+    if (samples.isEmpty()) return 0f
+    val rms = sqrt(samples.sumOf { (it * it).toDouble() } / samples.size).toFloat()
+    return sqrt((rms * VOICE_GAIN).coerceIn(0f, 1f))
 }
 
 internal fun createKeywordSpotter(context: Context) = KeywordSpotter(context.assets,
