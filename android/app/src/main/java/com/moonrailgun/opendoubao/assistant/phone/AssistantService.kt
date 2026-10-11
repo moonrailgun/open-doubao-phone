@@ -31,6 +31,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
@@ -52,7 +53,10 @@ import com.moonrailgun.opendoubao.assistant.remote.RemoteReceiver
 import com.moonrailgun.opendoubao.assistant.remote.RemoteSnapshot
 import com.moonrailgun.opendoubao.assistant.remote.RemoteTasks
 import com.moonrailgun.opendoubao.assistant.statusStyle
+import com.moonrailgun.opendoubao.assistant.voice.Listening
 import com.moonrailgun.opendoubao.assistant.voice.LocalVoiceInput
+import com.moonrailgun.opendoubao.assistant.voice.VoiceWaveView
+import com.moonrailgun.opendoubao.assistant.voice.typewriterStep
 import com.moonrailgun.opendoubao.assistant.voice.VoiceRuntime
 import com.moonrailgun.opendoubao.assistant.voice.TtsSettings
 import com.moonrailgun.opendoubao.assistant.voice.tts
@@ -119,6 +123,13 @@ class AssistantService : AccessibilityService() {
     private var conversing = false
     private var expanded = false
     private var typing = false
+    private var voiceCard: View? = null
+    private var voiceWave: VoiceWaveView? = null
+    private var voiceCaption: TextView? = null
+    private var listening: Listening? = null
+    private var caption = ""
+    private var captionQueued = false
+    private val typeCaption = Runnable { captionQueued = false; stepCaption() }
     private val lockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             // The overlay sits above the keyguard, so it stays hidden from screen off until the phone is unlocked.
@@ -136,6 +147,7 @@ class AssistantService : AccessibilityService() {
         })
         createOverlay()
         scope.launch { VoiceRuntime.conversing.collect { conversing = it; ringBubble() } }
+        scope.launch { VoiceRuntime.listening.collect { showListening(it) } }
         // Tasks never outlive the service, including those waiting for manual intervention.
         runCatching {
             val vault = Vault(this)
@@ -362,7 +374,8 @@ class AssistantService : AccessibilityService() {
             when (event.actionMasked) {
                 // Keyboard taps also arrive as outside touches, so typing keeps the panel open.
                 MotionEvent.ACTION_OUTSIDE -> {
-                    if (expanded && !captureHidden && !typing) collapse()
+                    if (listening != null) VoiceRuntime.cancel()
+                    else if (expanded && !captureHidden && !typing) collapse()
                     return@OnTouchListener false
                 }
                 MotionEvent.ACTION_DOWN -> { downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y; dragging = false }
@@ -521,6 +534,20 @@ class AssistantService : AccessibilityService() {
         }
         card.addView(stopButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)))
         root.addView(card, FrameLayout.LayoutParams(dp(320), FrameLayout.LayoutParams.WRAP_CONTENT))
+        // From the wake word until the command is dispatched, the bubble opens into lines and live captions instead.
+        val wave = VoiceWaveView(this)
+        val words = TextView(this).apply { textSize = 18f; setLineSpacing(0f, 1.2f); setPadding(dp(4), dp(6), dp(4), 0) }
+        val voicePanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(16))
+            background = rounded(ink, 20)
+            contentDescription = "正在语音输入，点按取消"
+            setOnClickListener { VoiceRuntime.cancel() }
+            addView(wave, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56)))
+            addView(words, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        root.addView(voicePanel, FrameLayout.LayoutParams(dp(320), FrameLayout.LayoutParams.WRAP_CONTENT))
+        voiceCard = voicePanel; voiceWave = wave; voiceCaption = words
 
         windows.addView(root, params)
         overlay = root; bubble = ball; panel = card; layout = params
@@ -565,6 +592,32 @@ class AssistantService : AccessibilityService() {
         applyOverlay()
     }
 
+    private fun showListening(value: Listening?) {
+        val opening = listening == null && value != null
+        listening = value
+        voiceWave?.level = value?.level ?: 0f
+        if (value == null) { caption = ""; captionQueued = false; voiceCaption?.removeCallbacks(typeCaption) }
+        else if (!captionQueued) stepCaption()
+        if (opening || value == null) applyOverlay()
+        // Grows out of the bubble's corner.
+        if (opening) voiceCard?.apply {
+            val fromRight = ((layout?.gravity ?: 0) and Gravity.END) == Gravity.END
+            pivotX = if (fromRight) 320 * resources.displayMetrics.density else 0f; pivotY = 0f
+            scaleX = 0.15f; scaleY = 0.15f; alpha = 0f
+            animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(220).setInterpolator(DecelerateInterpolator()).start()
+        }
+    }
+
+    /** Reveals recognized words one character per tick, so batched partial results still read as typing. */
+    private fun stepCaption() {
+        val value = listening ?: return
+        val view = voiceCaption ?: return
+        caption = typewriterStep(caption, value.text)
+        if (caption.isEmpty()) { view.text = value.hint; view.setTextColor(Color.argb(150, 255, 255, 255)) }
+        else { view.text = caption; view.setTextColor(Color.WHITE) }
+        if (caption != value.text && !captionQueued) { captionQueued = true; view.postDelayed(typeCaption, 35) }
+    }
+
     /** The collapsed bubble's border shows a running or paused task, else a voice conversation. */
     private fun ringBubble() {
         val ball = bubble ?: return
@@ -604,8 +657,10 @@ class AssistantService : AccessibilityService() {
         val root = overlay ?: return
         val params = layout ?: return
         root.visibility = if (captureHidden || locked) View.GONE else View.VISIBLE
-        bubble?.visibility = if (expanded) View.GONE else View.VISIBLE
-        panel?.visibility = if (expanded) View.VISIBLE else View.GONE
+        val voice = listening != null
+        bubble?.visibility = if (expanded || voice) View.GONE else View.VISIBLE
+        panel?.visibility = if (expanded && !voice) View.VISIBLE else View.GONE
+        voiceCard?.visibility = if (voice) View.VISIBLE else View.GONE
         stopButton?.visibility = if (running || paused) View.VISIBLE else View.GONE
         resumeButton?.visibility = if (paused) View.VISIBLE else View.GONE
         val offscreen = virtual?.session != null
@@ -614,7 +669,7 @@ class AssistantService : AccessibilityService() {
         // Keep the current app visible while automatic actions are running.
         openButton?.visibility = if (running) View.GONE else View.VISIBLE
         inputRow?.visibility = if (running || paused) View.GONE else View.VISIBLE
-        val focusable = typing && expanded && !running && !paused && !captureHidden && !locked
+        val focusable = typing && expanded && !voice && !running && !paused && !captureHidden && !locked
         val flags = if (focusable) params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
             else params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         if (flags != params.flags) {
