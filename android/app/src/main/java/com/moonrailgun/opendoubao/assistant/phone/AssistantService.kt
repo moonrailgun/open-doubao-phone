@@ -670,8 +670,11 @@ class AssistantService : AccessibilityService() {
         openButton?.visibility = if (running) View.GONE else View.VISIBLE
         inputRow?.visibility = if (running || paused) View.GONE else View.VISIBLE
         val focusable = typing && expanded && !voice && !running && !paused && !captureHidden && !locked
-        val flags = if (focusable) params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+        val focusFlags = if (focusable) params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
             else params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        // Screen off fails a running task, so this always-present window keeps it lit; a paused task waits on the user and may sleep.
+        val flags = if (running) focusFlags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            else focusFlags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
         if (flags != params.flags) {
             if (!focusable) input?.let { getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(it.windowToken, 0) }
             params.flags = flags
