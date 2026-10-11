@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
+import com.moonrailgun.opendoubao.assistant.core.Memory
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
 import com.moonrailgun.opendoubao.assistant.remote.Pairing
 import com.moonrailgun.opendoubao.assistant.remote.RemoteConfig
@@ -21,7 +22,8 @@ data class Record(val id: String, val time: Long, val goal: String, val status: 
 data class Saved(val config: ModelConfig = ModelConfig(), val apps: Set<String> = emptySet(),
     val records: List<Record> = emptyList(), val appsConfigured: Boolean = apps.isNotEmpty(),
     val remote: RemoteConfig = RemoteConfig(), val onlineTtsToken: String = "", val onlineTtsEndpoint: String = "",
-    val onlineTtsModel: String = DEFAULT_TTS_MODEL, val onlineTtsVoice: String = DEFAULT_TTS_VOICE) {
+    val onlineTtsModel: String = DEFAULT_TTS_MODEL, val onlineTtsVoice: String = DEFAULT_TTS_VOICE,
+    val memory: List<Memory> = emptyList()) {
     companion object {
         const val DEFAULT_TTS_MODEL = "elevenlabs/eleven_v3"
         const val DEFAULT_TTS_VOICE = "bhJUNIXWQQ94l8eI2VUf"
@@ -54,6 +56,7 @@ class Vault(context: Context) {
             val apps = json.getJSONArray("apps")
             val records = json.getJSONArray("records")
             val remote = json.optJSONObject("remote")
+            val memory = json.optJSONArray("memory") ?: JSONArray()
             return Saved(ModelConfig(cfg.getString("jevEndpoint"), cfg.getString("jevModel"), cfg.getString("jevKey"),
                 cfg.getString("chatEndpoint"), cfg.getString("chatModel"), cfg.getString("chatKey"), cfg.optString("language")),
                 (0 until apps.length()).map { apps.getString(it) }.toSet(),
@@ -64,7 +67,8 @@ class Vault(context: Context) {
                 json.optBoolean("appsConfigured", apps.length() > 0),
                 RemoteConfig(remote?.optString("deviceId").orEmpty(), remote?.optJSONObject("binding")?.let(Pairing::fromJson),
                     remote?.optBoolean("enabled") ?: false), json.optString("onlineTtsToken"), json.optString("onlineTtsEndpoint"),
-                json.optString("onlineTtsModel", Saved.DEFAULT_TTS_MODEL), json.optString("onlineTtsVoice", Saved.DEFAULT_TTS_VOICE))
+                json.optString("onlineTtsModel", Saved.DEFAULT_TTS_MODEL), json.optString("onlineTtsVoice", Saved.DEFAULT_TTS_VOICE),
+                (0 until memory.length()).map { memory.getJSONObject(it).let { m -> Memory(m.getString("id"), m.getString("text"), m.getLong("updated")) } })
         } catch (e: Exception) { throw IllegalStateException("本地加密记录无法读取，原文件已保留", e) }
     }
 
@@ -77,6 +81,7 @@ class Vault(context: Context) {
             .put("onlineTtsToken", saved.onlineTtsToken)
             .put("onlineTtsEndpoint", saved.onlineTtsEndpoint)
             .put("onlineTtsModel", saved.onlineTtsModel).put("onlineTtsVoice", saved.onlineTtsVoice)
+            .put("memory", JSONArray(saved.memory.map { it.json().put("updated", it.updated) }))
             .put("remote", JSONObject().put("deviceId", saved.remote.deviceId).put("enabled", saved.remote.enabled)
                 .put("binding", saved.remote.binding?.json() ?: JSONObject.NULL))
             .put("records", JSONArray(saved.records.take(30).map { r -> JSONObject().put("id", r.id).put("time", r.time)
