@@ -60,6 +60,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.moonrailgun.opendoubao.assistant.core.Markdown
+import com.moonrailgun.opendoubao.assistant.core.Memory
+import com.moonrailgun.opendoubao.assistant.core.MemoryOp
+import com.moonrailgun.opendoubao.assistant.core.MemoryOps
 import com.moonrailgun.opendoubao.assistant.core.TaskState
 import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.data.Record
@@ -112,6 +115,7 @@ private val DarkColors = darkColorScheme(
     error = Color(0xFFFFB4AB), onError = Color(0xFF690005), errorContainer = Color(0xFF93000A), onErrorContainer = Color(0xFFFFDAD6),
 )
 
+private const val SETTINGS = 3
 private val Languages = listOf("" to "跟随系统", "zh-CN" to "简体中文", "zh-TW" to "繁體中文", "en" to "English", "ja" to "日本語", "ko" to "한국어")
 
 private val Examples = listOf(
@@ -160,7 +164,7 @@ class MainActivity : ComponentActivity() {
         var testing by remember { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
         val scroll = rememberScrollState()
-        LaunchedEffect(message) { if (message.isNotEmpty() && tab != 2) scroll.animateScrollTo(0) }
+        LaunchedEffect(message) { if (message.isNotEmpty() && tab != SETTINGS) scroll.animateScrollTo(0) }
         LaunchedEffect(tab, settingsTab) { scroll.scrollTo(0) }
         val service by AssistantService.connected.collectAsState()
         val task = service?.state?.collectAsState()?.value ?: TaskState()
@@ -188,7 +192,7 @@ class MainActivity : ComponentActivity() {
         } }
         LaunchedEffect(refresh, task.status) { attempt { records = vault.read().records } }
         DisposableEffect(tab) {
-            if (tab == 2) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            if (tab == SETTINGS) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
         }
@@ -217,14 +221,14 @@ class MainActivity : ComponentActivity() {
         Scaffold(bottomBar = {
             NavigationBar {
                 listOf(Triple("任务", R.drawable.lucide_bot, 0), Triple("记录", R.drawable.lucide_history, 1),
-                    Triple("设置", R.drawable.lucide_settings, 2)).forEach { (title, glyph, index) ->
+                    Triple("记忆", R.drawable.lucide_brain, 2), Triple("设置", R.drawable.lucide_settings, SETTINGS)).forEach { (title, glyph, index) ->
                     NavigationBarItem(tab == index, { tab = index }, icon = { Icon(painterResource(glyph), title) })
                 }
             }
         }) { insets ->
             Column(Modifier.fillMaxSize().padding(insets).verticalScroll(scroll).padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (tab != 2) notice()
+                if (tab != SETTINGS) notice()
                 when (tab) {
                     0 -> {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -247,7 +251,7 @@ class MainActivity : ComponentActivity() {
                         if (service == null) Banner("还差一步：开启无障碍服务", "手机需要它读取屏幕、替你点按和输入。只在你开始任务后工作。") {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }
-                        if (!configReady && !busy) Banner("还没有设置模型", "填好两个模型服务的地址和密钥后才能开始任务。") { tab = 2; settingsTab = 0 }
+                        if (!configReady && !busy) Banner("还没有设置模型", "填好两个模型服务的地址和密钥后才能开始任务。") { tab = SETTINGS; settingsTab = 0 }
                         if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = {
                             moveTaskToBack(true)
                             scope.launch { delay(300); attempt { service?.resume() } }
@@ -313,7 +317,8 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    2 -> {
+                    2 -> MemoryControls(vault, refresh) { message = it }
+                    SETTINGS -> {
                         PageTitle("设置", "配置模型服务、执行方式、语音播报和远程连接。")
                         PrimaryTabRow(settingsTab) {
                             listOf("模型", "语音", "桌面远程", "执行").forEachIndexed { index, title ->
@@ -455,6 +460,79 @@ class MainActivity : ComponentActivity() {
             content()
         }
     }
+
+/** Facts the assistant reads before every task. The model edits them too, so each change re-reads the vault first. */
+@Composable private fun MemoryControls(vault: Vault, refresh: Int, report: (String) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    var memory by remember { mutableStateOf(runCatching { vault.read().memory }.getOrDefault(emptyList())) }
+    var draft by remember { mutableStateOf("") }
+    var clearing by remember { mutableStateOf(false) }
+    LaunchedEffect(refresh) { runCatching { memory = vault.read().memory }.onFailure { report(it.message ?: "读取失败") } }
+    fun change(edit: (List<Memory>) -> List<Memory>): Boolean = try {
+        val saved = vault.read()
+        val next = edit(saved.memory)
+        vault.write(saved.copy(memory = next))
+        memory = next
+        true
+    } catch (e: Exception) { report(e.message ?: "保存失败"); false }
+    fun apply(op: MemoryOp) = change { MemoryOps.apply(it, listOf(op)).memory }
+    val full = memory.size >= MemoryOps.LIMIT
+    PageTitle("记忆", "助手每次执行任务都会参考这些记忆，也会自己记下你的偏好和常用信息。说「记住……」或「忘掉……」也可以。" +
+        "记忆会随规划、视觉和总结请求发给模型，请不要写入密码或验证码。")
+    Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, colors.outlineVariant)) {
+        Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextField(draft, { draft = it.take(MemoryOps.LENGTH) }, Modifier.weight(1f),
+                placeholder = { Text(if (full) "已满 ${MemoryOps.LIMIT} 条，请先删除或合并" else "例如：我住在杭州西湖区") }, maxLines = 4,
+                colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
+            FilledIconButton({ if (apply(MemoryOp.Add(draft))) draft = "" }, enabled = draft.isNotBlank() && !full) {
+                Icon(painterResource(R.drawable.lucide_plus), "添加记忆")
+            }
+        }
+    }
+    if (memory.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(painterResource(R.drawable.lucide_brain), null, Modifier.size(40.dp), tint = colors.outline)
+        Text("还没有记忆", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Text("在上面添加，或在任务里告诉助手「记住……」。", fontSize = 14.sp, color = colors.onSurfaceVariant)
+    } else {
+        Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(24.dp)) {
+            Column {
+                memory.sortedByDescending { it.updated }.forEachIndexed { index, item ->
+                    if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = colors.outlineVariant)
+                    key(item.id) { MemoryRow(item, { apply(MemoryOp.Update(item.id, it)) }) { apply(MemoryOp.Delete(item.id)) } }
+                }
+            }
+        }
+        Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${memory.size} / ${MemoryOps.LIMIT} 条 · 点一条可以修改", Modifier.weight(1f), fontSize = 13.sp, color = colors.onSurfaceVariant)
+            TextButton({ clearing = true }, colors = ButtonDefaults.textButtonColors(contentColor = colors.error)) { Text("清空全部") }
+        }
+    }
+    if (clearing) AlertDialog(onDismissRequest = { clearing = false }, title = { Text("清空全部记忆？") },
+        text = { Text("助手会忘掉这 ${memory.size} 条记忆，无法恢复。") },
+        confirmButton = { TextButton({ change { emptyList() }; clearing = false },
+            colors = ButtonDefaults.textButtonColors(contentColor = colors.error)) { Text("清空") } },
+        dismissButton = { TextButton({ clearing = false }) { Text("取消") } })
+}
+
+@Composable private fun MemoryRow(item: Memory, save: (String) -> Boolean, delete: () -> Unit) {
+    var editing by remember { mutableStateOf(false) }
+    var text by remember(item.text) { mutableStateOf(item.text) }
+    if (editing) Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, end = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(text, { text = it.take(MemoryOps.LENGTH) }, Modifier.weight(1f), shape = RoundedCornerShape(14.dp), maxLines = 4)
+        IconButton({ if (save(text)) editing = false }, enabled = text.isNotBlank()) { Icon(painterResource(R.drawable.lucide_check), "保存") }
+        IconButton({ text = item.text; editing = false }) { Icon(painterResource(R.drawable.lucide_x), "取消") }
+    } else Row(Modifier.fillMaxWidth().clickable(onClickLabel = "修改") { editing = true }
+        .padding(start = 16.dp, top = 10.dp, end = 4.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(item.text, fontSize = 16.sp, lineHeight = 23.sp)
+            Text(SimpleDateFormat("M月d日 HH:mm", LocalConfiguration.current.locales[0]).format(Date(item.updated)),
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(delete) { Icon(painterResource(R.drawable.lucide_trash_2), "删除", Modifier.size(20.dp)) }
+    }
+}
 
 /** Where new tasks act: an unseen virtual display when the system supports it, or the user's own screen. */
 @Composable private fun ExecutionControls() {
