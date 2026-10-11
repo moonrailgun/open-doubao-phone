@@ -4,7 +4,7 @@
 
 ## 当前产物
 
-当前已刷入 v1.16（长期记忆与唤醒语音卡片，见下文；v1.15 为虚拟屏执行，未在此单独记录；v1.14 为 v1.13 换上唤醒离线提示音与默认应用范围修复的助手，以及带新图标的 TTS；v1.13 为 v1.12 加豆包输入法和设备型号 Open Doubao；v1.12 起包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
+当前已刷入 v1.18（虚拟屏执行真机验收通过；v1.16 为长期记忆与唤醒语音卡片，v1.15 与 v1.17 为虚拟屏的中间版本，均见下文；v1.14 为 v1.13 换上唤醒离线提示音与默认应用范围修复的助手，以及带新图标的 TTS；v1.13 为 v1.12 加豆包输入法和设备型号 Open Doubao；v1.12 起包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
 
 本地输出目录：`os/custom/out/v1.9/`，未纳入 Git。保留原始镜像和先前版本输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
@@ -212,6 +212,26 @@ TTS、虚拟屏 RRO、Dao、豆包输入法与开机动画与 v1.15 相同。
 镜像为 2,954,330,112 字节，比 v1.15 多 77,824 字节；动态分区距上限余 106,131,456 字节。系统 APK 编译、lint 与单元测试、开机动画测试、小型 ext4 测试、读回摘要与 AVB 校验均通过，见 `gradle.log`、`image-test.log`、`build.log`。
 
 b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xb0178000`，与 manifest 一致。启动 25 秒完成，型号 Open Doubao。三个写入文件在设备上的摘要与 payload 一致；助手为 SYSTEM、PERSISTENT，持有默认助手、识别服务和无障碍服务；默认输入法仍为豆包输入法，设备名保留为 Open Doubao；三项运行时权限已补授。以上见 `device-checks.txt`。崩溃缓冲区只有 v1 起已有的 `init` 子进程 SIGABRT。刷写后手机停在锁屏，尚未检查语音卡片的线条、逐字显示和 CPU 占用，也未检查记忆页及真实模型下的记忆读写。
+
+## v1.15、v1.17、v1.18：虚拟屏执行
+
+三版都在 Android 17 的 Computer Control 虚拟屏上执行任务，差别在系统如何允许助手开启会话。
+
+- v1.15（`182652c`，RRO 修正 `0717860`）：加入 `ACCESS_COMPUTER_CONTROL`、隐藏 API 豁免和把助手登记为超级智能体的 RRO。第一次把 RRO 写到 `/system/overlay`，PackageManager 不扫描该目录，输出保留为 `v1.15-rc1/`；改到 `/system/product/overlay` 后 RRO 生效。真机任务仍走前台：`isSuperAgent()` 只在可调试构建承认超级智能体，本机 GSI 为 `user` 构建。`user` 构建下 DeviceConfig 白名单拒绝 adb 写入，`cmd allowlist` 只能临时加入会话发起方，且未被采纳。
+- v1.17（`64ae691`）：RRO 改为把助手设为 `config_allowlistProviderServicePackage`，助手的 `AllowlistProvider` 回答会话发起方（ID 4）、可自动化应用（ID 3）和拒绝名单（ID 5），其他名单照旧返回失败。系统绑定该服务并得到 1 个会话发起方；会话创建随后在客户端校验失败：会话通知必须可提升为实况通知（`hasPromotableCharacteristics()`）。
+- v1.18（`cceabeb`）：会话通知加上 `android.requestPromotedOngoing`。
+
+| v1.18 产物 | SHA-256 |
+|---|---|
+| `system.img` | `dcad521aea1dd60d68bce28524c48e9b58bff4f540a6d15314adc3bb06b27a8f` |
+| `assistant.apk` | `b3d0fb57fe563d705777d9482287885daa1ca20838723f8a605e2c2513c7be5b` |
+| `computer-control-overlay.apk` | `47527c34ef0fec2ec50493cb7ce1cebc0d3a2bc71a5cfb60105d3af4b83e60fe` |
+
+镜像为 2,954,334,208 字节，动态分区距上限余 106,127,360 字节；TTS、Dao、豆包输入法与开机动画与 v1.16 相同。构建、lint、单元测试、镜像测试和 AVB 校验通过，见 `v1.18/gradle.log`、`image-test.log`、`build.log`。b 槽位不清数据刷写，`system_b` 为 `0xb0179000`，与 manifest 一致；启动 25 秒，助手摘要与 payload 一致，`dumpsys app_binding` 显示 `AllowlistProvider` 已绑定，三项运行时权限已补授，见 `flash.log`、`device-checks.txt`。
+
+真机任务 “Open Settings and tell me the Android version”：系统弹出“允许 Open Doubao 使用屏幕自动化操作与设置互动？”，选择“仅限这一次”；随后建立会话（目标应用 `com.android.settings`，虚拟屏为 Display 2），主屏幕始终停在 Open Doubao。展开悬浮球能看到虚拟屏的实时画面；任务经视觉模型截图调整后完成，结果为 “Android 版本为 17”。结束后会话关闭、Display 2 销毁，设置没有移到主屏幕。见 `virtual-consent.png`、`virtual-main-display.png`、`virtual-peek.png`、`virtual-result.png`。同一任务中，任务运行时持有 `SCREEN_BRIGHT_WAKE_LOCK`，结束后释放，见 `keep-screen-on.txt`。刷机后 Wi-Fi 未就绪时第一次规划报域名解析失败，联网后重试成功。
+
+尚未验证：暂停时的「转到前台处理」、从悬浮窗或语音下达的任务（会话要求助手在主屏有可见窗口）、一个任务内追加第二个应用、会话超时，以及“始终允许”后不再弹授权页。
 
 ## 唤醒失效反馈跟进
 
