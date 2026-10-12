@@ -4,7 +4,7 @@
 
 ## 当前产物
 
-当前已刷入 v1.26（执行方式判断与规划并行、Jev 完成概率入日志、桌面端分块下载模型调用记录；v1.25 为悬浮球处理中动效、首屏加载挪后台、调试页，并首次包含另一会话的内置回复音频与模型调用记录；v1.24 为从已提交源码干净重建，含识别模型预加载与提示音播放完成判定修正；v1.23 的 APK 曾混入另一会话的未提交代码，见其条目；v1.22 为唤醒提示音播放修复，v1.21 为执行方式自动判断与 App 内虚拟屏画面，v1.20 为语音卡片字幕稳定性，v1.19 为语音卡片实时反馈，v1.18 为虚拟屏执行真机验收通过，均见下文；v1.16 为长期记忆与唤醒语音卡片，v1.15 与 v1.17 为虚拟屏的中间版本，均见下文；v1.14 为 v1.13 换上唤醒离线提示音与默认应用范围修复的助手，以及带新图标的 TTS；v1.13 为 v1.12 加豆包输入法和设备型号 Open Doubao；v1.12 起包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
+当前已刷入 v1.28（设置里显示我们自己的版本号；v1.27 为同一改动的第一版，版本号只写进了 system 分区而被 product 覆盖，见下文；v1.26 为执行方式判断与规划并行、Jev 完成概率入日志、桌面端分块下载模型调用记录；v1.25 为悬浮球处理中动效、首屏加载挪后台、调试页，并首次包含另一会话的内置回复音频与模型调用记录；v1.24 为从已提交源码干净重建，含识别模型预加载与提示音播放完成判定修正；v1.23 的 APK 曾混入另一会话的未提交代码，见其条目；v1.22 为唤醒提示音播放修复，v1.21 为执行方式自动判断与 App 内虚拟屏画面，v1.20 为语音卡片字幕稳定性，v1.19 为语音卡片实时反馈，v1.18 为虚拟屏执行真机验收通过，均见下文；v1.16 为长期记忆与唤醒语音卡片，v1.15 与 v1.17 为虚拟屏的中间版本，均见下文；v1.14 为 v1.13 换上唤醒离线提示音与默认应用范围修复的助手，以及带新图标的 TTS；v1.13 为 v1.12 加豆包输入法和设备型号 Open Doubao；v1.12 起包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
 
 本地输出目录：`os/custom/out/v1.9/`，未纳入 Git。保留原始镜像和先前版本输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
@@ -346,6 +346,22 @@ b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xb0178000`，与
 镜像为 2,965,680,128 字节，动态分区距上限余 94,781,440 字节；其余产物与 v1.25 相同。镜像测试和 AVB 校验通过，见 `v1.26/build.log`、`image-test.log`。刷写：第一次 `flashall` 在 `super` 第 12/33 块遇到 USB“设备无响应”（`usb_write failed with status e00002ed`，见 `flash-attempt1-failed.log`），bootloader 随后停止应答，机主手动 Restart bootloader 后由等待脚本自动完整刷写 214 秒成功，`system_b` 为 `0xb0c4b000`，与 manifest 一致，见 `flash.log`、`partition-check.txt`。开机后助手摘要与 payload 一致，三项运行时权限已补授，唤醒监听“等待唤醒词”、录音未被静音，见 `device-checks.txt`。连续两版（v1.25、v1.26）在 `super` 传输中途出现同类 USB 错误，之前五次刷写没有，怀疑数据线或接口不稳，建议换线直连。
 
 待机主验证：桌面端下载某条任务的模型调用记录（任务执行时需开启模型调试记录），用其中 Jev 的“完成”原始概率决定是否在“无动作 + 上一步生效”时放宽完成判定、跳过视觉确认。
+
+## v1.27、v1.28：镜像自带版本号
+
+此前镜像只改了设备型号，设置 → 关于手机 → 版本号一直显示上游 GSI 的 `CP3A.260905.010`，我们的版本只存在于输出目录名和本记录里。现在 `build_image.py` 接受第二个参数（如 `v1.28`，缺省取输出目录名，必须形如 `v1.27`），把 `ro.build.display.id` 改为 `Open Doubao v1.28 (CP3A.260905.010)`，并在 `/system/build.prop` 追加 `ro.opendoubao.version=v1.28`；`manifest.json` 记录 `version` 与 `display_id`；指纹不变。调试页「运行状态」第一行显示 `Build.DISPLAY`。
+
+- v1.27（提交 `4ed6048`，amend 前为 `156e7c1`）：只改了 `/system/build.prop`。刷入后 `getprop ro.opendoubao.version` 为 `v1.27`，但版本号仍是 `CP3A.260905.010`：`/system/product/etc/build.prop` 第 28 行也定义了 `ro.build.display.id`，init 合并各分区属性时后加载的 product 覆盖了 system（与改型号必须改 product 分区同理）。该镜像已被 v1.28 覆盖，未单独验收。
+- v1.28（提交 `876eb42`，amend 后为 `6e56424`，内容相同）：`stamp_version` 在 system、system_ext、product 三处凡存在的 `ro.build.display.id` 都替换，`ro.opendoubao.version` 只写 system；`test_image.py` 补了 product 覆盖用例（7 个镜像测试通过）。
+
+| v1.28 产物 | SHA-256 |
+|---|---|
+| `system.img` | `09cdc7495bf3ae4e915df5d41966b1ee31925c67cb0613de97ad9e8e85138364` |
+| `assistant.apk` | `c5fc5354b9bdd219fb0722431bec118d74374285d8a8d0bd53f9dc1996daf9a2` |
+
+镜像为 2,965,680,128 字节，动态分区距上限余 94,781,440 字节；其余产物与 v1.26 相同。两版都由 `git archive HEAD` 导出构建。v1.28 刷写一次成功（215 秒），`system_b` 为 `0xb0c4b000`，与 manifest 一致；开机后 `ro.build.display.id` 为 `Open Doubao v1.28 (CP3A.260905.010)`、`ro.opendoubao.version` 为 `v1.28`、指纹仍为上游值，助手摘要与 payload 一致，三项运行时权限已补授，唤醒监听与录音正常，见 `v1.28/flash.log`、`partition-check.txt`、`device-checks.txt`。
+
+过程记录：v1.28 的第一次构建链因工作区有另一会话未提交的 `AGENTS.md` 改动而跳过构建，但链中 heredoc 之后的设备步骤仍执行，把手机误重启进了 bootloader（未刷写，`fastboot reboot` 恢复）；此后构建与刷写改用带 `set -e` 的脚本，任一步失败即停。
 
 ## 唤醒失效反馈跟进
 
