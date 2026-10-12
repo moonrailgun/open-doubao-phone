@@ -44,7 +44,7 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
 
 助手在 Android 17 的 Computer Control 虚拟屏上执行任务，需要镜像提供三项配置：
 
-- `privapp-permissions-douxian.xml` 授予 `ACCESS_COMPUTER_CONTROL`（`internal|privileged`），system 变体的 Manifest 同时申请它；`test_image.py` 要求两边完全一致，因为白名单缺项会让强制模式的系统无法开机。
+- `privapp-permissions-douxian.xml` 授予 `ACCESS_COMPUTER_CONTROL`（`internal|privileged`）和 `CAPTURE_AUDIO_HOTWORD`（`signature|privileged|role`，让等待唤醒词时以热词音源录音：系统记为 `RECORD_AUDIO_HOTWORD`，状态栏的麦克风指示点不计入它，唤醒后录指令改回普通音源时才亮），system 变体的 Manifest 同时申请它们；`test_image.py` 要求两边完全一致，因为白名单缺项会让强制模式的系统无法开机。
 - `douxian.xml` 用 `hidden-api-whitelisted-app` 放行隐藏 API：会话接口不在公开 SDK 中，编译时使用 `android/hidden` 的桩类。
 - `prepare_payload.py` 生成静态 RRO `com.moonrailgun.opendoubao.overlay.computercontrol`，写入 `/system/product/overlay/DouxianComputerControl/`（PackageManager 不扫描 `/system/overlay`），把 `config_allowlistProviderServicePackage` 设为助手。系统随后绑定助手的 `AllowlistProvider` 服务（其他系统不会绑定它）：会话发起方名单（ID 4）只含助手及其证书，可自动化应用（ID 3）为通配符，拒绝名单（ID 5）为空，其他名单照旧返回失败。应用范围和系统的逐应用授权页仍然限制可操作的应用。
 

@@ -3,5 +3,7 @@
     <privapp-permissions package="com.moonrailgun.opendoubao.assistant">
         <permission name="android.permission.WRITE_SECURE_SETTINGS" />
         <permission name="android.permission.ACCESS_COMPUTER_CONTROL" />
+        <!-- Wake-word listening records as a hotword client, which keeps the status bar's microphone indicator off. -->
+        <permission name="android.permission.CAPTURE_AUDIO_HOTWORD" />
     </privapp-permissions>
 </permissions>

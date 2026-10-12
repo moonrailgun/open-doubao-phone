@@ -50,7 +50,7 @@ class LocalSpeechEngine(private val context: Context) {
         // Warm ASR before announcing readiness, so model loading cannot discard the first words.
         recognizer
         vad.reset()
-        return recording { record ->
+        return recording(MediaRecorder.AudioSource.VOICE_RECOGNITION) { record ->
             ready()
             capture(record, keepGoing, stopRequested, level, partial)
         }
@@ -60,7 +60,7 @@ class LocalSpeechEngine(private val context: Context) {
     fun listenForWake(keepGoing: () -> Boolean, canTakeCommand: () -> Boolean, ready: () -> Unit): String? {
         val stream = spotter.createStream()
         try {
-            return recording { record ->
+            return recording(HOTWORD_SOURCE) { record ->
                 ready()
                 while (keepGoing()) {
                     stream.acceptWaveform(read(record), 16000)
@@ -125,17 +125,28 @@ class LocalSpeechEngine(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission") // Runtime gates all entry points before opening the recorder.
-    private fun <T> recording(block: (AudioRecord) -> T): T {
-        val record = AudioRecord.Builder().setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-            .setAudioFormat(AudioFormat.Builder().setSampleRate(16000).setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-            // Two seconds of headroom: a caption decode blocks this thread for up to a few hundred milliseconds.
-            .setBufferSizeInBytes(maxOf(64_000, AudioRecord.getMinBufferSize(16000,
-                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT))).build()
+    private fun open(source: Int): AudioRecord? {
+        // Two seconds of headroom: a caption decode blocks this thread for up to a few hundred milliseconds. The old
+        // constructor is used on purpose: unlike the Builder it accepts the hidden HOTWORD source.
+        val buffer = maxOf(64_000, AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT))
+        val record = AudioRecord(source, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, buffer)
+        if (record.state != AudioRecord.STATE_INITIALIZED) { record.release(); return null }
+        record.startRecording()
+        if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) { record.release(); return null }
+        return record
+    }
+
+    /**
+     * Wake listening records as a hotword client ([HOTWORD_SOURCE]): the system counts that under RECORD_AUDIO_HOTWORD,
+     * which the status bar's microphone dot ignores, so the dot appears only once a command is being recorded. Builds
+     * without CAPTURE_AUDIO_HOTWORD cannot open that source and fall back to ordinary recognition capture.
+     */
+    private fun <T> recording(source: Int, block: (AudioRecord) -> T): T {
+        val record = open(source)
+            ?: (if (source == HOTWORD_SOURCE) open(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+                ?.also { Diagnostics.log("热词音源不可用，唤醒监听改用普通录音") } else null)
+            ?: throw IllegalStateException("麦克风不可用")
         try {
-            check(record.state == AudioRecord.STATE_INITIALIZED) { "麦克风不可用" }
-            record.startRecording()
-            check(record.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "无法开始录音" }
             return block(record)
         } finally {
             if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) record.stop()
@@ -166,6 +177,9 @@ internal fun mergeCaption(previous: String, decoded: String): String {
     for (drop in 1..2) if (previous.length > drop && text.startsWith(previous.drop(drop))) return previous.take(drop) + text
     return text
 }
+
+/** MediaRecorder.AudioSource.HOTWORD, hidden from the SDK; the image grants the CAPTURE_AUDIO_HOTWORD it needs. */
+internal const val HOTWORD_SOURCE = 1999
 
 // ponytail: RMS × 6 then a square root puts ordinary speech near the phone around 0.4–0.9; re-tune VOICE_GAIN on real voices.
 internal const val VOICE_GAIN = 6f
