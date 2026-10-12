@@ -2,6 +2,8 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <!-- Privileged on the Open Doubao image; runs tasks on a Computer Control virtual display. -->
     <uses-permission android:name="android.permission.ACCESS_COMPUTER_CONTROL" tools:ignore="ProtectedPermissions" />
+    <!-- Wake-word listening records as a hotword client, so the status bar's microphone dot waits for a real command. -->
+    <uses-permission android:name="android.permission.CAPTURE_AUDIO_HOTWORD" tools:ignore="ProtectedPermissions" />
     <application android:name=".SystemApplication" android:persistent="true">
         <receiver android:name=".LauncherCustomization" android:exported="true">
             <intent-filter>
