@@ -4,7 +4,7 @@
 
 ## 当前产物
 
-当前已刷入 v1.28（设置里显示我们自己的版本号；v1.27 为同一改动的第一版，版本号只写进了 system 分区而被 product 覆盖，见下文；v1.26 为执行方式判断与规划并行、Jev 完成概率入日志、桌面端分块下载模型调用记录；v1.25 为悬浮球处理中动效、首屏加载挪后台、调试页，并首次包含另一会话的内置回复音频与模型调用记录；v1.24 为从已提交源码干净重建，含识别模型预加载与提示音播放完成判定修正；v1.23 的 APK 曾混入另一会话的未提交代码，见其条目；v1.22 为唤醒提示音播放修复，v1.21 为执行方式自动判断与 App 内虚拟屏画面，v1.20 为语音卡片字幕稳定性，v1.19 为语音卡片实时反馈，v1.18 为虚拟屏执行真机验收通过，均见下文；v1.16 为长期记忆与唤醒语音卡片，v1.15 与 v1.17 为虚拟屏的中间版本，均见下文；v1.14 为 v1.13 换上唤醒离线提示音与默认应用范围修复的助手，以及带新图标的 TTS；v1.13 为 v1.12 加豆包输入法和设备型号 Open Doubao；v1.12 起包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
+当前已刷入 v1.29（等待唤醒词时以热词音源录音，状态栏不再常亮麦克风指示；v1.28 为设置里显示我们自己的版本号；v1.27 为同一改动的第一版，版本号只写进了 system 分区而被 product 覆盖，见下文；v1.26 为执行方式判断与规划并行、Jev 完成概率入日志、桌面端分块下载模型调用记录；v1.25 为悬浮球处理中动效、首屏加载挪后台、调试页，并首次包含另一会话的内置回复音频与模型调用记录；v1.24 为从已提交源码干净重建，含识别模型预加载与提示音播放完成判定修正；v1.23 的 APK 曾混入另一会话的未提交代码，见其条目；v1.22 为唤醒提示音播放修复，v1.21 为执行方式自动判断与 App 内虚拟屏画面，v1.20 为语音卡片字幕稳定性，v1.19 为语音卡片实时反馈，v1.18 为虚拟屏执行真机验收通过，均见下文；v1.16 为长期记忆与唤醒语音卡片，v1.15 与 v1.17 为虚拟屏的中间版本，均见下文；v1.14 为 v1.13 换上唤醒离线提示音与默认应用范围修复的助手，以及带新图标的 TTS；v1.13 为 v1.12 加豆包输入法和设备型号 Open Doubao；v1.12 起包名改为 `com.moonrailgun.opendoubao.*`），v1.11 及其以前的记录仍使用旧包名 `com.openodoubao.*`；以下“当前产物”表仍为 v1.9 数据，v1.11 摘要见其候选镜像记录。v1.8 的布局修正随 v1.9 一并交付，未单独刷写。
 
 本地输出目录：`os/custom/out/v1.9/`，未纳入 Git。保留原始镜像和先前版本输出。`manifest.json` 记录完整 payload、签名和容量数据。
 
@@ -362,6 +362,21 @@ b 槽位不清数据刷写，见 `flash.log`；`system_b` 为 `0xb0178000`，与
 镜像为 2,965,680,128 字节，动态分区距上限余 94,781,440 字节；其余产物与 v1.26 相同。两版都由 `git archive HEAD` 导出构建。v1.28 刷写一次成功（215 秒），`system_b` 为 `0xb0c4b000`，与 manifest 一致；开机后 `ro.build.display.id` 为 `Open Doubao v1.28 (CP3A.260905.010)`、`ro.opendoubao.version` 为 `v1.28`、指纹仍为上游值，助手摘要与 payload 一致，三项运行时权限已补授，唤醒监听与录音正常，见 `v1.28/flash.log`、`partition-check.txt`、`device-checks.txt`。
 
 过程记录：v1.28 的第一次构建链因工作区有另一会话未提交的 `AGENTS.md` 改动而跳过构建，但链中 heredoc 之后的设备步骤仍执行，把手机误重启进了 bootloader（未刷写，`fastboot reboot` 恢复）；此后构建与刷写改用带 `set -e` 的脚本，任一步失败即停。
+
+## v1.29：等待唤醒词时不亮麦克风指示
+
+机主反馈不触发唤醒词时状态栏右上角也一直有绿色指示点：Android 的隐私指示器只要有应用在录音就显示，而唤醒监听一直以 `VOICE_RECOGNITION` 音源开着麦克风。SystemUI 统计的麦克风 AppOp（`AppOpsControllerImpl.OPS_MIC`）不含 `RECORD_AUDIO_HOTWORD`，以 `HOTWORD` 音源（值 1999）录音会记到该 op，这是系统给热词检测留的通道；音频策略也允许助手在非前台时用它持续采集，且不算作挤占其他应用录音。
+
+改动（`362e677`、`d6a2040`）：`privapp-permissions-douxian.xml` 与 system 变体 Manifest 加 `CAPTURE_AUDIO_HOTWORD`（`signature|privileged|role`，`test_image.py` 要求两边一致）；`LocalSpeechEngine` 的唤醒监听用 HOTWORD 音源开麦——走 `AudioRecord` 的旧构造函数（`Builder.setAudioSource` 不放行该值，`audioParamCheck` 放行），打不开或起不来就回退到 `VOICE_RECOGNITION` 并记一条调试事件；唤醒后录指令仍用 `VOICE_RECOGNITION`，此时指示点亮起属正常。
+
+| v1.29 产物 | SHA-256 |
+|---|---|
+| `system.img` | `827159aca0351389b6602b7f7472e0b1871925289adbd7dce6659861f9358298` |
+| `assistant.apk` | `c9a7262739fe698ec8f217ac3798975c3a457fa4d4a4e52319949236591d5317` |
+
+镜像为 2,965,680,128 字节，动态分区距上限余 94,781,440 字节；由提交 `d6a2040` 导出构建，7 个镜像测试、语音单元测试与 lint 通过。刷写一次成功（216 秒），`system_b` 与 manifest 一致；开机后版本号为 `Open Doubao v1.29 (CP3A.260905.010)`，`CAPTURE_AUDIO_HOTWORD` 已授予，三项运行时权限已补授，唤醒监听“等待唤醒词”。
+
+真机核实（不出声）：`dumpsys appops` 显示助手的 `RECORD_AUDIO_HOTWORD` 自 11:24:10 持续运行、`RECORD_AUDIO` 没有运行中的记录；SystemUI `PrivacyItemController` 的 Privacy Items 为空；AudioFlinger 的录音线程源显示为 `VOICE_RECOGNITION`（音频策略把 HOTWORD 映射为带 HW_HOTWORD 标志的识别输入，op 归属不受影响）；解锁后状态栏截图无麦克风指示点（`v1.29/statusbar.png`）。待机主说一次唤醒词确认热词音源确有声音进入（Pixel HAL 对该音源的走向无法事先确认），并确认绿点在录指令时出现、结束后消失。
 
 ## 唤醒失效反馈跟进
 
