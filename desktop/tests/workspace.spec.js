@@ -399,8 +399,8 @@ test('model settings preserve hidden keys and send replacements only when entere
   await page.goto('/');
   await page.getByRole('button', { name: '模型配置', exact: true }).click();
   await expect(page.getByLabel('Jev 接口地址', { exact: true })).toHaveValue('https://jev.example/v1');
-  await expect(page.getByLabel('Jev API Key', { exact: true })).toHaveValue('');
-  await expect(page.getByLabel('Jev API Key', { exact: true })).toHaveAttribute('placeholder', '已设置，留空保留');
+  await expect(page.getByLabel('Jev API Key（可选）', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Jev API Key（可选）', { exact: true })).toHaveAttribute('placeholder', '已设置，留空保留');
   await page.getByLabel('Jev 模型名称', { exact: true }).fill('new-jev');
   await page.getByLabel('通用模型接口地址', { exact: true }).fill('https://new.example/v1');
   await expect(page.getByLabel('通用模型 API Key', { exact: true })).toHaveAttribute('required', '');
@@ -423,7 +423,7 @@ test('model save failure stays editable, busy tasks block saving, and disconnect
   await page.goto('/');
   await page.getByRole('button', { name: '模型配置', exact: true }).click();
   await expect(page.locator('#model-save')).toBeEnabled();
-  await page.getByLabel('Jev API Key', { exact: true }).fill('draft-secret');
+  await page.getByLabel('Jev API Key（可选）', { exact: true }).fill('draft-secret');
   await page.evaluate(() => { window.testConfigFailure = '手机保存失败'; });
   await page.getByRole('button', { name: '保存到手机', exact: true }).click();
   await expect(page.locator('#model-message')).toContainText('手机保存失败');
@@ -436,7 +436,7 @@ test('model save failure stays editable, busy tasks block saving, and disconnect
   await expect(page.locator('#model-open')).toBeDisabled();
 });
 
-test('a model response arriving after closing is ignored and unset keys are required', async ({ page }) => {
+test('a model response arriving after closing is ignored and Jev is optional', async ({ page }) => {
   await bridge(page);
   await page.goto('/');
   await page.evaluate(() => { window.testConfigPending = true; });
@@ -447,8 +447,35 @@ test('a model response arriving after closing is ignored and unset keys are requ
   await expect(page.locator('#jev-endpoint')).toHaveValue('');
   await page.evaluate(() => { window.testConfigPending = false; window.testConfig.hasJevKey = false; });
   await page.getByRole('button', { name: '模型配置', exact: true }).click();
-  await expect(page.locator('#jev-key')).toHaveAttribute('required', '');
-  await expect(page.locator('#jev-key')).toHaveAttribute('placeholder', '尚未设置，请填写');
+  await expect(page.locator('#jev-key')).not.toHaveAttribute('required');
+  await expect(page.locator('#jev-key')).toHaveAttribute('placeholder', '留空不启用 Jev');
+});
+
+test('model settings can omit Jev or disable a saved Jev without forwarding its key', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  for (const hasJevKey of [false, true]) {
+    await page.evaluate(hasKey => { window.testConfig.hasJevKey = hasKey; }, hasJevKey);
+    await page.getByRole('button', { name: '模型配置', exact: true }).click();
+    if (hasJevKey) {
+      await page.locator('#jev-endpoint').fill('https://changed.example/v1');
+      await expect(page.locator('#jev-key')).toHaveAttribute('required', '');
+      await page.locator('#jev-endpoint').fill('');
+      await page.locator('#jev-model').fill('');
+    }
+    await expect(page.locator('#jev-key')).not.toHaveAttribute('required');
+    await page.getByRole('button', { name: '测试连接', exact: true }).click();
+    await expect(page.locator('#model-message')).toContainText('连接正常');
+    await page.getByRole('button', { name: '保存到手机', exact: true }).click();
+    await expect(page.locator('#model-dialog')).not.toBeVisible();
+    const requests = await page.evaluate(() => window.testCalls.filter(call => ['config.test', 'config.set'].includes(call.args?.method)).slice(-2));
+    expect(requests.map(call => call.args.method)).toEqual(['config.test', 'config.set']);
+    for (const { args: { params } } of requests) {
+      expect(params.jevKey).toBe('');
+      expect(params.jevEndpoint).toBe(hasJevKey ? '' : 'https://jev.example/v1');
+      expect(params.chatKey).toBeNull();
+    }
+  }
 });
 
 test('a paused task can be resumed from the desktop by its task ID', async ({ page }) => {

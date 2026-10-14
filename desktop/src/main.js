@@ -179,7 +179,7 @@ function controls() {
   $('record-delete').disabled = !snapshot.connected || deleting || running || paused;
   $('record-delete').title = running || paused ? '请先停止当前任务' : '';
   if (modelConfig) {
-    $('jev-key').required = !modelConfig.hasJevKey || $('jev-endpoint').value.trim() !== modelConfig.jevEndpoint;
+    $('jev-key').required = modelConfig.hasJevKey && Boolean($('jev-endpoint').value.trim()) && $('jev-endpoint').value.trim() !== modelConfig.jevEndpoint;
     $('chat-key').required = !modelConfig.hasChatKey || $('chat-endpoint').value.trim() !== modelConfig.chatEndpoint;
   }
   if (ttsConfig) {
@@ -401,7 +401,7 @@ $('model-open').addEventListener('click', async () => {
     $('chat-model').value = config.chatModel;
     for (const [id, configured] of [['jev-key', config.hasJevKey], ['chat-key', config.hasChatKey]]) {
       $(id).value = '';
-      $(id).placeholder = configured ? '已设置，留空保留' : '尚未设置，请填写';
+      $(id).placeholder = configured ? '已设置，留空保留' : id === 'jev-key' ? '留空不启用 Jev' : '尚未设置，请填写';
     }
     if (![...$('model-language').options].some(option => option.value === config.language)) {
       const option = element('option', config.language);
@@ -415,7 +415,7 @@ $('model-open').addEventListener('click', async () => {
   finally { if (current === modelRequest) controls(); }
 });
 const modelParams = () => ({
-  jevEndpoint: $('jev-endpoint').value.trim(), jevModel: $('jev-model').value.trim(), jevKey: $('jev-key').value.trim() || null,
+  jevEndpoint: $('jev-endpoint').value.trim(), jevModel: $('jev-model').value.trim(), jevKey: $('jev-key').value.trim() || ($('jev-endpoint').value.trim() && modelConfig?.hasJevKey ? null : ''),
   chatEndpoint: $('chat-endpoint').value.trim(), chatModel: $('chat-model').value.trim(), chatKey: $('chat-key').value.trim() || null,
   language: $('model-language').value,
 });
@@ -424,10 +424,10 @@ $('model-test').addEventListener('click', async () => {
   const current = modelRequest;
   modelTesting = true;
   controls();
-  modelMessage('手机正在测试两个模型服务，最长约 2 分钟…');
+  modelMessage('手机正在测试已配置的模型服务，最长约 2 分钟…');
   try {
     await invoke('request', { method: 'config.test', params: modelParams() });
-    if (current === modelRequest) modelMessage('连接正常：两个模型服务都有响应。配置尚未保存。');
+    if (current === modelRequest) modelMessage('连接正常：已配置的模型服务都有响应。配置尚未保存。');
   } catch (error) { if (current === modelRequest) modelMessage(message(error), true); }
   finally { if (current === modelRequest) { modelTesting = false; controls(); } }
 });
