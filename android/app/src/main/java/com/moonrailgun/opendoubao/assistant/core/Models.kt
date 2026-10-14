@@ -156,6 +156,8 @@ interface Phone {
 }
 
 interface Models {
+    suspend fun isChat(goal: String): Boolean
+    suspend fun reply(goal: String, screen: Screen, image: String): Plan
     suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String> = apps): Plan
     /** Jev's guess at which of [apps] the goal starts in, asked beside planning so it can open early; null when unsure. */
     suspend fun guessApp(goal: String, apps: Set<String>): String? = null

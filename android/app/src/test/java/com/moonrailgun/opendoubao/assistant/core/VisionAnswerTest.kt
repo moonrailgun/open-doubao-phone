@@ -71,6 +71,8 @@ class VisionAnswerTest {
     private class VisionModels(private val answer: String) : Models {
         var summaries = 0
         var visions = 0
+        override suspend fun isChat(goal: String) = false
+        override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
         override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) = Plan("browser.app", listOf("open"), emptyList())
         override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
             Decision(null, false, Effect.UNKNOWN)

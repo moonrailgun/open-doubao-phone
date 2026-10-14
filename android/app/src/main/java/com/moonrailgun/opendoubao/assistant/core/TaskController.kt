@@ -25,7 +25,7 @@ class TaskController(
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Saves the planner's memory edits and returns what changed, for the trace. */
     private val remember: (List<MemoryOp>) -> String = { "无变化" },
-    /** Picks where the task runs once per task, before planning: the phone to use and how it was chosen, for the trace. */
+    /** Picks where the task runs once per task, alongside planning: the phone to use and how it was chosen, for the trace. */
     private val place: (suspend () -> Pair<Phone, String>)? = null,
 ) {
     private var phone = phone
@@ -36,6 +36,7 @@ class TaskController(
     private var apps = emptySet<String>()
     private var launchableApps = emptySet<String>()
     private var plan: Plan? = null
+    private var chat: Boolean? = null
     private var previous: Previous? = null
     private val evidence = ArrayDeque<Screen>()
     private val sources = linkedSetOf<Source>()
@@ -54,6 +55,7 @@ class TaskController(
         apps = selectedApps.toSet()
         launchableApps = apps.filterTo(linkedSetOf(), phone::canLaunch)
         plan = null
+        chat = null
         previous = null
         evidence.clear()
         sources.clear()
@@ -127,15 +129,33 @@ class TaskController(
             try {
                 withTimeout(remainingActiveMillis) {
                     if (plan == null) {
-                        update(if (place == null) "正在理解任务、规划步骤" else "正在判断执行方式、规划步骤")
-                        // Both need only the goal, so the placement question runs beside the planning call.
-                        val placing = place?.let { choose -> async { timed("执行方式") { choose() } } }
-                        // Jev's guess at the app opens it while planning is still under way, so the app's cold start
-                        // overlaps the slowest call before the first step.
-                        val early = async { openEarly(placing) }
-                        val planned = timed("规划") { withTimeout(60_000) { models.plan(state.value.goal, apps, launchableApps) } }
-                        if (planned.reply != null) early.cancel()
-                        placing?.await()?.let { (chosen, how) -> phone = chosen; trace("执行方式：${chosen.mode}（$how）") }
+                        if (chat == null) {
+                            update("正在判断聊天还是任务")
+                            val isChat = timed("意图判断") { models.isChat(state.value.goal) }
+                            checkCurrent(token)
+                            chat = isChat
+                            trace("指令类型：${if (chat == true) "聊天" else "任务"}")
+                        }
+                        var early: Deferred<String?>? = null
+                        val planned = if (chat == true) {
+                            update("正在看当前屏幕、回复")
+                            val screen = observe(token) ?: return@withTimeout
+                            val image = timed("截图") { phone.screenshot(screen) }
+                            checkCurrent(token)
+                            timed("聊天回复") { withTimeout(60_000) { models.reply(state.value.goal, screen, image) } }
+                                .also { require(it.reply != null) { "聊天模型没有返回回复" } }
+                        } else {
+                            update(if (place == null) "正在理解任务、规划步骤" else "正在判断执行方式、规划步骤")
+                            // Both need only the goal, so the placement question runs beside the planning call.
+                            val placing = place?.let { choose -> async { timed("执行方式") { choose() } } }
+                            // Jev's guess at the app opens it while planning is still under way, so the app's cold start
+                            // overlaps the slowest call before the first step.
+                            early = async { openEarly(placing) }
+                            val result = timed("规划") { withTimeout(60_000) { models.plan(state.value.goal, apps, launchableApps) } }
+                            if (result.reply != null) { placing?.cancel(); early.cancel() }
+                            else placing?.await()?.let { (chosen, how) -> phone = chosen; trace("执行方式：${chosen.mode}（$how）") }
+                            result
+                        }
                         checkCurrent(token)
                         if (planned.memory.isNotEmpty()) trace("记忆：${remember(planned.memory)}")
                         if (planned.reply != null) {
@@ -148,7 +168,7 @@ class TaskController(
                         require(planned.app in apps) { "规划选择了未授权应用" }
                         plan = planned
                         mutable.value = state.value.copy(plan = planned.steps)
-                        val guessed = early.await()
+                        val guessed = early?.await()
                         checkCurrent(token)
                         if (guessed == planned.app) {
                             trace("规划同为 ${planned.app}，已提前打开")
@@ -193,7 +213,12 @@ class TaskController(
                                 while (evidence.size > 8) evidence.removeFirst()
                             }
                             update("正在决定下一步", logged = false)
-                            val candidates = Candidates.build(screen, plan!!, apps, launchableApps)
+                            // These cases always need vision, so there is no Jev result worth waiting for.
+                            val recovery = when {
+                                previous?.dispatched == false -> "上一步未能派发"
+                                previous != null && unchanged >= 3 -> "连续 $unchanged 次页面无变化"
+                                else -> null
+                            }
                             // The screenshot and vision call start alongside Jev rather than after it: on pages it does not know
                             // Jev is rarely sure, and its 1–2 s "no" sat in front of every vision step. A sure Jev cancels them, at
                             // the price of a vision request on steps Jev could do alone. Failures wait for a step that needs the result.
@@ -207,32 +232,33 @@ class TaskController(
                                 catch (e: CancellationException) { throw e }
                                 catch (e: Exception) { Result.failure(e) }
                             }
-                            val decision = try {
-                                timed("Jev 决策（${candidates.size} 个候选）") {
-                                    withTimeout(60_000) { models.decide(state.value.goal, screen, plan!!, candidates, previous) }
+                            val decision = if (recovery != null) null else try {
+                                val candidates = Candidates.build(screen, plan!!, apps, launchableApps)
+                                try {
+                                    timed("Jev 决策（${candidates.size} 个候选）") {
+                                        withTimeout(60_000) { models.decide(state.value.goal, screen, plan!!, candidates, previous) }
+                                    }
+                                } catch (e: java.io.IOException) {
+                                    // Jev only speeds up element picks; when it is rate limited or down, the vision model takes the step.
+                                    trace("Jev 不可用：${e.message?.lineSequence()?.first()}")
+                                    Decision(null, false, Effect.UNKNOWN)
                                 }
-                            } catch (e: java.io.IOException) {
-                                // Jev only speeds up element picks; when it is rate limited or down, the vision model takes the step.
-                                trace("Jev 不可用：${e.message?.lineSequence()?.first()}")
-                                Decision(null, false, Effect.UNKNOWN)
                             } catch (e: Throwable) { look.cancel(); throw e }
                             checkCurrent(token)
-                            trace("Jev：${decision.action?.description(screen) ?: "无动作"}，完成=${decision.done}（${"%.2f".format(decision.doneProbability)}），上一步效果=${decision.effect}")
-                            var action = decision.action
-                            var done = decision.done
+                            if (decision != null) trace("Jev：${decision.action?.description(screen) ?: "无动作"}，完成=${decision.done}（${"%.2f".format(decision.doneProbability)}），上一步效果=${decision.effect}")
+                            var action = decision?.action
+                            var done = decision?.done == true
                             var image: String? = null
                             var answer = ""
-                            val needsVision = action == null && !done || previous != null &&
-                                (decision.effect == Effect.NO || previous?.dispatched == false || unchanged >= 3)
+                            val fallbackReason = recovery ?: when {
+                                action == null && !done -> "Jev 没有可信的下一步"
+                                previous != null && decision?.effect == Effect.NO -> "上一步没有生效"
+                                else -> null
+                            }
                             // Joined so its cancellation is logged and the overlay is back before anything else happens.
-                            if (!needsVision) look.cancelAndJoin() else {
+                            if (fallbackReason == null) look.cancelAndJoin() else {
                                 update("没有顺利推进，正在看截图调整做法")
-                                trace("转视觉模型：" + when {
-                                    action == null && !done -> "Jev 没有可信的下一步"
-                                    previous?.dispatched == false -> "上一步未能派发"
-                                    decision.effect == Effect.NO -> "上一步没有生效"
-                                    else -> "连续 $unchanged 次页面无变化"
-                                })
+                                trace("转视觉模型：$fallbackReason")
                                 // Vision is looking at the page Jev was given. If that page had nothing to read or press and has
                                 // changed since (an app still loading), read it again now rather than wait seconds for an answer
                                 // about a blank page. On pages with content its answer can still stand (stillThere, targetKept).
@@ -327,6 +353,8 @@ class TaskController(
                 if (generation == token && state.value.status == TaskStatus.RUNNING) {
                     pause("${e.message ?: "当前页面无法操作"}，请手动处理后点击继续")
                 }
+            } catch (e: ScreenChangedException) {
+                if (generation == token) pause("当前页面已变化，请点击继续重新读取")
             } catch (e: Exception) {
                 if (generation == token) {
                     trace("异常：" + e.stackTraceToString())

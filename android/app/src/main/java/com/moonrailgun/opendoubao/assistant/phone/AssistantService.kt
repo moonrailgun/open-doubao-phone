@@ -278,7 +278,7 @@ class AssistantService : AccessibilityService() {
         val choice = executionChoice(this)
         val next = when {
             !virtualDisplayAvailable(this) || choice == EXECUTION_FOREGROUND -> TaskController(scope, phone, models, remember = ::remember)
-            choice == EXECUTION_VIRTUAL -> TaskController(scope, offscreen(), models, remember = ::remember)
+            choice == EXECUTION_VIRTUAL -> TaskController(scope, phone, models, remember = ::remember, place = { offscreen() to "设置" })
             else -> TaskController(scope, phone, models, remember = ::remember, place = {
                 val (placement, how) = models.placement(goal)
                 Diagnostics.log("执行方式：${if (placement == Placement.VIRTUAL) "虚拟屏" else "前台"}（$how）")

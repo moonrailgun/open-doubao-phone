@@ -15,12 +15,123 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CloudModelsTest {
+    @Test fun chatReadsTheCurrentScreenWithoutPlanningOrChoosingAnotherPhone() = runBlocking {
+        val requests = mutableListOf<JSONObject>()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val buffer = Buffer()
+            chain.request().body!!.writeTo(buffer)
+            val body = JSONObject(buffer.readUtf8())
+            requests += body
+            val reply = if (body.has("questions")) {
+                """{"answers":{"intent":{"type":"choice","choice":"chat","confidence":1,"probabilities":{"chat":1,"task":0}}}}"""
+            } else {
+                """{"choices":[{"message":{"content":"{\"reply\":\"屏幕上是 42\"}"}}]}"""
+            }
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(reply.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        var placed = false
+        var screenshots = 0
+        val phone = object : Phone {
+            override fun canLaunch(packageName: String) = true
+            override suspend fun observe() = screen(text = "42")
+            override suspend fun screenshot(screen: Screen): String { screenshots++; return "current-screen" }
+            override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean = error("Chat must not act")
+        }
+        val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
+        val controller = TaskController(this, phone, models, place = { placed = true; phone to "设置" })
+        controller.start("屏幕上是什么", setOf("browser.app"))
+        withTimeout(5_000) { while (controller.state.value.status == TaskStatus.RUNNING) delay(10) }
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals("屏幕上是 42", controller.state.value.result)
+        assertFalse(placed)
+        assertEquals(1, screenshots)
+        assertEquals(2, requests.size)
+        assertTrue(requests.first().getJSONObject("questions").has("intent"))
+        val content = requests.last().getJSONArray("messages").getJSONObject(1).getJSONArray("content")
+        assertEquals("data:image/jpeg;base64,current-screen", content.getJSONObject(1).getJSONObject("image_url").getString("url"))
+        assertEquals("42", JSONObject(content.getJSONObject(0).getString("text")).getJSONObject("screen")
+            .getJSONArray("elements").getJSONObject(0).getString("text"))
+    }
+
+    @Test fun aChatServiceCanBeConfiguredWithoutJev() {
+        ModelConfig(jevEndpoint = "", jevModel = "", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test").validate()
+    }
+
+    @Test fun intentRequiresConfidentChatAndDefaultsToTaskWhenJevFails() = runBlocking {
+        var response = ""
+        var failed = false
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val buffer = Buffer()
+            chain.request().body!!.writeTo(buffer)
+            val body = JSONObject(buffer.readUtf8())
+            assertEquals(setOf("intent"), body.getJSONObject("questions").keys().asSequence().toSet())
+            assertEquals(setOf("goal"), body.getJSONObject("state").keys().asSequence().toSet())
+            if (failed) throw java.io.IOException("unavailable")
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(response.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
+        for ((input, expected) in listOf(
+            Triple("chat", 1.0, 1.0) to true, Triple("task", 1.0, 0.0) to false,
+            Triple("chat", 0.4, 0.9) to false, Triple("chat", 0.9, 0.4) to false)) {
+            val (choice, confidence, probability) = input
+            response = """{"answers":{"intent":{"type":"choice","choice":"$choice","confidence":$confidence,
+                "probabilities":{"chat":$probability,"task":${1 - probability}}}}}"""
+            assertEquals(expected, models.isChat("这是什么意思"))
+        }
+        for (invalid in listOf("not-json", """{"answers":{"intent":{"type":"choice","choice":"other"}}}""")) {
+            response = invalid
+            assertFalse(models.isChat("这是什么意思"))
+        }
+        failed = true
+        assertFalse(models.isChat("这是什么意思"))
+    }
+
+    @Test fun slowIntentClassificationDefaultsToTaskAndCancelsTheRequest() = runBlocking {
+        val started = CompletableDeferred<okhttp3.Call>()
+        val release = java.util.concurrent.CountDownLatch(1)
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            started.complete(chain.call())
+            release.await(10, java.util.concurrent.TimeUnit.SECONDS)
+            throw java.io.IOException("released")
+        }.build()
+        val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
+        try {
+            val result = async { models.isChat("看看这里") }
+            val call = withTimeout(5_000) { started.await() }
+            assertFalse(withTimeout(5_000) { result.await() })
+            assertTrue(call.isCanceled())
+        } finally { release.countDown() }
+    }
+
+    @Test fun withoutJevClassificationAndDecisionsMakeNoRequestsAndConnectionAndPlacementUseChat() = runBlocking {
+        var requests = 0
+        val config = ModelConfig(jevEndpoint = "", jevModel = "", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test")
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            requests++
+            assertEquals(config.chatEndpoint, chain.request().url.toString())
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body("""{"choices":[{"message":{"content":"{\"placement\":\"foreground\"}"}}]}""".toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val models = CloudModels(config, HttpTransport(client))
+        assertFalse(models.isChat("你好"))
+        assertEquals(Decision(null, false, Effect.UNKNOWN), models.decide("test", screen(), Plan("browser.app", listOf("read"), emptyList()), emptyList(), null))
+        assertEquals(0, requests)
+        models.checkConnection()
+        assertEquals(1, requests)
+        assertEquals(Placement.FOREGROUND to "Chat 模型，未配置 Jev", models.placement("播放"))
+        assertEquals(2, requests)
+    }
+
     @Test fun visualFactsReachTheFinalSummaryThroughTheRealProtocols() = runBlocking {
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val buffer = Buffer()
             chain.request().body!!.writeTo(buffer)
             val body = JSONObject(buffer.readUtf8())
-            val reply = if (body.has("questions")) {
+            val reply = if (body.optJSONObject("questions")?.has("intent") == true) {
+                """{"answers":{"intent":{"type":"choice","choice":"task","confidence":1,"probabilities":{"chat":0,"task":1}}}}"""
+            } else if (body.has("questions")) {
                 val options = body.getJSONObject("questions").getJSONObject("next").getJSONObject("criteria")
                 val probabilities = JSONObject().apply { options.keys().forEach { put(it, if (it == "none") 1.0 else 0.0) } }
                 JSONObject().put("answers", JSONObject()

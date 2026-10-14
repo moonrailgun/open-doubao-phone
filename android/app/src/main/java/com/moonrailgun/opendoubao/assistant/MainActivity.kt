@@ -287,7 +287,7 @@ class MainActivity : ComponentActivity() {
                         if (service == null) Banner("还差一步：开启无障碍服务", "手机需要它读取屏幕、替你点按和输入。只在你开始任务后工作。") {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }
-                        if (!configReady && !busy) Banner("还没有设置模型", "填好两个模型服务的地址和密钥后才能开始任务。") { tab = SETTINGS; settingsTab = 0 }
+                        if (!configReady && !busy) Banner("还没有设置模型", "填好规划与视觉模型的地址和密钥后才能开始，Jev 可选。") { tab = SETTINGS; settingsTab = 0 }
                         if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = {
                             moveTaskToBack(true)
                             scope.launch { delay(300); attempt { service?.resume() } }
@@ -368,7 +368,7 @@ class MainActivity : ComponentActivity() {
                         }
                         when (settingsTab) {
                             0 -> {
-                                Section("Jev 决策模型", "每一步由它挑选要点按的元素，并判断上一步是否生效。") {
+                                Section("Jev 决策模型", "可选：先判断聊天还是任务，再挑选操作和判断效果。API Key 留空时停用，所有指令按任务执行。") {
                                     SettingField("接口地址", config.jevEndpoint) { config = config.copy(jevEndpoint = it.trim()) }
                                     SettingField("模型", config.jevModel) { config = config.copy(jevModel = it.trim()) }
                                     KeyField("API Key", config.jevKey) { config = config.copy(jevKey = it.trim()) }
@@ -394,7 +394,7 @@ class MainActivity : ComponentActivity() {
                                         message = ""
                                         testing = true
                                         scope.launch {
-                                            try { client.checkConnection(); message = "连接正常：两个模型服务都有响应" }
+                                            try { client.checkConnection(); message = "连接正常：已配置的模型服务都有响应" }
                                             catch (e: CancellationException) { throw e }
                                             catch (e: Exception) { message = e.message ?: "连接失败" }
                                             finally { testing = false }
@@ -406,7 +406,7 @@ class MainActivity : ComponentActivity() {
                                         Text("测试连接", Modifier.padding(start = 8.dp))
                                     }
                                 }
-                                Text("测试连接会向两个服务各发一次请求，可能产生少量费用。密钥经 Android Keystore 加密后只存在本机，不写入日志和备份。",
+                                Text("测试连接会向已配置的服务各发一次请求，可能产生少量费用。密钥经 Android Keystore 加密后只存在本机，不写入日志和备份。",
                                     Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                             }
                             1 -> {

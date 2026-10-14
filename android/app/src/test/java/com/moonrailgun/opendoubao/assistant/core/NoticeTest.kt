@@ -21,6 +21,8 @@ class NoticeTest {
             override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?) = true
         }
         val models = object : Models {
+            override suspend fun isChat(goal: String) = false
+            override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
             override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan {
                 delay(5_000); return Plan("lark.app", listOf("open"), emptyList())
             }

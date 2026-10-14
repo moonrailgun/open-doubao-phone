@@ -155,6 +155,16 @@ class RemoteProtocolTest {
         .put("jevModel", config.jevModel).put("chatEndpoint", config.chatEndpoint).put("chatModel", config.chatModel)
         .put("language", config.language).put("jevKey", JSONObject.NULL).put("chatKey", JSONObject.NULL)
 
+    @Test fun remoteConfigCanDisableJevWithoutRemovingTheChatService() {
+        val phone = Phone()
+        val commands = RemoteCommands(phone)
+        val response = commands.call(request("config.set", configParams(phone.config)
+            .put("jevEndpoint", "").put("jevModel", "").put("jevKey", "")))
+        assertTrue(response.toString(), response.getBoolean("ok"))
+        assertFalse(phone.config.hasJev)
+        assertEquals("existing-chat-secret", phone.config.chatKey)
+    }
+
     @Test fun modelConfigReadsAndWritesNeverReturnKeysAndNullKeepsExistingKeys() {
         val phone = Phone()
         val commands = RemoteCommands(phone)

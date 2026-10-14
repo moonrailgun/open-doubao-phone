@@ -165,7 +165,9 @@ class NativeBridgeTest {
             val buffer = Buffer()
             chain.request().body!!.writeTo(buffer)
             val body = JSONObject(buffer.readUtf8())
-            val response = if (body.has("questions")) {
+            val response = if (body.optJSONObject("questions")?.has("intent") == true) {
+                """{"answers":{"intent":{"type":"choice","choice":"task","confidence":1,"probabilities":{"chat":0,"task":1}}}}"""
+            } else if (body.has("questions")) {
                 val elements = body.getJSONObject("state").getJSONObject("screen").getJSONArray("elements")
                 val nodes = (0 until elements.length()).map { elements.getJSONObject(it) }
                 val saved = nodes.any { it.getString("text") == "Draft saved: $draft" }
@@ -281,6 +283,8 @@ class NativeBridgeTest {
             }
         }
         val models = object : Models {
+            override suspend fun isChat(goal: String) = false
+            override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
             override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan {
                 plans++
                 return Plan(context.packageName, listOf("read"), emptyList())
@@ -324,6 +328,8 @@ class NativeBridgeTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         val actions = mutableListOf<Action>()
         val models = object : Models {
+            override suspend fun isChat(goal: String) = false
+            override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
             override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) = Plan(context.packageName, listOf("read"), emptyList())
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
                 withContext(NonCancellable) { delay(1500) }
@@ -401,6 +407,8 @@ class NativeBridgeTest {
             }
         }
         val models = object : Models {
+            override suspend fun isChat(goal: String) = false
+            override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
             override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan {
                 plans++
                 return Plan(context.packageName, listOf("read"), emptyList())

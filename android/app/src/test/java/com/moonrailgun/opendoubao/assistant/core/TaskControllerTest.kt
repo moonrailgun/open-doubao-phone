@@ -7,6 +7,63 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TaskControllerTest {
+    @Test fun chatRespectsScreenAccessAndResumesWithoutClassifyingAgain() = runTest {
+        for (blocked in listOf(screen("unselected.app"), screen().copy(elements = listOf(screen().elements[0].copy(password = true))))) {
+            val phone = FakePhone().apply { current = blocked }
+            var classifications = 0
+            var replies = 0
+            val saved = mutableListOf<MemoryOp>()
+            val models = object : Models by FakeModels() {
+                override suspend fun isChat(goal: String): Boolean { classifications++; return true }
+                override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan = error("Chat must not plan")
+                override suspend fun reply(goal: String, screen: Screen, image: String): Plan {
+                    replies++
+                    assertEquals(phone.current, screen)
+                    assertEquals("pixels", image)
+                    return Plan("", emptyList(), emptyList(), reply = "当前页面", memory = listOf(MemoryOp.Add("喜欢简洁")))
+                }
+            }
+            val controller = TaskController(this, phone, models, remember = { saved += it; "新增 1 条" },
+                place = { error("Chat must not choose a display") })
+            controller.start("解释当前页面", setOf("browser.app"))
+            advanceUntilIdle()
+            assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+            assertEquals(0, replies)
+            phone.current = screen()
+            controller.resume()
+            advanceUntilIdle()
+            assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+            assertEquals(1, classifications)
+            assertEquals(1, replies)
+            assertTrue(phone.actions.isEmpty())
+            assertEquals(listOf(MemoryOp.Add("喜欢简洁")), saved)
+        }
+    }
+
+    @Test fun stoppingDuringClassificationOrChatIgnoresLateRepliesAndMemoryEdits() = runTest {
+        for (stopAtIntent in listOf(true, false)) {
+            val phone = FakePhone()
+            val models = object : Models by FakeModels() {
+                override suspend fun isChat(goal: String): Boolean {
+                    if (stopAtIntent) withContext(NonCancellable) { delay(1000) }
+                    return true
+                }
+                override suspend fun reply(goal: String, screen: Screen, image: String): Plan {
+                    withContext(NonCancellable) { delay(1000) }
+                    return Plan("", emptyList(), emptyList(), reply = "迟到回复", memory = listOf(MemoryOp.Add("不应保存")))
+                }
+            }
+            val controller = TaskController(this, phone, models, remember = { error("Stopped chat must not save memory") })
+            controller.start("看看这里", setOf("browser.app"))
+            runCurrent()
+            controller.stop()
+            advanceUntilIdle()
+            assertEquals(TaskStatus.STOPPED, controller.state.value.status)
+            assertEquals("", controller.state.value.result)
+            assertTrue(phone.actions.isEmpty())
+        }
+    }
+
     @Test fun ordinaryActionsRunToCompletionWithoutUserInteraction() = runTest {
         val phone = FakePhone().apply {
             current = screen().copy(elements = listOf(screen().elements[0].copy(editable = true)))
@@ -82,6 +139,28 @@ class TaskControllerTest {
         assertTrue(controller.state.value.trace.any { "记忆：新增 1 条" in it })
     }
 
+    @Test fun aDirectReplyCancelsPlacementWithoutWaitingForIt() = runTest {
+        val phone = FakePhone()
+        var placementCancelled = false
+        val models = object : Models by FakeModels() {
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan {
+                delay(100)
+                return Plan("", emptyList(), emptyList(), reply = "车停在 B2-17")
+            }
+        }
+        val controller = TaskController(this, phone, models, place = {
+            try { delay(5_000); phone to "Jev" }
+            finally { placementCancelled = !currentCoroutineContext().isActive }
+        })
+        controller.start("我车停在哪", setOf("browser.app"))
+        advanceUntilIdle()
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals("车停在 B2-17", controller.state.value.result)
+        assertTrue(phone.actions.isEmpty())
+        assertEquals(100L, testScheduler.currentTime)
+        assertTrue(placementCancelled)
+    }
+
     @Test fun ineffectiveActionUsesVisualRecoveryAndFinishes() = runTest {
         val phone = FakePhone()
         val models = object : Models by FakeModels() {
@@ -118,20 +197,33 @@ class TaskControllerTest {
 
     @Test fun failedDispatchReobservesAndChoosesAnotherAction() = runTest {
         val phone = FakePhone()
+        val dispatchingPhone = object : Phone by phone {
+            override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean {
+                phone.execute(action, expected, expectedImage)
+                return action != Action.Wait
+            }
+        }
+        var decisions = 0
         val models = object : Models by FakeModels() {
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
-                phone.result = previous != null
+                decisions++
+                delay(5_000)
                 return Decision(Action.Wait, previous?.action is Action.Back, Effect.UNKNOWN)
             }
             // Vision also runs alongside each Jev step; only the recovery after the failed dispatch acts on its answer.
-            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?) =
-                ModelStep(if (previous?.dispatched == false) Action.Back else Action.Home)
+            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {
+                delay(2_000)
+                return ModelStep(if (previous?.dispatched == false) Action.Back else Action.Home)
+            }
         }
-        val controller = TaskController(this, phone, models)
+        val controller = TaskController(this, dispatchingPhone, models)
         controller.start("Recover the page", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
         assertEquals(listOf(Action.OpenApp("browser.app"), Action.Wait, Action.Back), phone.actions)
+        assertEquals(12_000L, testScheduler.currentTime)
+        assertEquals(2, decisions)
+        assertTrue(controller.state.value.trace.any { "转视觉模型：上一步未能派发" in it })
     }
 
     @Test fun ambiguousPageWithNavigationLabelsStillGetsVisualEvidence() = runTest {
@@ -299,10 +391,17 @@ class TaskControllerTest {
 
     @Test fun unchangedScreensUseRecoveryThenPauseInsteadOfLoopingForever() = runTest {
         val phone = FakePhone()
+        var decisions = 0
         var recoveries = 0
         val models = object : Models by FakeModels() {
+            override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
+                decisions++
+                delay(1_000)
+                return Decision(Action.Wait, false, Effect.UNKNOWN)
+            }
             override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {
                 recoveries++
+                delay(500)
                 return ModelStep(Action.Wait)
             }
         }
@@ -310,8 +409,12 @@ class TaskControllerTest {
         controller.start("search", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.PAUSED, controller.state.value.status)
-        assertTrue(recoveries > 0)
+        // Three calls ran alongside Jev's sure Waits and went unused; four were recoveries.
+        assertEquals(7, recoveries)
         assertEquals(6, phone.actions.count { it is Action.Wait })
+        assertEquals(5_000L, testScheduler.currentTime)
+        assertEquals(3, decisions)
+        assertTrue(controller.state.value.trace.any { "转视觉模型：连续 3 次页面无变化" in it })
     }
 
     @Test fun unavailableAppPausesAndResumesWithoutReopening() = runTest {
@@ -878,6 +981,8 @@ class TaskControllerTest {
     }
 
     private class FakeModels : Models {
+        override suspend fun isChat(goal: String) = false
+        override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
         var slow = false
         var finish = false
         var click = false

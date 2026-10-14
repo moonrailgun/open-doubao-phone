@@ -23,6 +23,8 @@ class LookAheadTest {
 
     private fun models(jevSure: Boolean, visions: MutableList<String>) = object : Models {
         var decisions = 0
+        override suspend fun isChat(goal: String) = false
+        override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
         override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) = Plan("lark.app", listOf("search"), emptyList())
         override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
             delay(2_000)
@@ -75,6 +77,8 @@ class LookAheadTest {
             override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?) = true
         }
         val models = object : Models {
+            override suspend fun isChat(goal: String) = false
+            override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
             override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) = Plan("lark.app", listOf("search"), emptyList())
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
                 delay(1_000)
