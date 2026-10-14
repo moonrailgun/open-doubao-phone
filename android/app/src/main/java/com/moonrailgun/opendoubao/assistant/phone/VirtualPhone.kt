@@ -74,7 +74,8 @@ fun virtualDisplayAvailable(context: Context): Boolean = Build.VERSION.SDK_INT >
 @TargetApi(34)
 class VirtualPhone(private val service: AssistantService, private val foreground: AndroidPhone,
     /** True while a session is open, so the app can show the display; false again after the task ends or hands over. */
-    private val active: MutableStateFlow<Boolean>, private val onLost: (String) -> Unit) : Phone {
+    private val active: MutableStateFlow<Boolean>, private val onConsent: (String) -> Unit = {},
+    private val onLost: (String) -> Unit) : Phone {
     private val executor: Executor = service.mainExecutor
     /** The live session for the peek window: null before the first app opens and after the task ends or is handed over. */
     var session: ComputerControlSession? = null
@@ -262,7 +263,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         val live = session ?: return create(pkg)
         if (pkg !in targets) suspendCancellableCoroutine { continuation ->
             live.addPackagesForAutomation(listOf(pkg), executor, object : ComputerControlSession.TargetPackagesAdditionCallback {
-                override fun onTargetPackagesAdditionPending(intentSender: IntentSender) = ask(intentSender)
+                override fun onTargetPackagesAdditionPending(intentSender: IntentSender) = ask(intentSender, pkg)
                 override fun onTargetPackagesAdditionSuccess() { if (continuation.isActive) continuation.resume(Unit) }
                 override fun onTargetPackagesAdditionFailure(errorCode: Int) {
                     if (continuation.isActive) continuation.resumeWithException(PhoneUnavailableException("虚拟屏无法再加入 $pkg（$errorCode）"))
@@ -294,7 +295,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
             .build()
         val created = suspendCancellableCoroutine { continuation ->
             val callback = object : ComputerControlSession.Callback {
-                override fun onSessionPending(intentSender: IntentSender) = ask(intentSender)
+                override fun onSessionPending(intentSender: IntentSender) = ask(intentSender, pkg)
                 override fun onSessionCreated(session: ComputerControlSession) {
                     if (continuation.isActive) continuation.resume(session) { _, value, _ -> value.close() } else session.close()
                 }
@@ -337,8 +338,10 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         return created
     }
 
-    // The system asks the user once per app before it may be automated.
-    private fun ask(intentSender: IntentSender) {
+    // The system asks the user once per app before it may be automated; the task waits on the answer.
+    private fun ask(intentSender: IntentSender, pkg: String) {
+        val label = runCatching { service.packageManager.run { getApplicationLabel(getApplicationInfo(pkg, 0)) } }.getOrDefault(pkg)
+        onConsent("等你在系统弹窗里允许操作「$label」，选「始终允许」以后不再询问")
         val options = ActivityOptions.makeBasic().setPendingIntentBackgroundActivityStartMode(
             if (Build.VERSION.SDK_INT >= 36) ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
             else @Suppress("DEPRECATION") ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED).toBundle()

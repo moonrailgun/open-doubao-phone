@@ -188,8 +188,10 @@ class CloudModelsTest {
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val buffer = Buffer()
             chain.request().body!!.writeTo(buffer)
-            sent += JSONObject(buffer.readUtf8())
-            val response = JSONObject().put("choices", org.json.JSONArray().put(JSONObject()
+            val body = JSONObject(buffer.readUtf8())
+            sent += body
+            // Jev answers bare; the chat model inside choices.
+            val response = if (body.has("questions")) replies.removeFirst() else JSONObject().put("choices", org.json.JSONArray().put(JSONObject()
                 .put("message", JSONObject().put("content", replies.removeFirst())))).toString()
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
                 .body(response.toResponseBody("application/json".toMediaType())).build()
@@ -210,6 +212,12 @@ class CloudModelsTest {
         val reflection = JSONObject(sent.last().getJSONArray("messages").getJSONObject(1).getString("content"))
         assertEquals(1, reflection.getJSONArray("memory").length())
         assertFalse(reflection.has("recent_tasks"))
+        replies.addFirst("""{"answers":{"next":{"type":"choice","choice":"none","confidence":0.9,"probabilities":{"none":0.9,"c0":0.1}},
+            "done":{"type":"noul","noul":0.1},"effect":{"type":"choice","choice":"unknown","confidence":0.9,"probabilities":{"yes":0,"no":0,"unknown":1}}}}""")
+        models.decide("goal", screen(), Plan("browser.app", listOf("read"), emptyList()), listOf(Candidate("c0", Action.Click("0.1"), "Search")), null)
+        val jev = sent.last().getJSONObject("state")
+        assertEquals("车停在 B2-17", jev.getJSONArray("memory").getJSONObject(1).getString("text"))
+        assertEquals("明天小雨", jev.getJSONArray("recent_tasks").getJSONObject(0).getString("result"))
     }
 
     @Test fun summaryIsWrittenInTheConfiguredLanguage() = runBlocking {

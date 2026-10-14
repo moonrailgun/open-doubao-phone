@@ -210,7 +210,7 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
 
     override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
         // Candidates too large for Jev's input budget: no Jev decision, so the controller asks the vision model.
-        val body = JevProtocol.request(config.jevModel, goal, screen, candidates, previous, plan.steps)
+        val body = JevProtocol.request(config.jevModel, goal, screen, candidates, previous, plan.steps, JSONObject().withContext())
             ?: return Decision(null, false, Effect.UNKNOWN)
         return JevProtocol.parse(labelled("Jev 决策") { http.post(config.jevEndpoint, config.jevKey, body, "Jev 决策") }, candidates)
     }

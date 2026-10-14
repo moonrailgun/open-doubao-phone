@@ -41,6 +41,19 @@ class ProtocolTest {
         assertNull(JevProtocol.request("jev-latest", "goal", screen(), tooMany, null))
     }
 
+    @Test fun jevSeesMemoryAndRecentTasksUnlessTheScreenNeedsTheRoom() {
+        // Feishu on 2026-10-13: 孙淼 shows as 孙大炮, which only an earlier task's result said, and Jev scored the open chat 0.13–0.16 done.
+        val context = JSONObject().put("memory", org.json.JSONArray()).put("recent_tasks", org.json.JSONArray()
+            .put(JSONObject().put("goal", "打开和孙淼的聊天窗口").put("result", "孙淼在飞书中的显示名为“孙大炮”")))
+        val state = JevProtocol.request("jev-latest", "打开和孙淼的聊天窗口", screen(), candidates, null, context = context)!!.getJSONObject("state")
+        assertEquals("孙淼在飞书中的显示名为“孙大炮”", state.getJSONArray("recent_tasks").getJSONObject(0).getString("result"))
+        assertTrue(state.has("memory"))
+        val big = screen().copy(elements = (0 until 350).map {
+            Element("0.$it", "长".repeat(2000), "", "android.widget.TextView", "", Bounds(0, 0, 1, 1))
+        })
+        assertFalse(JevProtocol.request("jev-latest", "goal", big, candidates, null, context = context)!!.getJSONObject("state").has("recent_tasks"))
+    }
+
     @Test fun jevReturnsOnlyAnExistingCandidate() {
         val decision = JevProtocol.parse(answer("c0", .92), candidates)
         assertEquals(Action.Click("0.1"), decision.action)

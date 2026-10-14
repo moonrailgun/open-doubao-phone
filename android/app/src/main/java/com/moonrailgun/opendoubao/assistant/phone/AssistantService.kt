@@ -272,7 +272,8 @@ class AssistantService : AccessibilityService() {
         watcher?.cancel()
         virtual?.close()
         virtual = null
-        fun offscreen() = VirtualPhone(this, phone, mutableVirtualActive) { controller?.fail(it) }.also { virtual = it }
+        fun offscreen() = VirtualPhone(this, phone, mutableVirtualActive, onConsent = { controller?.notice(it) }) { controller?.fail(it) }
+            .also { virtual = it }
         // Chosen per task: the setting may change between tasks, and other systems always run in the foreground.
         val choice = executionChoice(this)
         val next = when {

@@ -73,6 +73,11 @@ class TaskController(
         finish(TaskStatus.FAILED, reason)
     }
 
+    /** Shows what the task is waiting on outside its own steps, such as the system's consent dialog. */
+    fun notice(message: String) {
+        if (state.value.status == TaskStatus.RUNNING) update(message)
+    }
+
     fun stop() {
         if (state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) return
         stopJob()
