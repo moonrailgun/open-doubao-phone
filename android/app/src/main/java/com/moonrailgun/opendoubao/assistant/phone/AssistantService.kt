@@ -111,6 +111,9 @@ class AssistantService : AccessibilityService() {
     private var overlay: FrameLayout? = null
     private var bubble: View? = null
     private var bubbleRing: BubbleRing? = null
+    private var taskPill: View? = null
+    private var taskGoal: TextView? = null
+    private var taskStep: TextView? = null
     private var panel: View? = null
     private var statusIcon: ImageView? = null
     private var statusText: TextView? = null
@@ -417,6 +420,27 @@ class AssistantService : AccessibilityService() {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
             foreground = BubbleRing(resources.displayMetrics.density).also { bubbleRing = it }
             clipToOutline = true
+        }
+        fun line(size: Float, alpha: Int) = TextView(this).apply {
+            setTextColor(Color.argb(alpha, 255, 255, 255)); textSize = size
+            isSingleLine = true; ellipsize = TextUtils.TruncateAt.END; maxWidth = dp(200)
+        }
+        taskGoal = line(13f, 255).apply { typeface = Typeface.DEFAULT_BOLD }
+        taskStep = line(12f, 180)
+        // While a task runs, a pill beside the ball names it and its current step.
+        taskPill = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
+            layoutDirection = View.LAYOUT_DIRECTION_LTR
+            setPadding(dp(16), 0, dp(16), 0)
+            background = rounded(ink, 24)
+            addView(taskGoal); addView(taskStep)
+        }
+        val chip = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            // RTL on the right edge puts the pill on the ball's screen-facing side.
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            addView(ball, LinearLayout.LayoutParams(dp(48), dp(48)))
+            addView(taskPill, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(48)).apply { marginStart = dp(6) })
             setOnClickListener { expanded = true; applyOverlay() }
         }
         val slop = ViewConfiguration.get(this).scaledTouchSlop
@@ -443,11 +467,12 @@ class AssistantService : AccessibilityService() {
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> when {
-                    dragging && view === ball -> {
+                    dragging && view === chip -> {
                         // Snap to the nearer edge; the gravity follows so the panel always opens toward the screen.
                         val center = if (onRight) screen.width() - params.x - root.width / 2 else params.x + root.width / 2
                         onRight = center > screen.width() / 2
                         params.gravity = Gravity.TOP or if (onRight) Gravity.END else Gravity.START
+                        chip.layoutDirection = if (onRight) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
                         params.x = 0
                         windows.updateViewLayout(root, params)
                     }
@@ -456,9 +481,9 @@ class AssistantService : AccessibilityService() {
             }
             true
         }
-        ball.setOnTouchListener(drag)
+        chip.setOnTouchListener(drag)
         root.setOnTouchListener(drag)
-        root.addView(ball, FrameLayout.LayoutParams(dp(48), dp(48)))
+        root.addView(chip, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -603,7 +628,7 @@ class AssistantService : AccessibilityService() {
         voiceCard = voicePanel; voiceWave = wave; voiceCaption = words
 
         windows.addView(root, params)
-        overlay = root; bubble = ball; panel = card; layout = params
+        overlay = root; bubble = chip; panel = card; layout = params
         renderOverlay(state.value)
     }
 
@@ -641,6 +666,8 @@ class AssistantService : AccessibilityService() {
             ellipsize = if (running) TextUtils.TruncateAt.END else null
             scrollTo(0, 0)
         }
+        taskGoal?.text = value.goal
+        taskStep?.text = value.message
         ringBubble()
         applyOverlay()
     }
@@ -711,6 +738,7 @@ class AssistantService : AccessibilityService() {
         root.visibility = if (captureHidden || locked) View.GONE else View.VISIBLE
         val voice = listening != null
         bubble?.visibility = if (expanded || voice) View.GONE else View.VISIBLE
+        taskPill?.visibility = if (running) View.VISIBLE else View.GONE
         panel?.visibility = if (expanded && !voice) View.VISIBLE else View.GONE
         voiceCard?.visibility = if (voice) View.VISIBLE else View.GONE
         stopButton?.visibility = if (running || paused) View.VISIBLE else View.GONE
