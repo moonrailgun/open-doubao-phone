@@ -109,8 +109,9 @@ enum class Placement { VIRTUAL, FOREGROUND }
 data class Previous(val screen: Screen, val action: Action, val dispatched: Boolean)
 /** [doneProbability] is Jev's own estimate; [done] applies the 0.95 bar the controller acts on. */
 data class Decision(val action: Action?, val done: Boolean, val effect: Effect, val doneProbability: Double = if (done) 1.0 else 0.0)
+/** [result] is the answer for the user that may come with [done]; blank leaves it to the summary call. */
 data class ModelStep(val action: Action? = null, val done: Boolean = false, val handover: String? = null,
-    val observations: String = "")
+    val observations: String = "", val result: String = "")
 data class Source(val app: String, val text: String, val visual: Boolean = false) {
     fun json() = JSONObject().put("app", app).put("text", text).put("visual_model_observation", visual)
 }

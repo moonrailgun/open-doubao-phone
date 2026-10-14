@@ -195,6 +195,7 @@ class TaskController(
                             var action = decision.action
                             var done = decision.done
                             var image: String? = null
+                            var answer = ""
                             if (action == null && !done || previous != null &&
                                 (decision.effect == Effect.NO || previous?.dispatched == false || unchanged >= 3)) {
                                 update("没有顺利推进，正在看截图调整做法")
@@ -218,6 +219,7 @@ class TaskController(
                                 }
                                 action = fallback.action
                                 done = fallback.done
+                                answer = fallback.result
                             }
                             val fresh = observe(token) ?: return@withTimeout
                             checkCurrent(token)
@@ -226,8 +228,11 @@ class TaskController(
                                 throw ScreenChangedException()
                             }
                             if (done) {
-                                update("正在整理结果", logged = false)
-                                val result = timed("总结") { withTimeout(60_000) { models.summarize(state.value.goal, taskEvidence()) } }
+                                // The vision model usually writes the answer along with its done, which saves a second call.
+                                val result = if (answer.isNotBlank()) answer.also { trace("沿用视觉模型给出的结果，不再单独总结") } else {
+                                    update("正在整理结果", logged = false)
+                                    timed("总结") { withTimeout(60_000) { models.summarize(state.value.goal, taskEvidence()) } }
+                                }
                                 checkCurrent(token)
                                 mutable.value = state.value.copy(result = result)
                                 finish(TaskStatus.COMPLETED, "任务已完成")

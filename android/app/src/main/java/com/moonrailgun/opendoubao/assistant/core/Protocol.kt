@@ -147,7 +147,8 @@ object ModelProtocol {
             require(it.length <= 8000) { "视觉观察内容过长" }
         } else ""
         when (obj.strictString("action")) {
-            "done" -> ModelStep(done = true)
+            // An overlong answer is dropped rather than rejected, so the summary call writes it instead of a retry.
+            "done" -> ModelStep(done = true, result = if (obj.has("result")) obj.strictString("result").trim().takeIf { it.length <= 4000 }.orEmpty() else "")
             "handover" -> ModelStep(handover = obj.strictString("reason").take(400))
             else -> ModelStep(parseAction(obj))
         }.copy(observations = observations)

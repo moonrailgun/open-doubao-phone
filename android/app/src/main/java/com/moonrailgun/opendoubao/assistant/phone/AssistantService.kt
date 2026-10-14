@@ -81,6 +81,9 @@ class AssistantService : AccessibilityService() {
         private val remoteEdits = MutableStateFlow(0)
         /** Bumped when the desktop changes saved settings or records, so open screens reload them. */
         val remoteEditVersion = remoteEdits.asStateFlow()
+        private val recordSaves = MutableStateFlow(0)
+        /** Bumped after a task record lands on disk; saves finish after the state they describe, so lists reload on this. */
+        val recordSaveVersion = recordSaves.asStateFlow()
         init {
             // A crash mid-task would otherwise leave its record stuck at RUNNING with no reason.
             val previous = Thread.getDefaultUncaughtExceptionHandler()
@@ -91,6 +94,8 @@ class AssistantService : AccessibilityService() {
         }
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    /** Task record saves, off the main thread; one at a time and in order, so an older save never lands last. */
+    private val saves = Dispatchers.IO.limitedParallelism(1)
     private val mutable = MutableStateFlow(TaskState())
     val state = mutable.asStateFlow()
     private val remoteSnapshot = MutableStateFlow(RemoteSnapshot())
@@ -297,14 +302,22 @@ class AssistantService : AccessibilityService() {
                 val mark = "${value.status}:${if (value.status == TaskStatus.RUNNING) value.steps else value.trace.size}"
                 if (mark == persisted) return@collect
                 persisted = mark
-                try { vault.record(record.copy(status = value.status.name,
-                    result = value.result.ifBlank { if (value.status == TaskStatus.RUNNING) "" else value.message }, log = value.trace)) }
-                catch (_: Exception) {
-                    if (value.status in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) next.fail("本地记录保存失败")
-                    else {
-                        mutable.value = value.copy(message = value.message + "；记录保存失败")
-                        remoteSnapshot.value = RemoteSnapshot(record.id, mutable.value)
-                        renderOverlay(mutable.value)
+                val saving = record.copy(status = value.status.name,
+                    result = value.result.ifBlank { if (value.status == TaskStatus.RUNNING) "" else value.message }, log = value.trace)
+                // Each save encrypts the whole vault; on the main thread that stalled the overlay and the task's next step.
+                scope.launch(saves) {
+                    try { vault.record(saving); recordSaves.value += 1 }
+                    catch (_: Exception) {
+                        withContext(Dispatchers.Main) {
+                            if (controller !== next) return@withContext
+                            val now = next.state.value
+                            if (now.status in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) next.fail("本地记录保存失败")
+                            else {
+                                mutable.value = now.copy(message = now.message + "；记录保存失败")
+                                remoteSnapshot.value = RemoteSnapshot(record.id, mutable.value)
+                                renderOverlay(mutable.value)
+                            }
+                        }
                     }
                 }
             }
@@ -313,24 +326,26 @@ class AssistantService : AccessibilityService() {
     }
 
     private fun remember(ops: List<MemoryOp>): String {
-        val vault = Vault(this)
-        val saved = vault.read()
-        val update = MemoryOps.apply(saved.memory, ops)
-        vault.write(saved.copy(memory = update.memory))
-        return update.summary
+        var summary = ""
+        Vault(this).update { saved -> MemoryOps.apply(saved.memory, ops).let { summary = it.summary; saved.copy(memory = it.memory) } }
+        return summary
     }
 
     /** Learns from a completed task once its result is shown; the outcome is appended to that task's log. */
     private fun reflect(models: CloudModels, taskId: String, task: TaskState) = scope.launch {
         val line = try {
             val ops = withTimeout(60_000) { models.remember(task.goal, task.result, Vault(this@AssistantService).read().memory) }
-            "任务后记忆：" + if (ops.isEmpty()) "无变化" else remember(ops)
+            "任务后记忆：" + if (ops.isEmpty()) "无变化" else withContext(saves) { remember(ops) }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { "任务后记忆更新失败：${e.message?.lineSequence()?.first()}" }
-        runCatching {
-            val vault = Vault(this@AssistantService)
-            val saved = vault.read()
-            vault.write(saved.copy(records = saved.records.map { if (it.id == taskId) it.copy(log = it.log + logLine(line)) else it }))
+        // Queued behind the task's final record save, so that save cannot overwrite this line.
+        withContext(saves) {
+            runCatching {
+                Vault(this@AssistantService).update { saved ->
+                    saved.copy(records = saved.records.map { if (it.id == taskId) it.copy(log = it.log + logLine(line)) else it })
+                }
+                recordSaves.value += 1
+            }
         }
     }
 

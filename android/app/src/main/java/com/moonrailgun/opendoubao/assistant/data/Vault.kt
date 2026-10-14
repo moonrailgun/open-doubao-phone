@@ -30,11 +30,32 @@ data class Saved(val config: ModelConfig = ModelConfig(), val apps: Set<String> 
     }
 }
 
-/** Main-thread access; atomic replacement preserves the previous file if a write fails. */
+/**
+ * One copy of a value per process: the first read loads it, writes store it before anyone sees it, and [update] runs
+ * read, change and store as one step, so a write from another thread cannot slip in between and be lost.
+ */
+internal class Guarded<T : Any> {
+    @Volatile private var value: T? = null
+
+    fun read(load: () -> T): T = value ?: synchronized(this) { value ?: load().also { value = it } }
+
+    fun write(next: T, store: (T) -> T): T = synchronized(this) { store(next).also { value = it } }
+
+    fun update(load: () -> T, store: (T) -> T, transform: (T) -> T): T = synchronized(this) { write(transform(read(load)), store) }
+}
+
+/**
+ * Any thread; decrypts once per process, so reads are free and each change costs one encryption.
+ * Atomic replacement preserves the previous file if a write fails.
+ */
 class Vault(context: Context) {
     private val file = AtomicFile(File(context.noBackupFilesDir, "assistant.enc"))
     private val alias = "open-odoubao-v1"
     val modelCalls = ModelCallLog(File(context.noBackupFilesDir, "model-calls"), ::key)
+
+    private companion object {
+        val cache = Guarded<Saved>()
+    }
 
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -45,7 +66,18 @@ class Vault(context: Context) {
         }.generateKey()
     }
 
-    fun read(): Saved {
+    fun read(): Saved = cache.read(::load)
+
+    fun write(saved: Saved) { cache.write(saved, ::store) }
+
+    /** Reads, changes and writes with no other write in between. */
+    fun update(transform: (Saved) -> Saved): Saved = cache.update(::load, ::store, transform)
+
+    fun record(record: Record) {
+        update { saved -> saved.copy(records = (listOf(record) + saved.records.filterNot { it.id == record.id }).take(30)) }
+    }
+
+    private fun load(): Saved {
         if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) return Saved()
         try {
             val data = file.readFully()
@@ -73,7 +105,9 @@ class Vault(context: Context) {
         } catch (e: Exception) { throw IllegalStateException("本地加密记录无法读取，原文件已保留", e) }
     }
 
-    fun write(saved: Saved) {
+    /** Writes what a later [load] would return, and returns that, so the cache matches the file. */
+    private fun store(next: Saved): Saved {
+        val saved = next.copy(records = next.records.take(30).map { it.copy(result = it.result.take(6000), log = it.log.takeLast(400)) })
         val cfg = saved.config
         val json = JSONObject().put("config", JSONObject().put("jevEndpoint", cfg.jevEndpoint).put("jevModel", cfg.jevModel)
             .put("jevKey", cfg.jevKey).put("chatEndpoint", cfg.chatEndpoint).put("chatModel", cfg.chatModel).put("chatKey", cfg.chatKey)
@@ -85,18 +119,14 @@ class Vault(context: Context) {
             .put("memory", JSONArray(saved.memory.map { it.json().put("updated", it.updated) }))
             .put("remote", JSONObject().put("deviceId", saved.remote.deviceId).put("enabled", saved.remote.enabled)
                 .put("binding", saved.remote.binding?.json() ?: JSONObject.NULL))
-            .put("records", JSONArray(saved.records.take(30).map { r -> JSONObject().put("id", r.id).put("time", r.time)
-                .put("goal", r.goal).put("status", r.status).put("result", r.result.take(6000)).put("log", JSONArray(r.log.takeLast(400))) }))
+            .put("records", JSONArray(saved.records.map { r -> JSONObject().put("id", r.id).put("time", r.time)
+                .put("goal", r.goal).put("status", r.status).put("result", r.result).put("log", JSONArray(r.log)) }))
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val bytes = cipher.iv + cipher.doFinal(json.toString().toByteArray(Charsets.UTF_8))
         val stream = file.startWrite()
         try { stream.write(bytes); file.finishWrite(stream) }
         catch (e: Exception) { file.failWrite(stream); throw IllegalStateException("保存失败，原记录已保留", e) }
-        modelCalls.retain(saved.records.take(30).map { it.id }.toSet())
-    }
-
-    fun record(record: Record) {
-        val saved = read()
-        write(saved.copy(records = (listOf(record) + saved.records.filterNot { it.id == record.id }).take(30)))
+        modelCalls.retain(saved.records.map { it.id }.toSet())
+        return saved
     }
 }

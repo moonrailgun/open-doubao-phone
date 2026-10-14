@@ -111,7 +111,7 @@ class CloudModelsTest {
         val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
         models.fallback("draft", screen("notes.app", "editor"), Plan("browser.app", listOf("read", "draft"), emptyList()),
             Previous(screen("notes.app", "editor"), Action.Click("0.1"), false),
-            Evidence(listOf(screen(text = "original browser facts"))), null)
+            Evidence(listOf(screen(text = "original browser facts")), listOf(Source("browser.app", "original browser facts"))), null)
         val context = JSONObject(sent!!.getJSONArray("messages").getJSONObject(1).getString("content"))
         val instruction = sent!!.getJSONArray("messages").getJSONObject(0).getString("content")
         assertTrue(instruction.contains("selecting an existing"))
@@ -121,8 +121,10 @@ class CloudModelsTest {
         assertTrue(instruction.contains("cannot be read or operated reliably"))
         assertFalse(context.getBoolean("previous_dispatch_success"))
         assertEquals("notes.app", context.getJSONObject("screen").getString("app"))
-        assertEquals("original browser facts", context.getJSONArray("observations").getJSONObject(0)
-            .getJSONArray("elements").getJSONObject(0).getString("text"))
+        // Earlier screens reach the vision model only as retained text; their element trees stay out of every request.
+        assertEquals("original browser facts", context.getJSONArray("retained_sources").getJSONObject(0).getString("text"))
+        assertEquals(0, context.getJSONArray("observations").length())
+        assertTrue(instruction.contains(""""action":"done","result""""))
     }
 
     @Test fun oneMalformedVisionReplyIsRetriedWithTheParserComplaint() = runBlocking {

@@ -223,7 +223,8 @@ class MainActivity : ComponentActivity() {
             apps = catalogSelection(installed, fresh.apps, fresh.appsConfigured)
             records = fresh.records
         } }
-        LaunchedEffect(refresh, task.status) { attempt { records = vault.read().records } }
+        val recordSaveVersion by AssistantService.recordSaveVersion.collectAsState()
+        LaunchedEffect(refresh, task.status, recordSaveVersion) { attempt { records = vault.read().records } }
         DisposableEffect(tab) {
             if (tab == SETTINGS) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
