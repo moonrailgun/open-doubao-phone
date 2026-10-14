@@ -122,7 +122,7 @@ class AndroidPhone(private val service: AssistantService) : Phone {
             is Action.OpenApp -> launch(service.packageManager.getLaunchIntentForPackage(action.packageName)
                 ?: throw PhoneUnavailableException("该应用没有可直接打开的入口，请手动进入需要操作的页面"))
             is Action.OpenUrl -> launch(Intent(Intent.ACTION_VIEW, Uri.parse(action.url)).setPackage(action.packageName))
-            is Action.Click, is Action.Type, is Action.Scroll ->
+            is Action.Click, is Action.Type, is Action.Scroll, is Action.Submit ->
                 performOnNode(window().root ?: throw PhoneUnavailableException("当前页面没有可访问节点"), action)
             is Action.Tap -> gesture(Path().apply { moveTo(action.x.toFloat(), action.y.toFloat()) }, 80, expected!!, expectedImage!!, action.gestureBounds()!!)
             is Action.Swipe -> gesture(Path().apply { moveTo(action.x1.toFloat(), action.y1.toFloat()); lineTo(action.x2.toFloat(), action.y2.toFloat()) }, 400, expected!!, expectedImage!!, action.gestureBounds()!!)
@@ -250,7 +250,7 @@ internal fun readScreen(window: AccessibilityWindowInfo, width: Int, height: Int
         Bounds(bounds.left, bounds.top, bounds.right, bounds.bottom))
 }
 
-/** Runs a click, type or scroll on the node it names under [root]; every node it visits is recycled. */
+/** Runs a click, type, scroll or enter on the node it names under [root]; every node it visits is recycled. */
 internal fun performOnNode(root: AccessibilityNodeInfo, action: Action): Boolean {
     val (id, code, bundle) = when (action) {
         is Action.Click -> Triple(action.node, AccessibilityNodeInfo.ACTION_CLICK, null)
@@ -258,6 +258,8 @@ internal fun performOnNode(root: AccessibilityNodeInfo, action: Action): Boolean
             Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, action.text) })
         is Action.Scroll -> Triple(action.node, if (action.forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
             else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, null)
+        // Delivered to the field's editor action, so it needs no keyboard on screen (the virtual display shows none).
+        is Action.Submit -> Triple(action.node, AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id, null)
         else -> { root.recycle(); return false }
     }
     var node = root

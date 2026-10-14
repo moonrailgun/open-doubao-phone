@@ -71,6 +71,24 @@ class PolicyTest {
         assertNotEquals(screen().fingerprint, selected.fingerprint)
     }
 
+    @Test fun enterIsPressedOnlyInSearchAndAddressFields() {
+        // Google Maps on 2026-10-14: a typed query sat unsent with no search button or keyboard on the virtual display.
+        fun field(text: String, resource: String, description: String = "") = screen().copy(elements = listOf(
+            Element("0.1", text, description, "android.widget.EditText", resource, Bounds(0, 0, 200, 100), editable = true)))
+        val maps = field("coffee shops nearby", "com.google.android.apps.maps:id/search_omnibox_edit_text")
+        assertEquals(Permission.ALLOW, ActionPolicy.assess(Action.Submit("0.1"), maps, allowed))
+        assertEquals(Permission.ALLOW, ActionPolicy.assess(Action.Submit("0.1"), field("cats", "com.android.chrome:id/url_bar"), allowed))
+        assertEquals(Permission.ALLOW, ActionPolicy.assess(Action.Submit("0.1"), field("cats", "", "搜索"), allowed))
+        // In a chat box enter sends the message, even when the message itself mentions searching.
+        assertEquals(Permission.REJECT, ActionPolicy.assess(Action.Submit("0.1"), field("帮我搜索一下", "lark:id/input_text"), allowed))
+        assertEquals(Permission.REJECT, ActionPolicy.assess(Action.Submit("0.1"), screen(), allowed))
+        val actions = Candidates.build(maps, Plan("browser.app", emptyList(), emptyList()), allowed).map { it.action }
+        assertTrue(Action.Submit("0.1") in actions)
+        val chat = Candidates.build(field("你好", "lark:id/input_text"), Plan("browser.app", emptyList(), emptyList()), allowed).map { it.action }
+        assertFalse(chat.any { it is Action.Submit })
+        assertEquals("提交「coffee shops nearby · search_omnibox_edit_text」", Action.Submit("0.1").description(maps))
+    }
+
     @Test fun actionDescriptionsCanIncludeCompleteTextAndUrl() {
         val content = "draft ".repeat(500) + "END OF EXACT CONTENT"
         assertTrue(Action.Type("0.1", content).description(screen(), complete = true).endsWith(content))

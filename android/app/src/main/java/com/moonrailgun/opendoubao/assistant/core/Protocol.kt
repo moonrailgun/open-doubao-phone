@@ -93,7 +93,8 @@ object JevProtocol {
         val done = answers.getJSONObject("done")
         require(done.getString("type") == "noul")
         val doneProbability = probability(done, "noul")
-        val finished = doneProbability >= .95
+        // Across six recorded tasks, pages short of the goal stayed at 0.2 or less while a finished one reached 0.85.
+        val finished = doneProbability >= .8
         val effect = answers.getJSONObject("effect")
         val effectChoice = choice(effect, setOf("yes", "no", "unknown"))
         val confirmedEffect = if (probability(effect, "confidence") < .65) Effect.UNKNOWN else when (effectChoice) {
@@ -185,6 +186,7 @@ object ModelProtocol {
             "click" -> Action.Click(obj.strictString("node"))
             "type" -> Action.Type(obj.strictString("node"), obj.strictString("text"))
             "scroll" -> { require(obj.get("forward") is Boolean); Action.Scroll(obj.strictString("node"), obj.getBoolean("forward")) }
+            "submit" -> Action.Submit(obj.strictString("node"))
             "tap" -> Action.Tap(obj.strictInt("x"), obj.strictInt("y"))
             "swipe" -> Action.Swipe(obj.strictInt("x1"), obj.strictInt("y1"), obj.strictInt("x2"), obj.strictInt("y2"))
             "back" -> Action.Back; "home" -> Action.Home; "wait" -> Action.Wait

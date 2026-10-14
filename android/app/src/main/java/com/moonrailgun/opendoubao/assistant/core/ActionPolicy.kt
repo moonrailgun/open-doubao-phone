@@ -3,6 +3,9 @@ package com.moonrailgun.opendoubao.assistant.core
 enum class Permission { ALLOW, REJECT }
 
 object ActionPolicy {
+    // ponytail: names only; read the field's hint text too if a search field turns up without either.
+    private val searchField = Regex("search|query|url_bar|omnibox|搜索|搜尋|查找", RegexOption.IGNORE_CASE)
+
     fun assess(action: Action, screen: Screen, apps: Set<String>): Permission {
         if (runCatching { action.validate() }.isFailure || screen.protected) return Permission.REJECT
         if (action is Action.OpenApp) return if (action.packageName in apps) Permission.ALLOW else Permission.REJECT
@@ -12,9 +15,12 @@ object ActionPolicy {
             is Action.Click -> screen.elements.find { it.id == action.node && it.clickable }
             is Action.Type -> screen.elements.find { it.id == action.node && it.editable }
             is Action.Scroll -> screen.elements.find { it.id == action.node && it.scrollable }
+            // In a chat box enter sends the message, so only fields named for search or an address take it. The field's
+            // own text is what was typed, so it never counts.
+            is Action.Submit -> screen.elements.find { it.id == action.node && it.editable && searchField.containsMatchIn("${it.resourceId} ${it.description}") }
             else -> null
         }
-        if ((action is Action.Click || action is Action.Type || action is Action.Scroll) &&
+        if ((action is Action.Click || action is Action.Type || action is Action.Scroll || action is Action.Submit) &&
             (node == null || !node.enabled || node.password)) return Permission.REJECT
         val bounds = screen.windowBounds
         if (action is Action.Tap && !bounds.contains(action.x, action.y)) return Permission.REJECT
@@ -36,6 +42,7 @@ object Candidates {
         screen.elements.filter { it.enabled && !it.password }.forEach { node ->
             if (node.clickable) actions += Action.Click(node.id)
             if (node.editable) plan.texts.forEach { actions += Action.Type(node.id, it) }
+            if (node.editable && node.text.isNotBlank()) actions += Action.Submit(node.id)
             if (node.scrollable) { actions += Action.Scroll(node.id, true); actions += Action.Scroll(node.id, false) }
         }
         actions += Action.Back

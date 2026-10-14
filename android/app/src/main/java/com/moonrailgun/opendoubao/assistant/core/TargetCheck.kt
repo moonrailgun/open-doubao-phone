@@ -10,6 +10,7 @@ internal fun sameTarget(action: Action?, before: Screen, after: Screen): Boolean
         is Action.Click -> action.node
         is Action.Type -> action.node
         is Action.Scroll -> action.node
+        is Action.Submit -> action.node
         else -> return false
     }
     if (after.packageName != before.packageName || after.windowId != before.windowId) return false

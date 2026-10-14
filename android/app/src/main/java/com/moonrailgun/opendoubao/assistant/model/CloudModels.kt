@@ -227,12 +227,15 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
             {"action":"click","node":"current element id"}
             {"action":"type","node":"editable element id","text":"full exact text"}
             {"action":"scroll","node":"scrollable element id","forward":true}
+            {"action":"submit","node":"search or address field id"}
             {"action":"open_app","package":"package"}
             {"action":"open_url","package":"browser package","url":"https://..."}
             {"action":"tap","x":integer,"y":integer}
             {"action":"swipe","x1":integer,"y1":integer,"x2":integer,"y2":integer}
             {"action":"back"}, {"action":"wait"}, {"action":"done","result":"answer for the user"},
             {"action":"handover","reason":"reason in the user's language"}.
+            submit presses enter in a field, as the keyboard's search key would: use it after typing a query when no search
+            button or suggestion fits. It works only in search and address fields; to send a message, use its send button.
             Prefer elements over coordinates. Coordinates use the screen's original width/height.${if (compactScreens) " Screens list only elements with text or an action; absent flags are false." else ""}
             Include an "observations" string (at most 8000 characters) with goal-relevant facts read from the image,
             preserving numbers and visible source URLs. These observations are retained for later steps and the final summary.

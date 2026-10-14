@@ -53,10 +53,22 @@ class ProtocolTest {
         assertNull(JevProtocol.parse(answer("none", .99), candidates).action)
     }
 
+    @Test fun jevFinishesFromEightyPercent() {
+        // Settings on 2026-10-14: the battery page Jev scored 0.85 and 0.87 was done; pages still on the way stayed at 0.2 or less.
+        assertTrue(JevProtocol.parse(answer("none", .99, done = .8), candidates).done)
+        assertFalse(JevProtocol.parse(answer("none", .99, done = .79), candidates).done)
+    }
+
     @Test fun invalidChoiceAndProbabilityAreRejected() {
         listOf(answer("invented", .9), answer("c0", 1.1), answer("c0", -.1), "{}").forEach {
             assertThrows(IllegalArgumentException::class.java) { JevProtocol.parse(it, candidates) }
         }
+    }
+
+    @Test fun submitNamesTheFieldItPresses() {
+        assertEquals(Action.Submit("0.1"), ModelProtocol.parseAction(JSONObject("""{"action":"submit","node":"0.1"}""")))
+        assertEquals(JSONObject().put("action", "submit").put("node", "0.1").toString(), Action.Submit("0.1").json().toString())
+        assertThrows(IllegalArgumentException::class.java) { ModelProtocol.parseAction(JSONObject("""{"action":"submit","node":"x"}""")) }
     }
 
     @Test fun fallbackRejectsUnknownActionsAndOutOfRangeCoordinates() {
@@ -102,11 +114,11 @@ class ProtocolTest {
         "confidence":$confidence,"probabilities":{"virtual":${if (choice == "virtual") confidence else 1 - confidence},
         "foreground":${if (choice == "foreground") confidence else 1 - confidence}}}}}"""
 
-    private fun answer(choice: String, confidence: Double) = """{
+    private fun answer(choice: String, confidence: Double, done: Double = .02) = """{
       "model":"jev-1.13.0","answers":{
         "next":{"type":"choice","choice":"$choice","confidence":$confidence,
           "probabilities":{"c0":0.92,"none":0.08}},
-        "done":{"type":"noul","noul":0.02},
+        "done":{"type":"noul","noul":$done},
         "effect":{"type":"choice","choice":"unknown","confidence":0.8,
           "probabilities":{"yes":0.1,"no":0.1,"unknown":0.8}}},
       "usage":{"input_tokens":400,"output_tokens":40}}"""

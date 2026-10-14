@@ -24,6 +24,7 @@ class TargetCheckTest {
         assertFalse(sameTarget(Action.Click("0.9"), page("a"), page("a")))
         assertFalse(sameTarget(Action.Back, page("a"), page("b")))
         assertTrue(sameTarget(Action.Type("0.1", "孙大炮"), page("a"), page("b")))
+        assertTrue(sameTarget(Action.Submit("0.1"), page("a"), page("b")))
     }
 
     @Test fun aClickProceedsWhileTheListBelowKeepsChanging() = runTest {

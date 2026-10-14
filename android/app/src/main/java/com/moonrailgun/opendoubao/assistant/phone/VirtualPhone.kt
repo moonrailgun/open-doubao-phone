@@ -20,6 +20,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.OutcomeReceiver
+import android.os.SystemClock
 import android.view.Display
 import android.view.Surface
 import android.view.SurfaceControl
@@ -130,7 +131,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         val accepted = when (action) {
             is Action.OpenApp -> launch { live.launchApplication(action.packageName) }
             is Action.OpenUrl -> launch { live.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(action.url)).setPackage(action.packageName), null) }
-            is Action.Click, is Action.Type, is Action.Scroll ->
+            is Action.Click, is Action.Type, is Action.Scroll, is Action.Submit ->
                 performOnNode(window().root ?: throw PhoneUnavailableException("当前页面没有可访问节点"), action)
             is Action.Tap -> interact { cancel, receiver -> live.tap(action.x, action.y, cancel, executor, receiver) }
             is Action.Swipe -> interact { cancel, receiver -> live.swipe(action.x1, action.y1, action.x2, action.y2, cancel, executor, receiver) }
@@ -142,8 +143,14 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         if (accepted) {
             launched?.let { awaitForeground(it) }
             delay(200)
-            // Stable once accessibility events have been quiet for the listener's 300 ms; busy pages stop at the cap.
-            withTimeoutOrNull(2_500) { stable.first { it > mark } }
+            // The session's stability listener only follows its own input (launches, taps, swipes, back); node actions go
+            // through accessibility and never arm it, so for those the page is read until it holds still.
+            if (action is Action.Click || action is Action.Type || action is Action.Scroll || action is Action.Submit) {
+                awaitSteady({ runCatching { observe().fingerprint }.getOrNull() })
+            } else {
+                // Stable once accessibility events have been quiet for the listener's 300 ms; busy pages stop at the cap.
+                withTimeoutOrNull(2_500) { stable.first { it > mark } }
+            }
         }
         return accepted
     }
@@ -354,5 +361,18 @@ class VirtualPhone(private val service: AssistantService, private val foreground
     private companion object {
         const val CHANNEL = "computer_control"
         const val NOTIFICATION_ID = 7301
+    }
+}
+
+/** Polls [read] until it returns the same value for [quietMillis], or [capMillis] passes. */
+internal suspend fun awaitSteady(read: suspend () -> Any?, quietMillis: Long = 300, capMillis: Long = 1_500,
+                                 now: () -> Long = SystemClock::uptimeMillis) {
+    val until = now() + capMillis
+    var last = read()
+    var since = now()
+    while (now() < until) {
+        delay(100)
+        val current = read()
+        if (current != last) { last = current; since = now() } else if (now() - since >= quietMillis) return
     }
 }
