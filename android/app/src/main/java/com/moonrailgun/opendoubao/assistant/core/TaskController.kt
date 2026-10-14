@@ -40,6 +40,10 @@ class TaskController(
     private val evidence = ArrayDeque<Screen>()
     private val sources = linkedSetOf<Source>()
     private var unchanged = 0
+    private var failures = 0
+    /** Handover requests the user answered with continue; the vision model may then do what each one asked permission for. */
+    private val approvals = mutableListOf<String>()
+    private var asking: String? = null
     private var remainingActiveMillis = TASK_TIMEOUT_MILLIS
     private var runStartedAtMillis = 0L
 
@@ -54,6 +58,9 @@ class TaskController(
         evidence.clear()
         sources.clear()
         unchanged = 0
+        failures = 0
+        approvals.clear()
+        asking = null
         remainingActiveMillis = TASK_TIMEOUT_MILLIS
         mutable.value = TaskState(goal = goal.trim())
         trace("开始：${goal.trim()}（可用应用 ${apps.size} 个，${if (place == null) "${phone.mode}执行" else "执行方式待判断"}）")
@@ -69,21 +76,34 @@ class TaskController(
     fun stop() {
         if (state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) return
         stopJob()
-        finish(TaskStatus.STOPPED, "已紧急停止，不会再有新的操作")
+        finish(TaskStatus.STOPPED, "已停止，不会再有新的操作")
     }
 
+    /** Continuing after a handover grants what it asked for, so the vision model may then do it instead of asking again. */
     fun resume() {
         if (state.value.status != TaskStatus.PAUSED) return
         previous = null
         unchanged = 0
-        trace("继续任务：重新观察当前页面")
+        failures = 0
+        asking?.let { approvals += it }
+        trace(asking?.let { "继续任务：已同意「$it」，重新观察当前页面" } ?: "继续任务：重新观察当前页面")
+        asking = null
         launchRun()
     }
 
-    private fun pause(reason: String) {
+    private fun pause(reason: String, ask: Boolean = false) {
         remainingActiveMillis = (remainingActiveMillis - (monotonicMillis() - runStartedAtMillis)).coerceAtLeast(0L)
+        asking = if (ask) reason else null
         mutable.value = state.value.copy(status = TaskStatus.PAUSED, message = reason)
         trace("暂停：$reason")
+    }
+
+    /** A step that cannot go ahead is retried; only the third failure in a row pauses with [message]. Returns whether it paused. */
+    private fun stuck(message: String): Boolean {
+        trace("没能推进（连续第 ${++failures} 次）：${message.substringBefore("，请")}")
+        if (failures < 3) return false
+        pause(message)
+        return true
     }
 
     private fun stopJob() {
@@ -193,7 +213,7 @@ class TaskController(
                                     (fallback.handover?.let { "，交还：$it" } ?: "") + "，观察 ${fallback.observations.length} 字")
                                 if (fallback.observations.isNotBlank()) retain(Source(screen.packageName, fallback.observations, visual = true))
                                 if (fallback.handover != null) {
-                                    pause(fallback.handover)
+                                    pause(fallback.handover, ask = true)
                                     return@withTimeout
                                 }
                                 action = fallback.action
@@ -214,8 +234,8 @@ class TaskController(
                                 return@withTimeout
                             }
                             if (action == null) {
-                                pause("无法确定下一步操作，请手动处理后点击继续")
-                                return@withTimeout
+                                if (stuck("无法确定下一步操作，请手动处理后点击继续")) return@withTimeout
+                                continue
                             }
                             if (unchanged >= 6) {
                                 pause("多次调整后屏幕仍没有变化，请手动处理后点击继续")
@@ -224,18 +244,23 @@ class TaskController(
                             when (ActionPolicy.assess(action, fresh, apps)) {
                                 Permission.REJECT -> {
                                     trace("本地检查拒绝：${action.description(fresh)}")
-                                    pause("此操作超出本次任务的允许范围，请手动处理后点击继续")
-                                    return@withTimeout
+                                    if (stuck("此操作超出本次任务的允许范围，请手动处理后点击继续")) return@withTimeout
+                                    continue
                                 }
                                 Permission.ALLOW -> {
                                     if (action is Action.OpenApp && action.packageName !in launchableApps) {
-                                        pause("无法直接打开 ${action.packageName}，请通过其他应用或手动进入该页面后点击继续")
-                                        return@withTimeout
+                                        if (stuck("无法直接打开 ${action.packageName}，请通过其他应用或手动进入该页面后点击继续")) return@withTimeout
+                                        continue
                                     }
                                     perform(action, fresh, token, image)
                                 }
                             }
                             stale = 0
+                            failures = 0
+                        } catch (e: PhoneUnavailableException) {
+                            checkCurrent(token)
+                            if (stuck("${e.message ?: "当前页面无法操作"}，请手动处理后点击继续")) return@withTimeout
+                            delay(500)
                         } catch (_: ScreenChangedException) {
                             trace("决策期间页面变化（第 ${stale + 1} 次）")
                             if (++stale >= 6) {
@@ -286,7 +311,7 @@ class TaskController(
         return screen
     }
 
-    private fun taskEvidence() = Evidence(evidence.toList(), sources.toList())
+    private fun taskEvidence() = Evidence(evidence.toList(), sources.toList(), approvals.toList())
 
     private fun retain(source: Source) {
         if (source in sources) return

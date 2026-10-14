@@ -357,7 +357,7 @@ class NativeBridgeTest {
                 assertEquals(android.view.View.VISIBLE, panel.visibility)
                 val buttons = (0 until panel.childCount).map { panel.getChildAt(it) }.filterIsInstance<android.widget.Button>()
                     .filter { it.visibility == View.VISIBLE }
-                assertEquals(listOf("紧急停止"), buttons.map { it.contentDescription.toString() })
+                assertEquals(listOf("停止"), buttons.map { it.contentDescription.toString() })
                 assertTrue(buttons.single().performClick())
                 assertEquals(TaskStatus.STOPPED, controller.state.value.status)
             }

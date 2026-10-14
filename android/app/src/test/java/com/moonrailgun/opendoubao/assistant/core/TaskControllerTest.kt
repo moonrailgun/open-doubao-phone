@@ -612,7 +612,7 @@ class TaskControllerTest {
         assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
     }
 
-    @Test fun rejectedActionPausesWithoutDispatchAndResumeUsesANewDecision() = runTest {
+    @Test fun rejectedActionIsRetriedWithANewDecisionWithoutDispatch() = runTest {
         val phone = FakePhone()
         var decisions = 0
         val models = object : Models by FakeModels() {
@@ -623,12 +623,10 @@ class TaskControllerTest {
         val controller = TaskController(this, phone, models)
         controller.start("search", setOf("browser.app"))
         advanceUntilIdle()
-        assertEquals(TaskStatus.PAUSED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
-        controller.resume()
-        advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
         assertEquals(2, decisions)
+        assertTrue(controller.state.value.trace.any { it.contains("没能推进（连续第 1 次）：此操作超出本次任务的允许范围") })
     }
 
     @Test fun pausedTasksCanBeStoppedOrFailedAndCannotResumeAfterward() = runTest {
@@ -757,13 +755,17 @@ class TaskControllerTest {
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
     }
 
-    @Test fun absentVisualActionPausesForManualHandlingAndCanResume() = runTest {
+    @Test fun absentVisualActionRetriesTwiceThenPausesWithoutGrantingAnything() = runTest {
         val phone = FakePhone()
         var finish = false
+        val approvals = mutableListOf<List<String>>()
         val models = object : Models by FakeModels() {
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
                 Decision(null, finish, Effect.UNKNOWN)
-            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?) = ModelStep()
+            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {
+                approvals += evidence.approvals
+                return ModelStep()
+            }
         }
         val controller = TaskController(this, phone, models)
         controller.start("Read choices", setOf("browser.app"))
@@ -771,10 +773,41 @@ class TaskControllerTest {
         assertEquals(TaskStatus.PAUSED, controller.state.value.status)
         assertTrue(controller.state.value.message.contains("无法确定下一步操作"))
         assertEquals(0, controller.state.value.steps)
+        assertEquals(3, approvals.size)
+        assertTrue(approvals.all { it.isEmpty() })
         finish = true
         controller.resume()
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+    }
+
+    @Test fun continuingAfterAPermissionHandoverLetsTheVisionModelDoIt() = runTest {
+        val phone = FakePhone()
+        val ask = "要把“你好”发给孙淼，点继续即同意发送"
+        val approvals = mutableListOf<List<String>>()
+        val models = object : Models by FakeModels() {
+            override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
+                Decision(null, false, Effect.UNKNOWN)
+            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {
+                approvals += evidence.approvals
+                return when {
+                    evidence.approvals.isEmpty() -> ModelStep(handover = ask)
+                    previous == null -> ModelStep(Action.Click("0.1"))
+                    else -> ModelStep(done = true)
+                }
+            }
+        }
+        val controller = TaskController(this, phone, models)
+        controller.start("给孙淼发你好", setOf("browser.app"))
+        advanceUntilIdle()
+        assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+        assertEquals(ask, controller.state.value.message)
+        controller.resume()
+        advanceUntilIdle()
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals(listOf(Action.OpenApp("browser.app"), Action.Click("0.1")), phone.actions)
+        assertEquals(listOf(emptyList(), listOf(ask), listOf(ask)), approvals)
+        assertTrue(controller.state.value.trace.any { it.contains("已同意「$ask」") })
     }
 
     @Test fun unavailableObservationCaptureOrActionPausesAndResumesWithTheSamePlan() = runTest {

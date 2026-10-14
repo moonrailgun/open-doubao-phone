@@ -560,8 +560,8 @@ class AssistantService : AccessibilityService() {
         stopButton = Button(this).apply {
             // Emergency stop keeps its words next to the glyph; it is the one control that must never be guessed.
             val glyph = getDrawable(R.drawable.lucide_octagon_x)!!.mutate().apply { setTint(Color.WHITE); setBounds(0, 0, dp(18), dp(18)) }
-            text = SpannableStringBuilder().append(" ", ImageSpan(glyph, ImageSpan.ALIGN_CENTER), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE).append("  紧急停止")
-            contentDescription = "紧急停止"; textSize = 15f; isAllCaps = false
+            text = SpannableStringBuilder().append(" ", ImageSpan(glyph, ImageSpan.ALIGN_CENTER), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE).append("  停止")
+            contentDescription = "停止"; textSize = 15f; isAllCaps = false
             setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
             background = rounded(Color.rgb(210, 63, 53), 14)
             stateListAnimator = null
@@ -669,7 +669,7 @@ class AssistantService : AccessibilityService() {
             }
         }
         ball.contentDescription = when {
-            running -> "Open Doubao 正在操作手机，点按展开紧急停止"
+            running -> "Open Doubao 正在操作手机，点按展开可停止"
             paused -> "Open Doubao 已暂停，点按展开继续任务"
             conversing -> "Open Doubao 正在语音对话，点按展开"
             else -> "Open Doubao，点按查看结果或下达命令"

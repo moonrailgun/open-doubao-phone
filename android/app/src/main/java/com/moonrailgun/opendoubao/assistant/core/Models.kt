@@ -114,9 +114,9 @@ data class ModelStep(val action: Action? = null, val done: Boolean = false, val 
 data class Source(val app: String, val text: String, val visual: Boolean = false) {
     fun json() = JSONObject().put("app", app).put("text", text).put("visual_model_observation", visual)
 }
-data class Evidence(val screens: List<Screen>, val sources: List<Source> = emptyList()) {
+data class Evidence(val screens: List<Screen>, val sources: List<Source> = emptyList(), val approvals: List<String> = emptyList()) {
     fun json() = JSONObject().put("observations", JSONArray(screens.map { it.json() }))
-        .put("retained_sources", JSONArray(sources.map { it.json() }))
+        .put("retained_sources", JSONArray(sources.map { it.json() })).put("user_approvals", JSONArray(approvals))
 }
 
 class ScreenChangedException : IllegalStateException("页面已变化")

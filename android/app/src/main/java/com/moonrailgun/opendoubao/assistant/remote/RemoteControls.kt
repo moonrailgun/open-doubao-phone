@@ -60,7 +60,7 @@ fun RemoteControls(service: AssistantService?, refresh: Int, vault: Vault, openA
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("桌面远程控制", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            Text("手机和电脑连接同一局域网。绑定后，桌面可下发任务、紧急停止，以及读取任务结果和执行日志。请先保存模型和应用选择。",
+            Text("手机和电脑连接同一局域网。绑定后，桌面可下发任务、停止任务，以及读取任务结果和执行日志。请先保存模型和应用选择。",
                 fontSize = 13.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(status.message, fontSize = 14.sp, lineHeight = 21.sp,
                 color = if (status.connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)

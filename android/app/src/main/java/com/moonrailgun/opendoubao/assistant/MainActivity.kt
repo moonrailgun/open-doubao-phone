@@ -276,8 +276,8 @@ class MainActivity : ComponentActivity() {
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(if (paused) "任务已暂停，等你处理" else if (busy) "正在替你操作手机" else "想让手机帮你做什么？", fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
-                            Text(if (paused) "手动处理当前页面后，点击继续就能接着执行，也可以停止任务。"
-                                else if (busy) "可以切到别的界面看它工作，点开悬浮球随时能紧急停止。"
+                            Text(if (paused) "点继续表示同意它接着执行；也可以先自己处理再继续，或停止任务。"
+                                else if (busy) "可以切到别的界面看它工作，点开悬浮球随时能停止。"
                                 else "说一句话，它会自己打开应用、点按和输入，做完把结果告诉你。",
                                 fontSize = 15.sp, lineHeight = 22.sp, color = colors.onSurfaceVariant)
                         }
@@ -324,7 +324,7 @@ class MainActivity : ComponentActivity() {
                                         icon = { Icon(painterResource(glyph), null, Modifier.size(18.dp)) })
                                 }
                             }
-                            Text("开始后自动执行，可随时点开悬浮球紧急停止。遇到付款、发送、删除、输入密码或凭据等需要手动处理的操作会暂停，处理后点击继续，但无法保证识别所有敏感操作。",
+                            Text("开始后自动执行，可随时点开悬浮球停止。遇到发送、付款、删除等操作会先暂停征求同意，点继续即授权它执行；输入密码或凭据仍需你手动处理。无法保证识别所有敏感操作。",
                                 Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                         }
                     }
@@ -667,7 +667,7 @@ class MainActivity : ComponentActivity() {
             if (running || paused) Button(onStop, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = StopRed, contentColor = Color.White)) {
                 Icon(painterResource(R.drawable.lucide_octagon_x), null, Modifier.size(20.dp))
-                Text("紧急停止", Modifier.padding(start = 8.dp), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("停止", Modifier.padding(start = 8.dp), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }

@@ -269,7 +269,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         val preview = PendingIntent.getActivity(service, 0,
             checkNotNull(service.packageManager.getLaunchIntentForPackage(service.packageName)), PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(service, CHANNEL).setSmallIcon(R.drawable.lucide_bot)
-            .setContentTitle("Open Doubao 正在虚拟屏上操作").setContentText("点开查看画面；悬浮球可紧急停止")
+            .setContentTitle("Open Doubao 正在虚拟屏上操作").setContentText("点开查看画面；悬浮球可停止")
             .setContentIntent(preview).setOngoing(true)
             // Sessions require a notification that may be promoted to a live update; SDK 36 has no setter for it yet.
             .addExtras(Bundle().apply { putBoolean("android.requestPromotedOngoing", true) }).build()

@@ -20,7 +20,6 @@
   "models-required": "请填写两个模型的标识",
   "keys-required": "请填写两个服务的 API Key",
   "invalid-key": "API Key 不能包含空白",
-  "emergency-stop": "已紧急停止，不会再有新的操作",
   "completed": "任务已完成",
   "step-limit": "已到 30 步上限，任务仍未完成",
   "source-limit": "任务来源已达容量上限，请拆分任务；已有来源未被丢弃",
