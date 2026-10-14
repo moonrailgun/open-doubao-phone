@@ -189,4 +189,4 @@ adb -s "$DOUXIAN_SERIAL" shell am instrument -w \
 
 动画随 payload 一起生成、校验 SHA-256，并写入 `/system/media/bootanimation.zip`，不修改 Bootloader 解锁提示。当前目标机未发现 APEX、product 或 OEM 的覆盖动画；更换系统基线后需要重新检查 [AOSP 的加载顺序](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/cmds/bootanimation/BootAnimation.cpp)。
 
-测试覆盖归档 CRC、无压缩格式、完整播放指令、120 帧及顺序、PNG 尺寸与定位、视频首中尾帧一致性、末帧等待和拒绝覆盖。此前静态 Logo 动画已通过真机检查；这版视频动画尚未刷入手机验证。
+测试覆盖归档 CRC、无压缩格式、完整播放指令、120 帧及顺序、PNG 尺寸与定位、视频首中尾帧一致性、末帧等待和拒绝覆盖。此前的静态 Logo 动画和这版挥手视频动画均已在真机上目测确认正常播放。
