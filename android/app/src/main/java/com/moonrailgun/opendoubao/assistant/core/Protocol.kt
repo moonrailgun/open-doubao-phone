@@ -74,11 +74,15 @@ object JevProtocol {
         else apps[choice.drop(1).toInt()]
     }
 
-    /** Null below the confidence bar, so the caller asks the chat model instead. */
-    fun parsePlacement(raw: String): Placement? = parseSafely {
+    /**
+     * The likelier of the two, whatever Jev's confidence: waiting 4 s for the chat model when Jev leaned 82% foreground
+     * at .64 confidence held up opening the app early. A tie goes virtual, as the rule says.
+     */
+    fun parsePlacement(raw: String): Placement = parseSafely {
         val answer = JSONObject(raw).getJSONObject("answers").getJSONObject("placement")
-        val choice = choice(answer, setOf("virtual", "foreground"))
-        if (probability(answer, "confidence") < .65) null else if (choice == "foreground") Placement.FOREGROUND else Placement.VIRTUAL
+        choice(answer, setOf("virtual", "foreground"))
+        val odds = answer.getJSONObject("probabilities")
+        if (probability(odds, "foreground") > probability(odds, "virtual")) Placement.FOREGROUND else Placement.VIRTUAL
     }
 
     fun parse(raw: String, candidates: List<Candidate>): Decision = parseSafely {

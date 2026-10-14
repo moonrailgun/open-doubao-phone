@@ -63,7 +63,7 @@ class CloudModelsTest {
         assertEquals("The chart shows 42 units.", controller.state.value.result)
     }
 
-    @Test fun placementAsksJevFirstAndTheChatModelOnlyWhenJevIsUnsureOrDown() = runBlocking {
+    @Test fun placementAsksJevFirstAndTheChatModelOnlyWhenJevIsDown() = runBlocking {
         var jevConfidence = .9; var jevDown = false; var chats = 0
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val buffer = Buffer()
@@ -87,15 +87,14 @@ class CloudModelsTest {
         val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
         assertEquals(Placement.VIRTUAL to "Jev", models.placement("付款"))
         assertEquals(0, chats)
+        // An unsure Jev still decides, by the likelier of the two (foreground at .6 here), without a chat call.
         jevConfidence = .4
-        val unsure = models.placement("付款")
-        assertEquals(Placement.FOREGROUND, unsure.first)
-        assertTrue(unsure.second, unsure.second.startsWith("Chat 模型，Jev 不确定"))
+        assertEquals(Placement.FOREGROUND to "Jev", models.placement("付款"))
         jevDown = true
         val down = models.placement("付款")
         assertEquals(Placement.FOREGROUND, down.first)
         assertTrue(down.second, down.second.startsWith("Chat 模型，Jev 不可用"))
-        assertEquals(2, chats)
+        assertEquals(1, chats)
     }
 
     @Test fun fallbackUploadsRetainedSourcesAlongsideCurrentEditor() = runBlocking {
