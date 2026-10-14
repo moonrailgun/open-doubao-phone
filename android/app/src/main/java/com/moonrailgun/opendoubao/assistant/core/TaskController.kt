@@ -181,6 +181,19 @@ class TaskController(
                             }
                             update("正在决定下一步", logged = false)
                             val candidates = Candidates.build(screen, plan!!, apps, launchableApps)
+                            // The screenshot and vision call start alongside Jev rather than after it: on pages it does not know
+                            // Jev is rarely sure, and its 1–2 s "no" sat in front of every vision step. A sure Jev cancels them, at
+                            // the price of a vision request on steps Jev could do alone. Failures wait for a step that needs the result.
+                            val look = async {
+                                try {
+                                    val shot = timed("截图") { phone.screenshot(screen) }
+                                    Result.success(shot to timed("视觉模型") {
+                                        withTimeout(60_000) { models.fallback(state.value.goal, screen, plan!!, previous, taskEvidence(), shot) }
+                                    })
+                                } catch (e: TimeoutCancellationException) { Result.failure(e) }
+                                catch (e: CancellationException) { throw e }
+                                catch (e: Exception) { Result.failure(e) }
+                            }
                             val decision = try {
                                 timed("Jev 决策（${candidates.size} 个候选）") {
                                     withTimeout(60_000) { models.decide(state.value.goal, screen, plan!!, candidates, previous) }
@@ -189,15 +202,17 @@ class TaskController(
                                 // Jev only speeds up element picks; when it is rate limited or down, the vision model takes the step.
                                 trace("Jev 不可用：${e.message?.lineSequence()?.first()}")
                                 Decision(null, false, Effect.UNKNOWN)
-                            }
+                            } catch (e: Throwable) { look.cancel(); throw e }
                             checkCurrent(token)
                             trace("Jev：${decision.action?.description(screen) ?: "无动作"}，完成=${decision.done}（${"%.2f".format(decision.doneProbability)}），上一步效果=${decision.effect}")
                             var action = decision.action
                             var done = decision.done
                             var image: String? = null
                             var answer = ""
-                            if (action == null && !done || previous != null &&
-                                (decision.effect == Effect.NO || previous?.dispatched == false || unchanged >= 3)) {
+                            val needsVision = action == null && !done || previous != null &&
+                                (decision.effect == Effect.NO || previous?.dispatched == false || unchanged >= 3)
+                            // Joined so its cancellation is logged and the overlay is back before anything else happens.
+                            if (!needsVision) look.cancelAndJoin() else {
                                 update("没有顺利推进，正在看截图调整做法")
                                 trace("转视觉模型：" + when {
                                     action == null && !done -> "Jev 没有可信的下一步"
@@ -205,10 +220,15 @@ class TaskController(
                                     decision.effect == Effect.NO -> "上一步没有生效"
                                     else -> "连续 $unchanged 次页面无变化"
                                 })
-                                image = timed("截图") { phone.screenshot(screen) }
-                                val fallback = timed("视觉模型") {
-                                    withTimeout(60_000) { models.fallback(state.value.goal, screen, plan!!, previous, taskEvidence(), image) }
+                                // Vision is looking at the page Jev was given. If that page had nothing to read or press and has
+                                // changed since (an app still loading), read it again now rather than wait seconds for an answer
+                                // about a blank page. On pages with content its answer can still stand (stillThere, targetKept).
+                                if (!look.isCompleted && screen.elements.none { it.useful } && phone.observe().fingerprint != screen.fingerprint) {
+                                    look.cancelAndJoin()
+                                    throw ScreenChangedException()
                                 }
+                                val (shot, fallback) = look.await().getOrThrow()
+                                image = shot
                                 checkCurrent(token)
                                 trace("视觉模型：${fallback.action?.description(screen) ?: "无动作"}，完成=${fallback.done}" +
                                     (fallback.handover?.let { "，交还：$it" } ?: "") + "，观察 ${fallback.observations.length} 字")
@@ -364,6 +384,7 @@ class TaskController(
     /** Times a model or capture call; a timeout names the call that was still pending. */
     private suspend fun <T> timed(name: String, block: suspend () -> T): T {
         trace("→ $name")
+        val token = generation
         val started = System.currentTimeMillis()
         fun elapsed() = "${System.currentTimeMillis() - started}ms"
         try {
@@ -371,6 +392,8 @@ class TaskController(
         } catch (e: TimeoutCancellationException) {
             trace("× $name 超时 ${elapsed()}"); throw e
         } catch (e: CancellationException) {
+            // Only a call this run dropped itself, such as vision once Jev was sure; a stopped task has already logged its end.
+            if (generation == token && state.value.status == TaskStatus.RUNNING) trace("× $name 取消 ${elapsed()}")
             throw e
         } catch (e: Exception) {
             trace("× $name 失败 ${elapsed()}"); throw e

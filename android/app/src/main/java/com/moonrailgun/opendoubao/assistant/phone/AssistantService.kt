@@ -254,7 +254,8 @@ class AssistantService : AccessibilityService() {
             check(apps.isNotEmpty()) { "请先选择本次任务允许访问的应用" }
             CloudModels(saved.config, HttpTransport(secrets = saved.config.secrets, log = { vault.modelCalls.append(taskId, it) }),
                 memory = saved.memory,
-                recent = saved.records.filter { it.status == "COMPLETED" }.take(3).map { PastTask(it.goal, it.result.take(600)) })
+                recent = saved.records.filter { it.status == "COMPLETED" }.take(3).map { PastTask(it.goal, it.result.take(600)) },
+                compactScreens = compactScreens(this))
         } catch (e: Exception) {
             // A task rejected before it starts still leaves a record saying why.
             runCatching { vault.record(record.copy(status = "FAILED", result = e.message ?: "无法开始任务",

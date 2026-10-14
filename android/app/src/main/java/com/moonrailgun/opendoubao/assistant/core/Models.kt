@@ -23,6 +23,21 @@ data class Element(
         .put("bounds", JSONArray(listOf(bounds.left, bounds.top, bounds.right, bounds.bottom)))
         .put("clickable", clickable).put("editable", editable).put("scrollable", scrollable)
         .put("enabled", enabled).put("checked", checked)
+    /** Whether the compact form keeps this node: it has text to read or an action to take. */
+    val useful: Boolean get() = text.isNotBlank() || description.isNotBlank() || clickable || editable || scrollable || checked
+    /** Only what is set: empty strings and false flags were most of each node. Class and resource lose their package. */
+    fun compactJson() = JSONObject().put("id", id).apply {
+        if (text.isNotBlank()) put("text", text)
+        if (description.isNotBlank()) put("description", description)
+        put("class", className.substringAfterLast('.'))
+        if (resourceId.isNotBlank()) put("resource", resourceId.substringAfterLast('/'))
+        put("bounds", JSONArray(listOf(bounds.left, bounds.top, bounds.right, bounds.bottom)))
+        if (clickable) put("clickable", true)
+        if (editable) put("editable", true)
+        if (scrollable) put("scrollable", true)
+        if (!enabled) put("enabled", false)
+        if (checked) put("checked", true)
+    }
 }
 
 data class Screen(val packageName: String, val windowId: Int, val width: Int, val height: Int,
@@ -31,10 +46,13 @@ data class Screen(val packageName: String, val windowId: Int, val width: Int, va
     val protected: Boolean get() = elements.any { it.password }
     val fingerprint: String get() = MessageDigest.getInstance("SHA-256")
         .digest(toString().toByteArray()).joinToString("") { "%02x".format(it) }
-    fun json() = JSONObject().put("app", packageName).put("window", windowId)
+    /** [compact] sends only [Element.useful] nodes in [Element.compactJson] form, about a fifth of the size on Feishu. */
+    fun json(compact: Boolean = false) = JSONObject().put("app", packageName).put("window", windowId)
         .put("width", width).put("height", height).put("rotation", rotation).put("truncated", truncated)
         .put("window_bounds", JSONArray(listOf(windowBounds.left, windowBounds.top, windowBounds.right, windowBounds.bottom)))
-        .put("elements", JSONArray(elements.filterNot { it.password }.map { it.json() }))
+        .put("elements", JSONArray(elements.filterNot { it.password }.let { nodes ->
+            if (compact) nodes.filter { it.useful }.map { it.compactJson() } else nodes.map { it.json() }
+        }))
 }
 
 sealed interface Action {

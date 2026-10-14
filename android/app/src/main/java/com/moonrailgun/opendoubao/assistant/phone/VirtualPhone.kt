@@ -54,6 +54,9 @@ internal fun executionFrom(stored: String?, legacyForeground: Boolean?): String 
     false -> EXECUTION_VIRTUAL
 }
 fun chooseExecution(context: Context, value: String) = taskPrefs(context).edit().putString("execution", value).remove("foreground").apply()
+/** Whether new tasks send the vision model the compact screen form; on unless the user turned it off in settings. */
+fun compactScreens(context: Context) = taskPrefs(context).getBoolean("compactScreens", true)
+fun chooseCompactScreens(context: Context, on: Boolean) = taskPrefs(context).edit().putBoolean("compactScreens", on).apply()
 
 /** True when this system lets the assistant open a Computer Control session; false on stock Android and older images. */
 fun virtualDisplayAvailable(context: Context): Boolean = Build.VERSION.SDK_INT >= 34 && runCatching {

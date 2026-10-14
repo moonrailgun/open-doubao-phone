@@ -123,10 +123,9 @@ class TaskControllerTest {
                 phone.result = previous != null
                 return Decision(Action.Wait, previous?.action is Action.Back, Effect.UNKNOWN)
             }
-            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {
-                assertEquals(false, previous?.dispatched)
-                return ModelStep(Action.Back)
-            }
+            // Vision also runs alongside each Jev step; only the recovery after the failed dispatch acts on its answer.
+            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?) =
+                ModelStep(if (previous?.dispatched == false) Action.Back else Action.Home)
         }
         val controller = TaskController(this, phone, models)
         controller.start("Recover the page", setOf("browser.app"))

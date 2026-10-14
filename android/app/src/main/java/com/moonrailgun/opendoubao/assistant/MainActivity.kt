@@ -78,7 +78,9 @@ import com.moonrailgun.opendoubao.assistant.phone.catalogSelection
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_AUTO
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_FOREGROUND
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_VIRTUAL
+import com.moonrailgun.opendoubao.assistant.phone.chooseCompactScreens
 import com.moonrailgun.opendoubao.assistant.phone.chooseExecution
+import com.moonrailgun.opendoubao.assistant.phone.compactScreens
 import com.moonrailgun.opendoubao.assistant.phone.executionChoice
 import com.moonrailgun.opendoubao.assistant.phone.virtualDisplayAvailable
 import com.moonrailgun.opendoubao.assistant.phone.loadAppCatalog
@@ -600,6 +602,19 @@ class MainActivity : ComponentActivity() {
         }
         if (!available) Text("当前系统不支持虚拟屏执行，任务会在前台操作。需要 Open Doubao 系统 v1.15 或更新版本。",
             fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    var compact by remember { mutableStateOf(compactScreens(context)) }
+    Section("看截图时的界面信息", "Jev 没把握时，截图会连同界面结构一起发给规划与视觉模型。新任务开始时生效。") {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .toggleable(compact, role = Role.Switch) { compact = it; chooseCompactScreens(context, it) }
+            .padding(vertical = 6.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("精简界面信息（推荐）", fontSize = 15.sp)
+                Text("只发有文字或可操作的节点，省略空字段。请求约小八成，每步更快，费用更低。关闭后发送完整界面结构，信息更全，但更慢更贵。",
+                    fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(compact, null, Modifier.padding(start = 12.dp))
+        }
     }
 }
 
