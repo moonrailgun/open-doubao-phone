@@ -5,6 +5,9 @@
     <!-- Wake-word listening records as a hotword client, so the status bar's microphone dot waits for a real command. -->
     <uses-permission android:name="android.permission.CAPTURE_AUDIO_HOTWORD" tools:ignore="ProtectedPermissions" />
     <application android:name=".SystemApplication" android:persistent="true">
+        <!-- Started by the system on a double press of the power key (config_doublePressOnPowerTargetActivity). -->
+        <activity android:name=".PowerPressActivity" android:exported="false" android:excludeFromRecents="true"
+            android:noHistory="true" android:theme="@android:style/Theme.NoDisplay" />
         <receiver android:name=".LauncherCustomization" android:exported="true">
             <intent-filter>
                 <action android:name="com.android.launcher3.action.PARTNER_CUSTOMIZATION" />
