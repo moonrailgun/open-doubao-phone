@@ -223,8 +223,14 @@ class TaskController(
                             }
                             val fresh = observe(token) ?: return@withTimeout
                             checkCurrent(token)
-                            if (fresh.fingerprint != screen.fingerprint ||
-                                action?.gestureBounds() != null && (image == null || phone.screenshot(fresh) != image)) {
+                            // A vision model's done, made from a screenshot, stays done while the same window keeps updating (a
+                            // chat's status line, a list still loading): judging again costs another 8 s or so. Another app or
+                            // window means it looked at a page now gone. Jev's done is cheap to redo, so it stays strict.
+                            val stillThere = done && image != null && fresh.packageName == screen.packageName && fresh.windowId == screen.windowId
+                            // Likewise an element action goes ahead while unrelated parts of the page change, if its own node is untouched.
+                            val targetKept = !done && sameTarget(action, screen, fresh)
+                            if (!stillThere && !targetKept && (fresh.fingerprint != screen.fingerprint ||
+                                action?.gestureBounds() != null && (image == null || phone.screenshot(fresh) != image))) {
                                 throw ScreenChangedException()
                             }
                             if (done) {

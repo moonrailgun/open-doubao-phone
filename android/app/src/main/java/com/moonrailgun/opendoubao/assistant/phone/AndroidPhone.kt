@@ -54,7 +54,8 @@ class AndroidPhone(private val service: AssistantService) : Phone {
         val window = window()
         val display = service.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
         val size = android.graphics.Point().also(display::getRealSize)
-        return readScreen(window, size.x, size.y, display.rotation).also { lastPackage = it.packageName }
+        // Each of a few hundred nodes is a binder call; walking them on the main thread froze the overlay for up to 0.7 s.
+        return withContext(Dispatchers.IO) { readScreen(window, size.x, size.y, display.rotation) }.also { lastPackage = it.packageName }
     }
 
     override suspend fun screenshot(screen: Screen): String = capture(screen, restoreOverlay = true)
@@ -147,14 +148,9 @@ class AndroidPhone(private val service: AssistantService) : Phone {
 
     // startActivity returns before the app is in front; a cold start can outlast settle() and the next read sees the old app.
     private suspend fun awaitForeground(pkg: String) {
-        val until = SystemClock.uptimeMillis() + 5_000
-        while (SystemClock.uptimeMillis() < until) {
-            val root = window().root
-            val front = root?.packageName?.toString()
-            root?.recycle()
-            if (front == pkg) return
-            delay(100)
-        }
+        awaitPackage(pkg, 5_000, ::unlocked, front = {
+            pickWindow(service.windows)?.root?.let { root -> root.packageName?.toString().also { root.recycle() } }
+        })
     }
 
     private suspend fun gesture(path: Path, duration: Long, expected: Screen, expectedImage: String, region: Bounds): Boolean {
@@ -185,6 +181,23 @@ class AndroidPhone(private val service: AssistantService) : Phone {
         val until = SystemClock.uptimeMillis() + 1200
         while (SystemClock.uptimeMillis() < until && SystemClock.uptimeMillis() - lastEvent < 250) delay(80)
     }
+}
+
+/**
+ * Polls until [pkg] is the front app or [timeoutMillis] passes, returning whether it arrived. [ready] throws when the
+ * phone cannot be used at all (locked); [front] failing only means "not yet", since a cold start's splash screen has
+ * nothing readable for a second or more. Whatever is still wrong after the wait surfaces at the task's next read.
+ */
+internal suspend fun awaitPackage(pkg: String, timeoutMillis: Long, ready: () -> Unit, front: () -> String?,
+                                  now: () -> Long = SystemClock::uptimeMillis): Boolean {
+    val until = now() + timeoutMillis
+    while (now() < until) {
+        ready()
+        val current = try { front() } catch (_: PhoneUnavailableException) { null }
+        if (current == pkg) return true
+        delay(100)
+    }
+    return false
 }
 
 /** The readable foreground app window, or null while a transition hides it; active system UI is refused. */
