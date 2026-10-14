@@ -5,7 +5,7 @@
 ## 官方基线与自定义改动
 
 - `upstream.json` 固定官方镜像的下载地址、版本与 SHA-256，纳入 Git。
-- `aosp-CP3A.260905.010/` 保存校验后的官方原始文件，不直接修改；ZIP、解压镜像和 SDK 工具由本目录的 `.gitignore` 排除。
+- `aosp-CP3A.260905.010/` 保存校验后的官方原始文件，不直接修改；ZIP、解压镜像和 SDK 工具由本目录的 `.gitignore` 排除。`upstream-gms.json` 与 `gms-CP3A.260905.010/` 同样保存同一构建号的带 GMS 版本（见下文）。
 - 后续自定义源码、补丁、产品配置放在 `os/` 内单独的源码目录，按功能独立提交。升级官方基线时单独更新清单，避免与功能修改混合。
 - 定制不修改 AOSP 源码，也没有导入完整 AOSP 源码：[`custom/`](custom/README.md) 的配方只在原始 GSI 副本中写入助手特权应用（附带桌面默认布局）、TTS 系统应用、Dao 浏览器、豆包输入法、特权权限白名单、隐藏 API 豁免、虚拟屏超级智能体 RRO、省电豁免和开机动画，并将设备型号改为 Open Doubao，各版本验收见 [验收记录](custom/acceptance.md)。镜像校验只能证明二进制基线一致，不能代替源码 diff。
 
@@ -19,6 +19,14 @@ Android 17 QPR1 AOSP GSI，无 Google 应用，构建 `CP3A.260905.010` / `16176
 - 解压文件：`system.img`、`vbmeta.img`、`build.prop`，各文件校验值见 `upstream.json`。
 
 GSI 替换 Android 系统分区，使用设备现有的内核与 vendor 固件。它用于兼容性和应用开发测试，不是整机出厂包。包内 `build.prop` 表明这是 `user` 构建、`ro.debuggable=0`，不提供 `userdebug` 的 `adb root`。原始 GSI 不含 AI 助手，助手由上述定制镜像内置。
+
+## 带 GMS 的 GSI（仅限开发机）
+
+同一构建号另有带 Google 移动服务的官方 GSI（Play 服务 26.22.36）。`upstream-gms.json` 固定其地址与校验值，解压到 `gms-CP3A.260905.010/`（同样被 `.gitignore` 排除）。`custom/build_image.py` 的第三个参数填 `gms` 即以它为底包，容量与刷写差异见 [custom/README.md](custom/README.md#gms-底包)。
+
+- [官方发布说明](https://developer.android.com/about/versions/17/qpr1/gsi-release-notes)、[下载](https://dl.google.com/developers/android/cinnamonbun/images/gsi/gsi_gms_arm64-exp-CP3A.260905.010-16176746-d55d64aa.zip)。ZIP SHA-256：`d55d64aaebc71b2a895d792c152cfc408841bfde38565b082f495b850a2ae3e1`。下载页要求先接受《Early Access Google Mobile Services and Android 17 GSI License Agreement》。
+- 该许可只授权"用于测试应用与 Android 17 的兼容性"，明文禁止分发 GMS，禁止复制（备份除外）、修改或改编 GMS+GSI 的任何部分。往里写入我们的 APK 已属修改，所以含 GMS 的镜像只能留在这台开发机，不得对外提供。正式产品带 GMS 需先通过 CDD/CTS 兼容认证，再与 Google 签订 GMS 授权；解锁且关闭验证的 GSI 过不了认证。
+- Bootloader 解锁、AVB 关闭，Play Integrity 不会通过：Play 商店会提示设备未认证，Google 账号登录前可能需要在 google.com/android/uncertified 登记 GSF ID；钱包、部分银行应用和部分 DRM 内容不可用。
 
 ## 恢复镜像
 

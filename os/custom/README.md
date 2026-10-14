@@ -13,7 +13,7 @@ cd android
 
 ## 构建镜像副本
 
-需要 Docker、Python 3.12+、FFmpeg、Pillow（测试使用，本次为 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 10 GB 可用空间（构建峰值约 7 GB：GSI 副本先扩到 6 GiB 写入 payload，再缩回约 3 GB）。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，用同一把开发密钥（`~/.android/debug.keystore`）生成虚拟屏 RRO，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
+需要 Docker、Python 3.12+、FFmpeg、Pillow（测试使用，本次为 12.1.1）、已下载并通过 `os/upstream.json` 校验的原始 GSI，以及输出文件系统至少 10 GB 可用空间（构建峰值约为原始镜像加 4 GiB：GSI 副本先扩大写入 payload，再缩回；AOSP 底包约 6.4 GB，GMS 底包约 8.3 GB，请确保实际余量）。先构建上述两种 APK；`prepare_payload.py` 会核对包名、签名、版本号和 Manifest，用同一把开发密钥（`~/.android/debug.keystore`）生成虚拟屏 RRO，并生成开机动画。以下命令从仓库根目录执行，输出目录必须为空；可将它放在空间充足的外置磁盘。
 
 ```sh
 export DOUXIAN_OUTPUT=/path/with/10GB/free/douxian-v1
@@ -39,6 +39,23 @@ docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
 发布镜像或 TTS APK 时，同时提供 `voice-corresponding-source.tar.gz`。该包包含当前 Android 源码、构建脚本、原生依赖源码及许可证；每次代码变更后重新生成，不包含本地签名密钥和构建缓存。模型条款与来源见 [语音依赖说明](../../android/third_party/sherpa-onnx/README.md)。
 
 小型 ext4 测试已覆盖文件写入、权限和 SELinux 标签、拒绝覆盖、真实共享块展开、文件内容保留、缩容、AVB 校验及容量边界。完整 GSI 也已完成文件系统、容量、AVB 和启动检查；空间不足时构建会在复制原始镜像前退出。脚本不会自动刷机。刷写前保留上一份可启动镜像，使用下方的不清数据升级命令，不要复制 `os/flash-plan.md` 中首次安装所用的 `-w` 命令。
+
+## GMS 底包
+
+`build_image.py` 的第三个参数 `gms` 以 `os/upstream-gms.json` 固定的带 GMS 官方 GSI（同一构建号 `CP3A.260905.010`）为底包，其余步骤与 AOSP 底包相同：
+
+```sh
+docker run --rm -v "$PWD":/work:ro -v "$DOUXIAN_OUTPUT":/out \
+  douxian-image-tools python3 -B /work/os/custom/build_image.py /out v1.30 gms
+```
+
+GMS 版 `system.img` 为 3,953,213,440 字节，加上约 0.9 GB 的 payload 超出原厂 product 分区旁剩下的空间（AOSP 底包的 v1.29 只余 94,781,440 字节）。GSI 的 `/system/etc/init/config/skip_mount.cfg` 本就跳过设备的 `/product` 与 `/system_ext`：v1.14 的开机日志里所有 product 应用都来自 `/system/product/`，原厂 product 分区里的 GmsCore、Phonesky 从未被扫描。因此 `upstream-gms.json` 以 `"flash_product": false` 声明不再刷写 4,315,308,032 字节的原厂 `product.img`：容量检查少算它，刷写目录 `os/prepared-gsi-gms-CP3A.260905.010/` 不含 `product.img`，清单 `os/fastboot-info-gms.txt` 比 `os/fastboot-info.txt` 只少一行 `flash product`（`test_image.py` 核对这两点）。fastboot 在 Bootloader 直接重建整个 `super` 时只为有镜像的分区分配 extent，`product_b` 成为零长度分区，`fs_mgr` 创建逻辑分区时跳过零长度分区，所以不需要手动 `delete-logical-partition`。下文"不清数据刷写"的刷写目录相应换成 `prepared-gsi-gms-CP3A.260905.010/`。
+
+不清数据从 AOSP 底包换到 GMS 底包时还有一道坎：Google 的权限控制器与小区广播服务模块在 Manifest 里把 AOSP 模块声明为 `original-package`，PackageManager 发现 `/data` 里已有 AOSP 包，就把 Google 包改名为 AOSP 包名（日志 `New package com.google.android.permissioncontroller renamed to replace old package com.android.permissioncontroller`），而这两个 APEX 自带的特权白名单只写了 Google 包名，`ro.control_privapp_permissions=enforce` 下 system_server 启动即抛 `Signature|privileged permissions not in privileged permission allowlist`，手机反复回到 Bootloader（v1.30 的教训，见验收记录）。GMS 底包因此多写入 `privapp-permissions-gms-renamed.xml`，把两份 APEX 白名单按改名后的包名复制一遍；清过数据的手机不会改名，也不会用到它。
+
+GMS 底包的 WebView 和 Chrome 是"占位包 + `.apk.gz`"，首次开机由 PackageManager 解压安装。它的 WebView（`WebViewGoogle.apk.gz`，149.0.7827.5，versionCode 782700504）标了 `multiArch` 却只带 arm64 原生库，而 Pixel 6 Pro 的 vendor（原厂 Android 17 亦然）宣称同时支持 32 位 ABI，Android 17 的 PackageManager 对这种组合拒装（`The multiArch app's native libs don't support all the natively supported ABIs of the device`），占位包随即被系统禁用，于是 Google 登录页（WebView 渲染）一点即崩。把设备改成纯 64 位走不通：vendor 的 `ro.zygote=zygote64_32` 会拉起 32 位 zygote，它读不到 32 位 ABI 列表即 abort 并连带重启主 zygote，而 init 合并 build.prop 时后加载的 vendor 会覆盖 system 里的 `ro.zygote`（v1.32、v1.33 均未开机，见验收记录）。GMS 底包因此改用原厂 Pixel 6 Pro 镜像 `os/stock-CP3A.261005.002.A1/product.img` 里的同版本 WebView（versionCode 782700501，arm64 + armeabi-v7a，同一把签名密钥，两者都不依赖 Trichrome 静态库）：`build_image.py` 从该镜像取出占位包和 `.apk.gz`，核对固定的 SHA-256 后替换 `/system/product/app/WebViewGoogle-Stub/` 与 `/system/product/app/WebViewGoogle/` 里的同名文件。此前被系统禁用的占位包若开机后仍为禁用，需在设置 → 应用 → Android System WebView 点一次"启用"触发解压。
+
+许可与使用限制见 [os/README.md](../README.md#带-gms-的-gsi仅限开发机)：含 GMS 的镜像只能用于这台开发机，不得分发。
 
 ## 虚拟屏执行
 

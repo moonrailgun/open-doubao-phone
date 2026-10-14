@@ -12,9 +12,19 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 GROUP_SIZE = 8_527_020_032
-OTHER_PARTITIONS = 443_674_624 + 4_315_308_032 + 651_722_752 + 55_853_056
-# The build peaks near 7 GB: the GSI copy grows to 6 GiB while the payload is written, then shrinks back.
+PRODUCT_PARTITION = 4_315_308_032
+# Stock system_ext, product, vendor and vendor_dlkm share the group with system. The GSI never mounts the device's product
+# partition (its skip_mount.cfg lists /product), so a layout that leaves it unflashed hands that room to system.
+OTHER_PARTITIONS = 443_674_624 + PRODUCT_PARTITION + 651_722_752 + 55_853_056
+# The build peaks near the original image plus 4 GiB: the copy grows by that much while blocks are unshared and the
+# payload is written, then shrinks back. 10 GB covers the 2.1 GB AOSP base and the 4 GB GMS one is still within reach.
 MIN_FREE = 10_000_000_000
+# Pixel 6 Pro factory image CP3A.261005.002.A1 (os/README.md): its WebView carries arm64 and arm32 code.
+STOCK_PRODUCT = ROOT / 'os/stock-CP3A.261005.002.A1/product.img'
+STOCK_WEBVIEW = {
+    'WebViewGoogle-Stub/WebViewGoogle-Stub.apk': '2da41b9e13e5b400318f35e33a59ee15bacde1aa8b8466511246dac319cd3c5c',
+    'WebViewGoogle/WebViewGoogle.apk.gz': 'e9d67a7c83fe0ee158cc8765fd49134788da11c738d78b6c128ce6d585a27087',
+}
 AVB = ['python3', '/usr/local/bin/avbtool.py']
 
 
@@ -72,6 +82,16 @@ def replace_line(image, target, old, new):
         install(image, source, target, '010' + re.search(r'Mode:\s+(\d+)', stat).group(1))
 
 
+def replace_file(image, source, target):
+    """Swap an existing system_file for [source], keeping its mode."""
+    stat = debugfs(image, f'stat {target}')
+    if 'Inode:' not in stat or 'User:     0   Group:     0' not in stat or \
+            'u:object_r:system_file:s0' not in debugfs(image, f'ea_list {target}'):
+        raise RuntimeError(f'Unexpected file to replace: {target}')
+    debugfs(image, f'rm {target}', True)
+    install(image, source, target, '010' + re.search(r'Mode:\s+(\d+)', stat).group(1))
+
+
 def stamp_version(image, version, build_id):
     """Shows our release in Settings: the build number reads 'Open Doubao v1.27 (CP3A…)', and ro.opendoubao.version carries it alone."""
     if not re.fullmatch(r'v\d+(\.\d+)*(-[a-z0-9]+)?', version):
@@ -109,19 +129,22 @@ def metadata(image, target, mode):
         raise RuntimeError(f'Missing SELinux label: {target}')
 
 
-def check_capacity(system_size):
-    if system_size + OTHER_PARTITIONS > GROUP_SIZE:
-        raise RuntimeError(f'System image needs {system_size:,} bytes; available {GROUP_SIZE - OTHER_PARTITIONS:,}')
+def check_capacity(system_size, other=OTHER_PARTITIONS):
+    if system_size + other > GROUP_SIZE:
+        raise RuntimeError(f'System image needs {system_size:,} bytes; available {GROUP_SIZE - other:,}')
 
 
-def main(output, version=None):
+def main(output, version=None, base='aosp'):
+    """[base] picks the pinned GSI: 'aosp' (os/upstream.json) or 'gms' (os/upstream-gms.json, Google apps included)."""
     output = output.resolve()
     version = version or output.name
     output.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(output).free < MIN_FREE:
         raise RuntimeError('At least 10 GB free is required in the output filesystem')
-    upstream = json.loads((ROOT / 'os/upstream.json').read_text())
-    original = ROOT / 'os' / f'aosp-{upstream["build_id"]}' / 'system.img'
+    upstream = json.loads((ROOT / 'os' / ('upstream.json' if base == 'aosp' else f'upstream-{base}.json')).read_text())
+    original = ROOT / 'os' / f'{base}-{upstream["build_id"]}' / 'system.img'
+    flash_product = upstream.get('flash_product', True)
+    other = OTHER_PARTITIONS - (0 if flash_product else PRODUCT_PARTITION)
     if sha256(original) != upstream['files']['system.img']:
         raise RuntimeError('Original GSI checksum mismatch')
     payload = json.loads((output / 'payload.json').read_text())
@@ -135,7 +158,7 @@ def main(output, version=None):
     shutil.copyfile(original, image)
     run(*AVB, 'erase_footer', '--image', image)
     with image.open('r+b') as stream:
-        stream.truncate(6 * 1024**3)
+        stream.truncate(original.stat().st_size + 4 * 1024**3)
     run('resize2fs', image)
     run('e2fsck', '-fy', '-E', 'unshare_blocks', image, codes=(0, 1))
     if 'shared_blocks' in run('dumpe2fs', '-h', image):
@@ -153,6 +176,22 @@ def main(output, version=None):
     install(image, ROOT / 'os/custom/privapp-permissions-douxian.xml',
             '/system/etc/permissions/privapp-permissions-douxian.xml')
     install(image, ROOT / 'os/custom/douxian.xml', '/system/etc/sysconfig/douxian.xml')
+    if base == 'gms':
+        # Google modules take over the AOSP module names on a kept /data (original-package); their APEX allowlists only
+        # know the Google names, and enforce mode refuses to boot without these copies under the renamed names.
+        install(image, ROOT / 'os/custom/privapp-permissions-gms-renamed.xml',
+                '/system/etc/permissions/privapp-permissions-gms-renamed.xml')
+        # The GSI's WebView (stub plus .apk.gz, inflated by PackageManager at boot) is a multiArch APK with arm64 code
+        # only, which Android 17 refuses on this phone because its vendor still advertises 32-bit ABIs; without a WebView
+        # the Google sign-in page crashes. The stock Pixel 6 Pro image ships the same Chromium build with both ABIs
+        # under the same signing key, so its pair goes in instead.
+        with tempfile.TemporaryDirectory() as folder:
+            for name, digest in STOCK_WEBVIEW.items():
+                source = Path(folder) / Path(name).name
+                debugfs(STOCK_PRODUCT, f'dump /app/{name} {source}')
+                if not source.exists() or sha256(source) != digest:
+                    raise RuntimeError(f'Stock WebView file changed or missing: {name}')
+                replace_file(image, source, f'/system/product/app/{name}')
     install(image, ROOT / 'os/custom/default-permissions-douxian.xml',
             '/system/etc/default-permissions/default-permissions-douxian.xml')
     install(image, ROOT / 'os/custom/default-permissions-doubaoime.xml',
@@ -160,8 +199,9 @@ def main(output, version=None):
     install(image, output / 'bootanimation.zip', '/system/media/bootanimation.zip')
     # ro.product.model comes from the product partition; system_ext keeps the fallback consistent.
     for partition in ('product', 'system_ext'):
-        replace_line(image, f'/system/{partition}/etc/build.prop', f'ro.product.{partition}.model=AOSP on ARM64',
-                     f'ro.product.{partition}.model=Open Doubao')
+        target = f'/system/{partition}/etc/build.prop'
+        (old,) = [line for line in debugfs(image, f'cat {target}').splitlines() if line.startswith(f'ro.product.{partition}.model=')]
+        replace_line(image, target, old, f'ro.product.{partition}.model=Open Doubao')
     stamp_version(image, version, upstream['build_id'])
     run('e2fsck', '-fy', image, codes=(0, 1))
     run('resize2fs', '-M', image)
@@ -170,7 +210,7 @@ def main(output, version=None):
     partition_size = (fs_size + 4095) // 4096 * 4096
     while True:
         partition_size += 4 * 1024**2
-        check_capacity(partition_size)
+        check_capacity(partition_size, other)
         maximum = int(run(*AVB, 'add_hashtree_footer', '--partition_size', partition_size,
                           '--do_not_generate_fec', '--calc_max_image_size').strip())
         if maximum >= fs_size:
@@ -181,17 +221,17 @@ def main(output, version=None):
         '--prop', 'com.android.build.system.os_version:17',
         '--prop', f'com.android.build.system.security_patch:{upstream["security_patch"]}')
     run(*AVB, 'verify_image', '--image', image)
-    check_capacity(image.stat().st_size)
+    check_capacity(image.stat().st_size, other)
     (output / 'avb-info.txt').write_text(run(*AVB, 'info_image', '--image', image))
-    report = dict(version=version, display_id=f'Open Doubao {version} ({upstream["build_id"]})',
+    report = dict(version=version, base=base, display_id=f'Open Doubao {version} ({upstream["build_id"]})',
                   upstream_sha256=upstream['files']['system.img'], system_sha256=sha256(image),
-                  system_bytes=image.stat().st_size, group_bytes=GROUP_SIZE,
-                  total_dynamic_bytes=image.stat().st_size + OTHER_PARTITIONS, payload=payload)
+                  system_bytes=image.stat().st_size, group_bytes=GROUP_SIZE, flash_product=flash_product,
+                  total_dynamic_bytes=image.stat().st_size + other, payload=payload)
     (output / 'manifest.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
 
 
 if __name__ == '__main__':
-    if len(sys.argv) not in (2, 3):
-        sys.exit('usage: build_image.py OUTPUT_DIRECTORY [VERSION such as v1.27; defaults to the directory name]')
-    main(Path(sys.argv[1]), sys.argv[2] if len(sys.argv) == 3 else None)
+    if len(sys.argv) not in (2, 3, 4) or (len(sys.argv) == 4 and sys.argv[3] not in ('aosp', 'gms')):
+        sys.exit('usage: build_image.py OUTPUT_DIRECTORY [VERSION such as v1.27; defaults to the directory name] [aosp|gms]')
+    main(Path(sys.argv[1]), sys.argv[2] if len(sys.argv) >= 3 else None, sys.argv[3] if len(sys.argv) == 4 else 'aosp')

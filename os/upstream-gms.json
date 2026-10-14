@@ -1,0 +1,19 @@
+{
+  "device": "raven",
+  "description": "Official AOSP ARM64 GSI with Google Mobile Services; licensed for Android 17 compatibility testing only, never for distribution",
+  "android_version": "17 QPR1",
+  "build_id": "CP3A.260905.010",
+  "build_number": "16176746",
+  "build_type": "user",
+  "security_patch": "2026-09-05",
+  "play_services": "26.22.36",
+  "source_url": "https://dl.google.com/developers/android/cinnamonbun/images/gsi/gsi_gms_arm64-exp-CP3A.260905.010-16176746-d55d64aa.zip",
+  "release_notes_url": "https://developer.android.com/about/versions/17/qpr1/gsi-release-notes",
+  "archive_sha256": "d55d64aaebc71b2a895d792c152cfc408841bfde38565b082f495b850a2ae3e1",
+  "flash_product": false,
+  "files": {
+    "system.img": "8b525e2bff18a54b277c4b9a950a0ee667e50ad2e91bcc4c1daa6f081402407e",
+    "vbmeta.img": "b3281c527ecf2a6a743b37f5b9e118f492d2038e0a82e6777d292d1c5b42601a",
+    "build.prop": "23cf4821cec316d24566981143555a7e15d12d6ce48a472cc3e2ab04a25387f5"
+  }
+}

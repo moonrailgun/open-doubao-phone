@@ -1,10 +1,11 @@
 """Small disposable ext4 fixture; run inside the image-tools container."""
 from pathlib import Path
+import json
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 import zipfile
-from build_image import AVB, ROOT, GROUP_SIZE, OTHER_PARTITIONS, check_capacity, debugfs, install, install_libraries, replace_line, run, stamp_version
+from build_image import AVB, ROOT, GROUP_SIZE, OTHER_PARTITIONS, PRODUCT_PARTITION, STOCK_WEBVIEW, check_capacity, debugfs, install, install_libraries, replace_file, replace_line, run, stamp_version
 
 
 class ImageRecipeTest(unittest.TestCase):
@@ -12,6 +13,35 @@ class ImageRecipeTest(unittest.TestCase):
         check_capacity(GROUP_SIZE - OTHER_PARTITIONS)
         with self.assertRaises(RuntimeError):
             check_capacity(GROUP_SIZE - OTHER_PARTITIONS + 1)
+        # Without the stock product partition the system image may take its room.
+        check_capacity(GROUP_SIZE - OTHER_PARTITIONS + PRODUCT_PARTITION, OTHER_PARTITIONS - PRODUCT_PARTITION)
+        with self.assertRaises(RuntimeError):
+            check_capacity(GROUP_SIZE - OTHER_PARTITIONS + PRODUCT_PARTITION + 1, OTHER_PARTITIONS - PRODUCT_PARTITION)
+
+    def test_gms_renamed_allowlist(self):
+        # On a kept /data the Google permission controller and cell broadcast service are renamed to the AOSP packages;
+        # the copies of their APEX allowlists must carry those names, or an enforcing system never boots.
+        root = ET.parse(ROOT / 'os/custom/privapp-permissions-gms-renamed.xml').getroot()
+        entries = {entry.get('package'): {permission.get('name') for permission in entry} for entry in root}
+        self.assertEqual({'com.android.permissioncontroller', 'com.android.cellbroadcastservice'}, set(entries))
+        self.assertIn('android.permission.WRITE_SECURE_SETTINGS', entries['com.android.permissioncontroller'])
+        self.assertEqual(23, len(entries['com.android.permissioncontroller']))
+        self.assertEqual({'android.permission.MODIFY_PHONE_STATE', 'android.permission.READ_PRIVILEGED_PHONE_STATE',
+                          'android.permission.RECEIVE_EMERGENCY_BROADCAST', 'android.permission.MANAGE_USERS'},
+                         entries['com.android.cellbroadcastservice'])
+
+    def test_gms_layout(self):
+        # The GMS GSI outgrows the room next to the stock product partition, so its flash plan leaves product unflashed
+        # (zero-length in super) and must otherwise match the AOSP plan line for line.
+        gms = json.loads((ROOT / 'os/upstream-gms.json').read_text())
+        aosp = json.loads((ROOT / 'os/upstream.json').read_text())
+        self.assertFalse(gms['flash_product'])
+        self.assertEqual(aosp['build_id'], gms['build_id'])
+        self.assertNotEqual(aosp['files']['system.img'], gms['files']['system.img'])
+        plan = (ROOT / 'os/fastboot-info.txt').read_text().splitlines()
+        self.assertIn('flash product', plan)
+        self.assertEqual([line for line in plan if line != 'flash product'],
+                         (ROOT / 'os/fastboot-info-gms.txt').read_text().splitlines())
 
     def test_default_permissions(self):
         # Only the ROM grants runtime permissions up front; a standalone install still asks in the app.
@@ -49,6 +79,26 @@ class ImageRecipeTest(unittest.TestCase):
             self.assertIn('security.selinux (26)', debugfs(image, f'ea_list {target}'))
             with self.assertRaises(RuntimeError):
                 replace_line(image, target, 'ro.product.product.model=AOSP on ARM64', 'unused')
+            run('e2fsck', '-fn', image)
+
+    def test_replace_file(self):
+        self.assertEqual({'WebViewGoogle-Stub/WebViewGoogle-Stub.apk', 'WebViewGoogle/WebViewGoogle.apk.gz'}, set(STOCK_WEBVIEW))
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            image = root / 'system.img'
+            with image.open('wb') as stream:
+                stream.truncate(16 * 1024**2)
+            run('mke2fs', '-q', '-t', 'ext4', '-b', '4096', '-F', image)
+            old, new = root / 'old.apk', root / 'new.apk'
+            old.write_bytes(b'arm64 only'); new.write_bytes(b'arm64 and arm32')
+            target = '/system/product/app/WebViewGoogle/WebViewGoogle.apk.gz'
+            install(image, old, target)
+            replace_file(image, new, target)
+            self.assertTrue(debugfs(image, f'cat {target}').endswith('\narm64 and arm32'))
+            self.assertIn('Mode:  0644', debugfs(image, f'stat {target}'))
+            self.assertIn('security.selinux (26)', debugfs(image, f'ea_list {target}'))
+            with self.assertRaises(RuntimeError):
+                replace_file(image, new, '/system/product/app/WebViewGoogle/missing.apk')
             run('e2fsck', '-fn', image)
 
     def test_stamp_version(self):

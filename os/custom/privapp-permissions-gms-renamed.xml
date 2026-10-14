@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only on the GMS base. Google's permission controller and cell broadcast service declare the AOSP module as their
+     original-package, so on a device whose /data already holds the AOSP module PackageManager renames the Google package
+     to the AOSP name ("New package com.google.android.permissioncontroller renamed to replace old package
+     com.android.permissioncontroller"). The allowlists inside their APEXes know only the Google names, and with
+     ro.control_privapp_permissions=enforce system_server then refuses to boot. These entries repeat the APEX allowlists
+     (CP3A.260905.010) under the renamed names; a wiped device never renames and never consults them. -->
+<permissions>
+    <privapp-permissions package="com.android.permissioncontroller">
+        <permission name="android.permission.CLEAR_APP_CACHE" />
+        <permission name="android.permission.MANAGE_USERS" />
+        <permission name="android.permission.OBSERVE_GRANT_REVOKE_PERMISSIONS" />
+        <permission name="android.permission.GET_APP_OPS_STATS" />
+        <permission name="android.permission.UPDATE_APP_OPS_STATS" />
+        <permission name="android.permission.REQUEST_INCIDENT_REPORT_APPROVAL" />
+        <permission name="android.permission.APPROVE_INCIDENT_REPORTS" />
+        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
+        <permission name="android.permission.SUBSTITUTE_NOTIFICATION_APP_NAME" />
+        <permission name="android.permission.PACKAGE_USAGE_STATS" />
+        <permission name="android.permission.CHANGE_COMPONENT_ENABLED_STATE" />
+        <permission name="android.permission.MODIFY_AUDIO_ROUTING" />
+        <permission name="android.permission.WRITE_SECURE_SETTINGS" />
+        <permission name="android.permission.READ_SAFETY_CENTER_STATUS" />
+        <permission name="android.permission.SEND_SAFETY_CENTER_UPDATE" />
+        <permission name="android.permission.SET_UNRESTRICTED_KEEP_CLEAR_AREAS" />
+        <permission name="android.permission.START_TASKS_FROM_RECENTS" />
+        <permission name="android.permission.LAUNCH_MULTI_PANE_SETTINGS_DEEP_LINK" />
+        <permission name="android.permission.READ_SYSTEM_GRAMMATICAL_GENDER" />
+        <permission name="android.permission.WATCH_APPOPS" />
+        <permission name="android.permission.OBSERVE_ROLE_HOLDERS" />
+        <permission name="android.permission.READ_LOCATION_BYPASS_ALLOWLIST" />
+        <permission name="android.permission.MANAGE_SAFETY_CENTER" />
+    </privapp-permissions>
+    <privapp-permissions package="com.android.cellbroadcastservice">
+        <permission name="android.permission.MODIFY_PHONE_STATE" />
+        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
+        <permission name="android.permission.RECEIVE_EMERGENCY_BROADCAST" />
+        <permission name="android.permission.MANAGE_USERS" />
+    </privapp-permissions>
+</permissions>
