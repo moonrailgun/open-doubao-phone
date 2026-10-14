@@ -14,6 +14,7 @@ let refreshing = false;
 let recordKey = '';
 let session = 0;
 let detailRequest = 0;
+let unmountTimeline = () => {};
 let expiresAt = 0;
 let pairingRequest = 0;
 let historyRecords = [];
@@ -277,6 +278,7 @@ async function showRecord(taskId) {
   shownRecord = null;
   $('record-message').textContent = '';
   controls();
+  unmountTimeline();
   $('record-content').replaceChildren(element('p', '正在读取…', 'muted'));
   $('record-dialog').showModal();
   try {
@@ -287,7 +289,17 @@ async function showRecord(taskId) {
     const result = element('div', null, 'prose');
     result.append(record.result ? markdown(record.result) : '暂无结果');
     const log = element('pre', (record.log || []).join('\n') || '暂无日志', 'log');
-    $('record-content').replaceChildren(element('h3', record.goal), element('p', `${labels[record.status] || record.status} · ${date(record.time)}`, 'muted'), result, element('h2', '执行与访问日志'), log);
+    const logHeading = element('h2', '执行与访问日志');
+    $('record-content').replaceChildren(element('h3', record.goal), element('p', `${labels[record.status] || record.status} · ${date(record.time)}`, 'muted'), result, logHeading, log);
+    // Desktop only: the phone keeps the plain log. React and the waterfall load on first use.
+    import('./timeline.js').then(({ renderTimeline }) => {
+      if (current !== detailRequest) return;
+      const box = element('div', null, 'timeline');
+      const unmount = renderTimeline(box, record.log);
+      if (!unmount) return;
+      unmountTimeline = unmount;
+      logHeading.before(element('h2', '执行时间线'), box);
+    }).catch((error) => console.error('时间线加载失败', error));
     addCopyButton(result, '复制任务结果');
     addCopyButton(log, '复制执行与访问日志');
     const download = element('button', '下载模型调用记录（zip）', 'button');
@@ -323,7 +335,7 @@ $('record-dialog').addEventListener('click', (event) => {
   const { left, right, top, bottom } = event.currentTarget.getBoundingClientRect();
   if (event.clientX < left || event.clientX > right || event.clientY < top || event.clientY > bottom) event.currentTarget.close();
 });
-$('record-dialog').addEventListener('close', () => { detailRequest += 1; shownRecord = null; controls(); });
+$('record-dialog').addEventListener('close', () => { detailRequest += 1; shownRecord = null; unmountTimeline(); controls(); });
 $('record-delete').addEventListener('click', async () => {
   const taskId = shownRecord;
   const currentSession = session;
