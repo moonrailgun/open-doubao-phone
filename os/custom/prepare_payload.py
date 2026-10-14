@@ -24,7 +24,7 @@ OVERLAY_PACKAGE = 'com.moonrailgun.opendoubao.overlay.computercontrol'
 
 def build_overlay(tools, sdk, target):
     """Static framework RRO naming the assistant the system allowlist provider, so it may run Computer Control sessions, and
-    moving the assistant from a long press of the power key to a double press (long press opens the power menu again)."""
+    turning off the double press of the power key that opens the camera or wallet."""
     with tempfile.TemporaryDirectory() as folder:
         work = Path(folder)
         (work / 'res/values').mkdir(parents=True)
@@ -37,12 +37,8 @@ def build_overlay(tools, sdk, target):
         # Super agents (config_computerControlKnownSuperAgents) only count on debuggable builds; user builds need a provider.
         (work / 'res/values/config.xml').write_text('''<resources>
     <string name="config_allowlistProviderServicePackage">com.moonrailgun.opendoubao.assistant</string>
-    <!-- 1: power menu, instead of the GSI's 5 (assistant). -->
-    <integer name="config_longPressOnPowerBehavior">1</integer>
-    <!-- 3: open config_doublePressOnPowerTargetActivity. -->
-    <integer name="config_doublePressOnPowerBehavior">3</integer>
-    <string name="config_doublePressOnPowerTargetActivity">com.moonrailgun.opendoubao.assistant/.PowerPressActivity</string>
-    <!-- 0: the camera / wallet double tap is off, or it would take the double press first. -->
+    <!-- 0: no camera / wallet on a double press of the power key. A long press still summons the assistant (the GSI's 5);
+         a double press cannot, as Emergency SOS takes every second quick press while the screen is on. -->
     <integer name="config_doubleTapPowerGestureMode">0</integer>
 </resources>
 ''')
@@ -94,8 +90,6 @@ def main(output):
     resources = read('aapt2', 'dump', 'resources', overlay)
     if '"com.moonrailgun.opendoubao.assistant"' not in resources:
         raise RuntimeError('overlay: allowlist provider is not the assistant')
-    if '"com.moonrailgun.opendoubao.assistant/.PowerPressActivity"' not in resources:
-        raise RuntimeError('overlay: a double press of the power key does not open the assistant')
     with overlay.open('rb') as stream:
         report[overlay.name] = dict(sha256=hashlib.file_digest(stream, 'sha256').hexdigest(), certificate_sha256=cert(overlay))
     dao = output / 'dao.apk'
