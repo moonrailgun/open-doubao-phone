@@ -249,13 +249,14 @@ class AssistantService : AccessibilityService() {
         check(saved.records.none { it.id == taskId }) { "任务 ID 已存在" }
         val record = Record(taskId, System.currentTimeMillis(), goal.trim(), "RUNNING", "")
         // Same default as the app pickers: all launchable apps until a scope is saved.
-        val apps = catalogSelection(loadAppCatalog(this), saved.apps, saved.appsConfigured)
+        val catalog = loadAppCatalog(this)
+        val apps = catalogSelection(catalog, saved.apps, saved.appsConfigured)
         val models = try {
             check(apps.isNotEmpty()) { "请先选择本次任务允许访问的应用" }
             CloudModels(saved.config, HttpTransport(secrets = saved.config.secrets, log = { vault.modelCalls.append(taskId, it) }),
                 memory = saved.memory,
                 recent = saved.records.filter { it.status == "COMPLETED" }.take(3).map { PastTask(it.goal, it.result.take(600)) },
-                compactScreens = compactScreens(this))
+                compactScreens = compactScreens(this), appLabels = catalog.associate { it.packageName to it.label })
         } catch (e: Exception) {
             // A task rejected before it starts still leaves a record saying why.
             runCatching { vault.record(record.copy(status = "FAILED", result = e.message ?: "无法开始任务",

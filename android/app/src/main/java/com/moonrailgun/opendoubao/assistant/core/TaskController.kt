@@ -125,7 +125,11 @@ class TaskController(
                         update(if (place == null) "正在理解任务、规划步骤" else "正在判断执行方式、规划步骤")
                         // Both need only the goal, so the placement question runs beside the planning call.
                         val placing = place?.let { choose -> async { timed("执行方式") { choose() } } }
+                        // Jev's guess at the app opens it while planning is still under way, so the app's cold start
+                        // overlaps the slowest call before the first step.
+                        val early = async { openEarly(placing) }
                         val planned = timed("规划") { withTimeout(60_000) { models.plan(state.value.goal, apps, launchableApps) } }
+                        if (planned.reply != null) early.cancel()
                         placing?.await()?.let { (chosen, how) -> phone = chosen; trace("执行方式：${chosen.mode}（$how）") }
                         checkCurrent(token)
                         if (planned.memory.isNotEmpty()) trace("记忆：${remember(planned.memory)}")
@@ -139,7 +143,11 @@ class TaskController(
                         require(planned.app in apps) { "规划选择了未授权应用" }
                         plan = planned
                         mutable.value = state.value.copy(plan = planned.steps)
-                        if (planned.app in launchableApps) {
+                        val guessed = early.await()
+                        checkCurrent(token)
+                        if (guessed == planned.app) {
+                            trace("规划同为 ${planned.app}，已提前打开")
+                        } else if (planned.app in launchableApps) {
                             val opened = phone.execute(Action.OpenApp(planned.app), null)
                             checkCurrent(token)
                             trace("打开 ${planned.app}：${if (opened) "成功" else "失败"}")
@@ -357,6 +365,18 @@ class TaskController(
         previous = Previous(screen, action, success)
         mutable.value = state.value.copy(steps = state.value.steps + 1)
         update("第 ${state.value.steps} 步：${action.description(screen)}${if (success) "" else "（未生效，正在调整）"}")
+    }
+
+    /** Opens Jev's guess at the task's app on the phone placement chose; the package once it is open, else null. */
+    private suspend fun openEarly(placing: Deferred<Pair<Phone, String>>?): String? {
+        val app = try { timed("应用预判") { models.guessApp(state.value.goal, launchableApps) } }
+            catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+        trace("Jev 预判应用：${app ?: "不确定，等规划"}")
+        if (app == null) return null
+        val target = placing?.await()?.first ?: phone
+        val opened = try { target.execute(Action.OpenApp(app), null) } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
+        trace("打开 $app：${if (opened) "成功" else "失败"}（Jev 预判，规划同时进行）")
+        return app.takeIf { opened }
     }
 
     private suspend fun checkCurrent(token: Long) {

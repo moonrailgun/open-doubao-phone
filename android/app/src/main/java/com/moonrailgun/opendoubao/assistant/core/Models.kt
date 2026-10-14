@@ -152,6 +152,8 @@ interface Phone {
 
 interface Models {
     suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String> = apps): Plan
+    /** Jev's guess at which of [apps] the goal starts in, asked beside planning so it can open early; null when unsure. */
+    suspend fun guessApp(goal: String, apps: Set<String>): String? = null
     suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision
     suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep
     suspend fun summarize(goal: String, evidence: Evidence): String

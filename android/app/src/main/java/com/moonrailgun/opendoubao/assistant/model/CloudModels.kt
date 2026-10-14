@@ -165,10 +165,11 @@ class HttpTransport(private val client: OkHttpClient = OkHttpClient.Builder()
 /**
  * [memory] and [recent] go with every task-time chat call, so personal details and follow-ups like "that result" resolve.
  * [compactScreens] sends the vision model only nodes with text or an action (the "精简界面信息" setting).
+ * [appLabels] names packages for Jev's early guess at the task's app.
  */
 class CloudModels(private val config: ModelConfig, private val http: HttpTransport = HttpTransport(),
     private val memory: List<Memory> = emptyList(), private val recent: List<PastTask> = emptyList(),
-    private val compactScreens: Boolean = true) : Models {
+    private val compactScreens: Boolean = true, private val appLabels: Map<String, String> = emptyMap()) : Models {
     init { config.validate() }
 
     private fun JSONObject.withContext() = put("memory", MemoryOps.json(memory)).put("recent_tasks", JSONArray(recent.map { it.json() }))
@@ -177,6 +178,8 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
         val content = labelled("规划") { chat("规划", """Plan a mobile task. Return only a JSON object:
             {"app":"one allowed package", "steps":["brief subgoal"], "texts":["exact text to type"], "urls":["https://..."]}.
             Use at most 12 steps, 8 texts, 5 URLs. URLs should only implement the user's requested browsing/search.
+            Steps start once the app is open: leave out opening it and going to the page or tab it opens on (such as the
+            message list), and begin with the first step the goal needs there.
             Only choose from allowed_apps. launchable_apps can be opened directly; other allowed packages are system
             components that can be operated when visible but cannot be launched directly. Prefer a launchable starting
             app that leads to the requested component; choose a component itself only when it is the task's target.
@@ -194,6 +197,15 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
         """.trimIndent(), JSONObject().put("goal", goal).put("allowed_apps", JSONArray(apps.toList()))
             .put("launchable_apps", JSONArray(launchableApps.intersect(apps).toList())).withContext().toString()) }
         return ModelProtocol.parsePlan(content, apps)
+    }
+
+    override suspend fun guessApp(goal: String, apps: Set<String>): String? {
+        if (config.jevKey.isBlank() || apps.isEmpty()) return null
+        val ids = apps.toList()
+        return withTimeoutOrNull(8_000) { labelled("Jev 应用预判") {
+            JevProtocol.parseApp(http.post(config.jevEndpoint, config.jevKey, JevProtocol.appRequest(config.jevModel, goal,
+                ids.map { it to appLabels[it].orEmpty() }, JSONObject().withContext()), "Jev 应用预判"), ids)
+        } }
     }
 
     override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
