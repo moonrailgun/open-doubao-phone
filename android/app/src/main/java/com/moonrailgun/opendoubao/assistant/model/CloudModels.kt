@@ -312,7 +312,7 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
 
     /**
      * Where a task should run, with how it was decided for the trace: Jev first (one cheap question), the chat model when Jev
-     * is down or slow, and the virtual display when both fail. Each call gets 8 s, so the judgement never stalls a task.
+     * is down or slow, and the foreground when both fail. Each call gets 8 s, so the judgement never stalls a task.
      */
     suspend fun placement(goal: String): Pair<Placement, String> {
         // Wrapped in a list so a timeout (null) stays apart from no Jev configured (a list holding null).
@@ -330,7 +330,7 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
         } } }
         chat.exceptionOrNull()?.let { if (it is CancellationException) throw it }
         chat.getOrNull()?.let { return it to "Chat 模型，$why" }
-        return Placement.VIRTUAL to "默认，$why；Chat 模型${chat.exceptionOrNull()?.let { "失败：${it.message?.lineSequence()?.first()}" } ?: "超时"}"
+        return Placement.FOREGROUND to "默认，$why；Chat 模型${chat.exceptionOrNull()?.let { "失败：${it.message?.lineSequence()?.first()}" } ?: "超时"}"
     }
 
     /** Retells a written summary as a short spoken reply; the full summary stays on screen. */

@@ -108,13 +108,20 @@ class ProtocolTest {
         assertEquals(setOf("virtual", "foreground"), question.getJSONObject("criteria").keys().asSequence().toSet())
     }
 
+    @Test fun theVirtualDisplayIsOnlyForPureLookups() {
+        // "打开飞书" ran unseen on 2026-10-15; the owner wants the virtual display only when nothing is shown to them.
+        assertTrue(JevProtocol.PLACEMENT_RULE.contains("Choose virtual only when"))
+        assertTrue(JevProtocol.PLACEMENT_RULE.endsWith("When unsure, choose foreground."))
+    }
+
     @Test fun placementTakesTheLikelierOfTheTwo() {
         assertEquals(Placement.FOREGROUND, JevProtocol.parsePlacement(placementAnswer("foreground", .91)))
         assertEquals(Placement.VIRTUAL, JevProtocol.parsePlacement(placementAnswer("virtual", .7)))
         // Feishu on 2026-10-13: foreground at .82 with .64 confidence used to wait 4 s for the chat model.
         assertEquals(Placement.FOREGROUND, JevProtocol.parsePlacement("""{"answers":{"placement":{"type":"choice","choice":"foreground",
             "confidence":0.64,"probabilities":{"virtual":0.18,"foreground":0.82}}}}"""))
-        assertEquals(Placement.VIRTUAL, JevProtocol.parsePlacement(placementAnswer("foreground", .5)))
+        // A tie is unsure, and unsure runs where the user can see it.
+        assertEquals(Placement.FOREGROUND, JevProtocol.parsePlacement(placementAnswer("foreground", .5)))
         assertThrows(IllegalArgumentException::class.java) { JevProtocol.parsePlacement(placementAnswer("desktop", .9)) }
         assertEquals(Placement.FOREGROUND, ModelProtocol.parsePlacement("""```json
 {"placement":"foreground"}

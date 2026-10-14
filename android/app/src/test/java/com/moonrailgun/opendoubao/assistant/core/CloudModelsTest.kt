@@ -175,7 +175,7 @@ class CloudModelsTest {
     }
 
     @Test fun placementAsksJevFirstAndTheChatModelOnlyWhenJevIsDown() = runBlocking {
-        var jevConfidence = .9; var jevDown = false; var chats = 0
+        var jevConfidence = .9; var jevDown = false; var chatDown = false; var chats = 0
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val buffer = Buffer()
             chain.request().body!!.writeTo(buffer)
@@ -187,6 +187,7 @@ class CloudModelsTest {
                     "probabilities":{"virtual":$jevConfidence,"foreground":${1 - jevConfidence}}}}}"""
             } else {
                 chats++
+                if (chatDown) throw java.io.IOException("down")
                 val system = body.getJSONArray("messages").getJSONObject(0).getString("content")
                 assertTrue(system.startsWith("Decide where"))
                 assertEquals("付款", JSONObject(body.getJSONArray("messages").getJSONObject(1).getString("content")).getString("goal"))
@@ -206,6 +207,11 @@ class CloudModelsTest {
         assertEquals(Placement.FOREGROUND, down.first)
         assertTrue(down.second, down.second.startsWith("Chat 模型，Jev 不可用"))
         assertEquals(1, chats)
+        // With both models down nothing says it is a pure lookup, so it runs in the foreground.
+        chatDown = true
+        val none = models.placement("付款")
+        assertEquals(Placement.FOREGROUND, none.first)
+        assertTrue(none.second, none.second.startsWith("默认"))
     }
 
     @Test fun fallbackUploadsRetainedSourcesAlongsideCurrentEditor() = runBlocking {
