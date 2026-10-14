@@ -93,7 +93,7 @@ class LocalSpeechEngine(private val context: Context) {
                 vad.acceptWaveform(samples)
                 if (size + samples.size <= heard.size) { samples.copyInto(heard, size); size += samples.size }
                 // Start 0.4 s before detection, so the first syllable is in the captions.
-                if (start < 0 && vad.isSpeechDetected()) start = maxOf(0, size - 6400)
+                if (start < 0 && vad.isSpeechDetected()) start = maxOf(0, size - LEAD_IN)
                 if (partial != null && start >= 0 && size - decoded >= 4800 && inflight?.isDone != false) {
                     decoded = size
                     val snapshot = heard.copyOfRange(start, size)
@@ -114,7 +114,8 @@ class LocalSpeechEngine(private val context: Context) {
         if (!keepGoing()) return ""
         vad.flush()
         if (vad.empty()) return ""
-        return decode(vad.front().samples)
+        val segment = vad.front()
+        return decode(utterance(heard, size, segment.start, segment.samples))
     }
 
     private fun read(record: AudioRecord): FloatArray {
@@ -183,6 +184,19 @@ internal fun mergeCaption(previous: String, decoded: String): String {
 
 /** MediaRecorder.AudioSource.HOTWORD, hidden from the SDK; the image grants the CAPTURE_AUDIO_HOTWORD it needs. */
 internal const val HOTWORD_SOURCE = 1999
+
+/** 0.4 s at 16 kHz: how far before the VAD's detection the captions and the final decode start. */
+internal const val LEAD_IN = 6400
+
+/**
+ * The audio for the final decode: the VAD's [segment] from [start], led in like the captions. The segment begins where
+ * speech crossed the VAD's threshold, which cuts the first consonant: "打开飞书" decoded as "海飞书" while the captions
+ * read it right. When the segment runs past the [size] samples [heard] could hold, the VAD's own copy is used.
+ */
+internal fun utterance(heard: FloatArray, size: Int, start: Int, segment: FloatArray): FloatArray {
+    val end = start + segment.size
+    return if (end > size) segment else heard.copyOfRange(maxOf(0, start - LEAD_IN), end)
+}
 
 // ponytail: RMS × 6 then a square root puts ordinary speech near the phone around 0.4–0.9; re-tune VOICE_GAIN on real voices.
 internal const val VOICE_GAIN = 6f
