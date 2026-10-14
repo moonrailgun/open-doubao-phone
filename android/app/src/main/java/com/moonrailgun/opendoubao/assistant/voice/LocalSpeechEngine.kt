@@ -46,11 +46,12 @@ class LocalSpeechEngine(private val context: Context) {
 
     /** [level] gets the microphone level per read on this worker; [partial], when given, the words heard so far on [captioner]. */
     fun recognize(keepGoing: () -> Boolean, stopRequested: () -> Boolean, level: (Float) -> Unit = {},
-                  partial: ((String) -> Unit)? = null, ready: () -> Unit): String {
+                  partial: ((String) -> Unit)? = null, source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                  ready: () -> Unit): String {
         // Warm ASR before announcing readiness, so model loading cannot discard the first words.
         recognizer
         vad.reset()
-        return recording(MediaRecorder.AudioSource.VOICE_RECOGNITION) { record ->
+        return recording(source) { record ->
             ready()
             capture(record, keepGoing, stopRequested, level, partial)
         }
@@ -137,14 +138,16 @@ class LocalSpeechEngine(private val context: Context) {
     }
 
     /**
-     * Wake listening records as a hotword client ([HOTWORD_SOURCE]): the system counts that under RECORD_AUDIO_HOTWORD,
-     * which the status bar's microphone dot ignores, so the dot appears only once a command is being recorded. Builds
-     * without CAPTURE_AUDIO_HOTWORD cannot open that source and fall back to ordinary recognition capture.
+     * Wake listening and the assistant's own commands record as a hotword client ([HOTWORD_SOURCE]): the system counts
+     * that under RECORD_AUDIO_HOTWORD, which the status bar's microphone dot ignores. Commands must: the audio policy
+     * leaves accessibility services out of its "top or latest" capture, and as the assistant this app may then record
+     * VOICE_RECOGNITION only while an accessibility app is on top, which a persistent process never counts as, so every
+     * command was silenced. Builds without CAPTURE_AUDIO_HOTWORD cannot open that source and fall back to ordinary capture.
      */
     private fun <T> recording(source: Int, block: (AudioRecord) -> T): T {
         val record = open(source)
             ?: (if (source == HOTWORD_SOURCE) open(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-                ?.also { Diagnostics.log("热词音源不可用，唤醒监听改用普通录音") } else null)
+                ?.also { Diagnostics.log("热词音源不可用，改用普通录音") } else null)
             ?: throw IllegalStateException("麦克风不可用")
         try {
             return block(record)

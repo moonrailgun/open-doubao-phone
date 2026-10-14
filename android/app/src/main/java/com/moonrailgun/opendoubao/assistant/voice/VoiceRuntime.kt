@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
+import android.media.MediaRecorder
 import android.os.*
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
@@ -206,10 +207,10 @@ object VoiceRuntime {
         return id
     }
     private suspend fun record(context: Context, id: Long, level: (Float) -> Unit = {}, partial: ((String) -> Unit)? = null,
-                               onReady: () -> Unit = {}) = runCatching {
+                               source: Int = MediaRecorder.AudioSource.VOICE_RECOGNITION, onReady: () -> Unit = {}) = runCatching {
         withTimeout(5_000) { ready.await() }
         withContext(worker) {
-            engine(context).recognize({ requests.accepts(id) && microphoneAvailable(context) }, { stopRequested }, level, partial) {
+            engine(context).recognize({ requests.accepts(id) && microphoneAvailable(context) }, { stopRequested }, level, partial, source) {
                 scope.launch { if (requests.accepts(id)) { mutableState.value = "正在听，请说话"; onReady() } }
             }
         }
@@ -225,8 +226,10 @@ object VoiceRuntime {
         mutableListening.update { if (it == null || (!it.hearing && it.text.isNotEmpty())) Listening() else it }
         scope.launch {
             // The engine reports from its worker; update {} keeps a card that was just closed from reopening.
+            // The assistant's own commands record like the wake word (see LocalSpeechEngine.recording); recognition other
+            // apps ask for stays on the ordinary source, so the microphone dot shows for it.
             val result = record(context, id, level = { level -> mutableListening.update { it?.copy(level = level) } },
-                partial = { text -> mutableListening.update { it?.copy(text = text) } }) {
+                partial = { text -> mutableListening.update { it?.copy(text = text) } }, source = HOTWORD_SOURCE) {
                 Diagnostics.log("开始收听")
                 mutableListening.update { it?.copy(hearing = true, hint = "正在听…") }
             }
