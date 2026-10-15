@@ -74,7 +74,7 @@ fun virtualDisplayAvailable(context: Context): Boolean = Build.VERSION.SDK_INT >
 @TargetApi(34)
 class VirtualPhone(private val service: AssistantService, private val foreground: AndroidPhone,
     /** True while a session is open, so the app can show the display; false again after the task ends or hands over. */
-    private val active: MutableStateFlow<Boolean>, private val onConsent: (String) -> Unit = {},
+    private val active: MutableStateFlow<Boolean>, private val onNotice: (String) -> Unit = {},
     private val onLost: (String) -> Unit) : Phone {
     private val executor: Executor = service.mainExecutor
     /** The live session for the peek window: null before the first app opens and after the task ends or is handed over. */
@@ -320,9 +320,13 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         created.setLifecycleCallback(executor, object : ComputerControlSession.LifecycleCallback {
             override fun onActive() { blocked = null }
             override fun onBlocked(reason: Int, message: String?) {
+                // 2026-10-15: Settings search opens SettingsIntelligence, another package; the main display has no such limit.
+                if (reason == ComputerControlSession.BLOCK_REASON_DISALLOWED_ACTIVITY_LAUNCH && runCatching { handOver() }.isSuccess) {
+                    onNotice("应用要打开本次任务以外的页面，已转到前台继续")
+                    return
+                }
                 blocked = when (reason) {
                     ComputerControlSession.BLOCK_REASON_SECURE_CONTENT -> "页面禁止在虚拟屏显示，可点「转到前台处理」"
-                    ComputerControlSession.BLOCK_REASON_DISALLOWED_ACTIVITY_LAUNCH -> "应用打开了本次任务以外的页面，可点「转到前台处理」"
                     ComputerControlSession.BLOCK_REASON_AUTHENTICATION_PROMPT_REQUESTED -> "需要身份验证，可点「转到前台处理」"
                     else -> "虚拟屏暂停操作（$reason）"
                 }
@@ -341,7 +345,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
     // The system asks the user once per app before it may be automated; the task waits on the answer.
     private fun ask(intentSender: IntentSender, pkg: String) {
         val label = runCatching { service.packageManager.run { getApplicationLabel(getApplicationInfo(pkg, 0)) } }.getOrDefault(pkg)
-        onConsent("等你在系统弹窗里允许操作「$label」，选「始终允许」以后不再询问")
+        onNotice("等你在系统弹窗里允许操作「$label」，选「始终允许」以后不再询问")
         val options = ActivityOptions.makeBasic().setPendingIntentBackgroundActivityStartMode(
             if (Build.VERSION.SDK_INT >= 36) ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
             else @Suppress("DEPRECATION") ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED).toBundle()
