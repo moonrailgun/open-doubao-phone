@@ -191,6 +191,24 @@ class RemoteProtocolTest {
         assertFalse(replaced.toString().contains("secret"))
     }
 
+    @Test fun jevVisionConfigIsStrictAndOlderClientsPreserveTheSavedSwitch() {
+        val phone = Phone()
+        val commands = RemoteCommands(phone)
+        assertFalse(commands.call(request("config.get")).getJSONObject("data").getBoolean("jevVision"))
+        for (enabled in listOf(true, false)) {
+            val result = commands.call(request("config.set", configParams(phone.config).put("jevVision", enabled)))
+            assertTrue(result.toString(), result.getBoolean("ok"))
+            assertEquals(enabled, result.getJSONObject("data").getBoolean("jevVision"))
+            assertEquals(enabled, phone.config.jevVision)
+            assertTrue(commands.call(request("config.set", configParams(phone.config))).getBoolean("ok"))
+            assertEquals(enabled, phone.config.jevVision)
+        }
+        for (value in listOf("true", 1, JSONObject.NULL)) {
+            assertFalse(commands.call(request("config.set", configParams(phone.config).put("jevVision", value))).getBoolean("ok"))
+        }
+        assertFalse(commands.call(request("config.set", configParams(phone.config).put("jevKey", "").put("jevVision", true))).getBoolean("ok"))
+    }
+
     @Test fun invalidOrBusyConfigWritesLeaveSavedSettingsUntouched() {
         val phone = Phone()
         val before = phone.config

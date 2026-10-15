@@ -56,6 +56,8 @@
             <label for="jev-endpoint">Jev 接口地址</label><input id="jev-endpoint" type="url" maxlength="2048" spellcheck="false" />
             <label for="jev-model">Jev 模型名称</label><input id="jev-model" maxlength="200" spellcheck="false" />
             <label for="jev-key">Jev API Key（可选）</label><input id="jev-key" type="password" maxlength="8192" autocomplete="new-password" />
+            <label class="check"><input id="jev-vision" type="checkbox" /> Jev 多模态（实验）</label>
+            <p class="muted">优先由 Jev 看截图并决定操作；置信度不足时，由通用视觉模型决定这一步，下一步再交回 Jev。需支持 Box 的 Jev 1.14。默认关闭。</p>
           </fieldset>
           <fieldset><legend>通用规划模型</legend>
             <label for="chat-endpoint">通用模型接口地址</label><input id="chat-endpoint" type="url" required maxlength="2048" spellcheck="false" />

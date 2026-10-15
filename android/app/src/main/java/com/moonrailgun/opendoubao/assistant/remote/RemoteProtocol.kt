@@ -100,7 +100,8 @@ class RemoteCommands(private val tasks: RemoteTasks) {
 
     /** Shared by config.set and config.test: a null key keeps the saved one only for the same endpoint. */
     private fun remoteConfig(params: JSONObject): ModelConfig {
-        params.exactFields("jevEndpoint", "jevModel", "jevKey", "chatEndpoint", "chatModel", "chatKey", "language")
+        val fields = arrayOf("jevEndpoint", "jevModel", "jevKey", "chatEndpoint", "chatModel", "chatKey", "language")
+        params.exactFields(*if (params.has("jevVision")) fields + "jevVision" else fields)
         val old = tasks.config()
         fun field(name: String, limit: Int): String = params.string(name).also {
             require(it.length <= limit) { "字段 $name 过长" }
@@ -114,7 +115,9 @@ class RemoteCommands(private val tasks: RemoteTasks) {
             return previousKey
         }
         return ModelConfig(jevEndpoint, field("jevModel", 200), key("jevKey", jevEndpoint, old.jevEndpoint, old.jevKey),
-            chatEndpoint, field("chatModel", 200), key("chatKey", chatEndpoint, old.chatEndpoint, old.chatKey), field("language", 64))
+            chatEndpoint, field("chatModel", 200), key("chatKey", chatEndpoint, old.chatEndpoint, old.chatKey), field("language", 64),
+            if (!params.has("jevVision")) old.jevVision else (params.get("jevVision") as? Boolean
+                ?: throw IllegalArgumentException("字段 jevVision 必须是布尔值")))
             .also { it.validate() }
     }
 
@@ -251,7 +254,7 @@ class RemoteCommands(private val tasks: RemoteTasks) {
 }
 
 private fun ModelConfig.remoteJson(): JSONObject = JSONObject().put("jevEndpoint", jevEndpoint).put("jevModel", jevModel)
-    .put("chatEndpoint", chatEndpoint).put("chatModel", chatModel).put("language", language)
+    .put("chatEndpoint", chatEndpoint).put("chatModel", chatModel).put("language", language).put("jevVision", jevVision)
     .put("hasJevKey", jevKey.isNotBlank()).put("hasChatKey", chatKey.isNotBlank())
 
 private fun TtsSettings.remoteJson(): JSONObject = JSONObject().put("endpoint", endpoint).put("model", model)

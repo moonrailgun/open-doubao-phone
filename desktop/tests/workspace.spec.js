@@ -412,10 +412,26 @@ test('model settings preserve hidden keys and send replacements only when entere
   await expect(page.locator('#notice')).toContainText('模型配置已保存到手机');
   expect(await page.evaluate(() => window.testCalls.find(call => call.args?.method === 'config.set').args.params)).toEqual({
     jevEndpoint: 'https://jev.example/v1', jevModel: 'new-jev', jevKey: null,
-    chatEndpoint: 'https://new.example/v1', chatModel: 'chat', chatKey: 'replacement-secret', language: 'zh-CN',
+    chatEndpoint: 'https://new.example/v1', chatModel: 'chat', chatKey: 'replacement-secret', language: 'zh-CN', jevVision: false,
   });
   await expect(page.locator('#chat-key')).toHaveValue('');
   expect(await page.evaluate(() => localStorage.length)).toBe(0);
+});
+
+test('Jev vision switch loads from the phone and is saved both on and off', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  for (const enabled of [false, true]) {
+    await page.evaluate(value => { window.testConfig.jevVision = value; }, enabled);
+    await page.getByRole('button', { name: '模型配置', exact: true }).click();
+    const toggle = page.getByRole('checkbox', { name: 'Jev 多模态（实验）' });
+    await expect(toggle).toBeChecked({ checked: enabled });
+    expect((await toggle.boundingBox()).width).toBeLessThan(30);
+    await toggle.setChecked(!enabled);
+    await page.getByRole('button', { name: '保存到手机', exact: true }).click();
+    await expect(page.locator('#model-dialog')).not.toBeVisible();
+    expect(await page.evaluate(() => window.testCalls.filter(c => c.args?.method === 'config.set').at(-1).args.params.jevVision)).toBe(!enabled);
+  }
 });
 
 test('model save failure stays editable, busy tasks block saving, and disconnect clears secrets', async ({ page }) => {
@@ -634,7 +650,7 @@ test('connection test sends unsaved form values and never saves them', async ({ 
   await expect(page.locator('#model-message')).toContainText('连接正常');
   expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'config.test').args.params)).toEqual({
     jevEndpoint: 'https://jev.example/v1', jevModel: 'jev', jevKey: null,
-    chatEndpoint: 'https://chat.example/v1', chatModel: 'draft-model', chatKey: null, language: '',
+    chatEndpoint: 'https://chat.example/v1', chatModel: 'draft-model', chatKey: null, language: '', jevVision: false,
   });
   await page.evaluate(() => { window.testConnectionFailure = 'Jev 连接测试失败\nPOST https://jev.example/v1'; });
   await page.getByRole('button', { name: '测试连接' }).click();

@@ -409,6 +409,7 @@ $('model-open').addEventListener('click', async () => {
     modelConfig = config;
     $('jev-endpoint').value = config.jevEndpoint;
     $('jev-model').value = config.jevModel;
+    $('jev-vision').checked = config.jevVision === true;
     $('chat-endpoint').value = config.chatEndpoint;
     $('chat-model').value = config.chatModel;
     for (const [id, configured] of [['jev-key', config.hasJevKey], ['chat-key', config.hasChatKey]]) {
@@ -429,7 +430,7 @@ $('model-open').addEventListener('click', async () => {
 const modelParams = () => ({
   jevEndpoint: $('jev-endpoint').value.trim(), jevModel: $('jev-model').value.trim(), jevKey: $('jev-key').value.trim() || ($('jev-endpoint').value.trim() && modelConfig?.hasJevKey ? null : ''),
   chatEndpoint: $('chat-endpoint').value.trim(), chatModel: $('chat-model').value.trim(), chatKey: $('chat-key').value.trim() || null,
-  language: $('model-language').value,
+  language: $('model-language').value, jevVision: $('jev-vision').checked,
 });
 $('model-test').addEventListener('click', async () => {
   if ($('model-test').disabled || !$('model-form').reportValidity()) return;

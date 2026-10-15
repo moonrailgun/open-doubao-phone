@@ -100,7 +100,7 @@ class Vault(context: Context) {
             val remote = json.optJSONObject("remote")
             val memory = json.optJSONArray("memory") ?: JSONArray()
             return Saved(ModelConfig(cfg.getString("jevEndpoint"), cfg.getString("jevModel"), cfg.getString("jevKey"),
-                cfg.getString("chatEndpoint"), cfg.getString("chatModel"), cfg.getString("chatKey"), cfg.optString("language")),
+                cfg.getString("chatEndpoint"), cfg.getString("chatModel"), cfg.getString("chatKey"), cfg.optString("language"), cfg.optBoolean("jevVision", false)),
                 (0 until excluded.length()).map { excluded.getString(it) }.toSet(),
                 (0 until records.length()).map { records.getJSONObject(it).let { r ->
                     val log = r.optJSONArray("log") ?: JSONArray()
@@ -120,7 +120,7 @@ class Vault(context: Context) {
         val cfg = saved.config
         val json = JSONObject().put("config", JSONObject().put("jevEndpoint", cfg.jevEndpoint).put("jevModel", cfg.jevModel)
             .put("jevKey", cfg.jevKey).put("chatEndpoint", cfg.chatEndpoint).put("chatModel", cfg.chatModel).put("chatKey", cfg.chatKey)
-            .put("language", cfg.language))
+            .put("language", cfg.language).put("jevVision", cfg.jevVision))
             .put("excludedApps", JSONArray(saved.excludedApps.toList()))
             // Older images require "apps"; an empty, unconfigured one lets a rollback start with all launchable apps.
             .put("apps", JSONArray()).put("appsConfigured", false)

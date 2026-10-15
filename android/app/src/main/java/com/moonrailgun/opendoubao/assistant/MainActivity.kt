@@ -378,8 +378,16 @@ class MainActivity : ComponentActivity() {
                                     SettingField("接口地址", config.jevEndpoint) { config = config.copy(jevEndpoint = it.trim()) }
                                     SettingField("模型", config.jevModel) { config = config.copy(jevModel = it.trim()) }
                                     KeyField("API Key", config.jevKey) { config = config.copy(jevKey = it.trim()) }
+                                    Row(Modifier.fillMaxWidth().toggleable(config.jevVision, role = Role.Switch) {
+                                        config = config.copy(jevVision = it)
+                                    }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Jev 多模态（实验）", Modifier.weight(1f))
+                                        Switch(config.jevVision, null)
+                                    }
+                                    Text("开启后优先由 Jev 看截图并决定操作；置信度不足时，由通用视觉模型决定这一步，下一步再交回 Jev。需支持 Box 的 Jev 1.14。默认关闭，保存后新任务生效。",
+                                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Section("规划与视觉模型", "拆解任务、看截图和总结结果。需要支持图片输入的 Chat Completions 接口。") {
+                                Section("规划与视觉模型", if (config.jevVision) "生成输入文字和最终回答，并在 Jev 置信度不足时看截图决定下一步。需要支持图片输入的 Chat Completions 接口。" else "拆解任务、看截图和总结结果。需要支持图片输入的 Chat Completions 接口。") {
                                     SettingField("完整接口地址", config.chatEndpoint, "通常以 /v1/chat/completions 结尾") { config = config.copy(chatEndpoint = it.trim()) }
                                     SettingField("模型", config.chatModel) { config = config.copy(chatModel = it.trim()) }
                                     KeyField("API Key", config.chatKey) { config = config.copy(chatKey = it.trim()) }
