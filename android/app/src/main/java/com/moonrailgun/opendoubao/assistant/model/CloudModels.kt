@@ -330,7 +330,10 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
             Flag unverified details in a few words; if the goal was not fully achieved, say what is missing in one sentence.
             Cite only source URLs actually present. Never invent URLs or claim a save without evidence.
             $CONTEXT_RULE Use bold and bullets only; no headings, tables or JSON. Write the summary in ${config.languageName}.
-        """.trimIndent(), evidence.json().put("goal", goal).withContext().toString()) }.also { require(it.isNotBlank()) { "模型没有返回结果" } }
+        """.trimIndent(), evidence.copy(screens = emptyList()).json().put("goal", goal)
+            // Every screen's text is already among the retained sources; eight full trees made a 160 KB request that took 12 s.
+            .put("observations", JSONArray(evidence.screens.takeLast(1).map { it.json(compact = true) })).withContext().toString())
+    }.also { require(it.isNotBlank()) { "模型没有返回结果" } }
 
     /**
      * Where a task should run, with how it was decided for the trace: Jev (one cheap question, 3 s at most) when it is

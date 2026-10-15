@@ -248,6 +248,28 @@ class CloudModelsTest {
         assertTrue(instruction.contains(""""action":"done","result""""))
     }
 
+    @Test fun theSummarySeesOnlyTheLastScreenCompactBesideTheRetainedText() = runBlocking {
+        // 2026-10-15: eight full element trees made a 160 KB summary request that took 12 s.
+        var sent: JSONObject? = null
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val buffer = Buffer()
+            chain.request().body!!.writeTo(buffer)
+            sent = JSONObject(buffer.readUtf8())
+            val response = """{"choices":[{"message":{"content":"done"}}]}"""
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(response.toResponseBody("application/json".toMediaType())).build()
+        }.build()
+        val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
+        models.summarize("goal", Evidence(listOf(screen(text = "first"), screen(text = "last")), listOf(Source("browser.app", "first"))))
+        val context = JSONObject(sent!!.getJSONArray("messages").getJSONObject(1).getString("content"))
+        val observations = context.getJSONArray("observations")
+        assertEquals(1, observations.length())
+        val element = observations.getJSONObject(0).getJSONArray("elements").getJSONObject(0)
+        assertEquals("last", element.getString("text"))
+        assertEquals("Button", element.getString("class"))
+        assertEquals("first", context.getJSONArray("retained_sources").getJSONObject(0).getString("text"))
+    }
+
     @Test fun oneMalformedVisionReplyIsRetriedWithTheParserComplaint() = runBlocking {
         val sent = mutableListOf<JSONObject>()
         val events = mutableListOf<JSONObject>()
