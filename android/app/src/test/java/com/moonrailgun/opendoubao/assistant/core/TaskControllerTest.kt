@@ -381,7 +381,8 @@ class TaskControllerTest {
         val controller = TaskController(this, phone, models)
         controller.start("search", setOf("browser.app"))
         runCurrent()
-        phone.current = screen(text = "new page")
+        // Another window: a done made on the old one would stand through updates inside the same window.
+        phone.current = screen(text = "new page").copy(windowId = 2)
         models.slow = false
         models.finish = true
         advanceUntilIdle()

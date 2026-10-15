@@ -54,6 +54,27 @@ class VisionAnswerTest {
         assertFalse(controller.state.value.trace.any { "决策期间页面变化" in it })
     }
 
+    @Test fun jevsDoneAlsoSurvivesUpdatesInsideTheSameWindow() = runTest {
+        // 2026-10-15: "打开飞书" was done by Jev at 4.3 s, then Feishu redrew and judging again took another 4 s.
+        var reads = 0
+        val phone = object : Phone by StillPhone() { override suspend fun observe() = screen(text = "status ${++reads}") }
+        var decides = 0
+        var summarized: Evidence? = null
+        val models = object : Models by VisionModels(answer = "") {
+            override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
+                Decision(null, true, Effect.YES).also { decides++ }
+            override suspend fun summarize(goal: String, evidence: Evidence): String { summarized = evidence; return "summary" }
+        }
+        val controller = TaskController(this, phone, models)
+        controller.start("打开飞书", setOf("browser.app"))
+        advanceUntilIdle()
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals(1, decides)
+        // The summary reads the page as it stands now, not as it was when Jev judged it.
+        assertEquals("status $reads", summarized!!.screens.last().elements.first().text)
+        assertFalse(controller.state.value.trace.any { "决策期间页面变化" in it })
+    }
+
     @Test fun doneOnAWindowThatIsGoneIsJudgedAgain() = runTest {
         var reads = 0
         // The judged window is replaced by another one before the re-check, so the judgement must be made again.

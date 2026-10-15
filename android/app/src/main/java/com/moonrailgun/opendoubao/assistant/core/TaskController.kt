@@ -320,10 +320,10 @@ class TaskController(
                             }
                             val fresh = observe(token) ?: return@withTimeout
                             checkCurrent(token)
-                            // A vision model's done, made from a screenshot, stays done while the same window keeps updating (a
-                            // chat's status line, a list still loading): judging again costs another 8 s or so. Another app or
-                            // window means it looked at a page now gone. Jev's done is cheap to redo, so it stays strict.
-                            val stillThere = done && image != null && fresh.packageName == screen.packageName && fresh.windowId == screen.windowId
+                            // A done stays done while the same window keeps updating (a chat's status line, a list still loading):
+                            // judging again costs another 4 s with Jev and 8 s or so with vision. Another app or window means it
+                            // looked at a page now gone.
+                            val stillThere = done && fresh.packageName == screen.packageName && fresh.windowId == screen.windowId
                             // Likewise an element action goes ahead while unrelated parts of the page change, if its own node is untouched.
                             val targetKept = !done && sameTarget(action, screen, fresh)
                             if (!stillThere && !targetKept && (fresh.fingerprint != screen.fingerprint ||
@@ -331,6 +331,8 @@ class TaskController(
                                 throw ScreenChangedException()
                             }
                             if (done) {
+                                // A done that stood through an update summarizes the page as it is now.
+                                keep(fresh)
                                 // The vision model usually writes the answer along with its done, which saves a second call.
                                 val result = if (answer.isNotBlank()) answer.also { trace("沿用视觉模型给出的结果，不再单独总结") } else {
                                     update("正在整理结果", logged = false)
