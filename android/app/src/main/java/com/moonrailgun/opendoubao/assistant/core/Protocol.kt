@@ -120,9 +120,31 @@ object JevProtocol {
         val confirmedEffect = if (probability(effect, "confidence") < MIN_CONFIDENCE) Effect.UNKNOWN else when (effectChoice) {
             "yes" -> Effect.YES; "no" -> Effect.NO; else -> Effect.UNKNOWN
         }
-        val action = if (choice == "none" || probability(next, "confidence") < MIN_CONFIDENCE || probability(next.getJSONObject("probabilities"), choice) < MIN_CONFIDENCE) null
-            else candidates.single { it.id == choice }.action
-        Decision(action, finished, confirmedEffect, doneProbability)
+        val odds = next.getJSONObject("probabilities")
+        val chosen = candidates.firstOrNull { it.id == choice }
+        val target = chosen?.let { oneTarget(it, candidates) }.orEmpty()
+        // Jev's confidence is its top option's share, so for a target split over nested nodes the joint share stands for it.
+        val sure = if (target.size > 1) target.sumOf { probability(odds, it.id) } >= MIN_CONFIDENCE
+            else probability(next, "confidence") >= MIN_CONFIDENCE && probability(odds, choice) >= MIN_CONFIDENCE
+        Decision(chosen?.action?.takeIf { sure }, finished, confirmedEffect, doneProbability)
+    }
+
+    /**
+     * The click candidates that hit the same thing as [chosen]: nodes nested in or around it, when everything clickable
+     * inside the outermost of them lies on that one chain (a list row, its avatar, the avatar's wrapper). A container
+     * around two different targets is not one. Jev splits its share among such nodes: 0.56 + 0.32 on a Feishu contact
+     * row on 2026-10-15, each alone under the bar.
+     */
+    private fun oneTarget(chosen: Candidate, candidates: List<Candidate>): List<Candidate> {
+        val node = (chosen.action as? Action.Click)?.node ?: return listOf(chosen)
+        fun nested(a: String, b: String) = a == b || a.startsWith("$b.") || b.startsWith("$a.")
+        val clicks = candidates.mapNotNull { candidate -> (candidate.action as? Action.Click)?.let { candidate to it.node } }
+        return listOf(chosen) + clicks.filter { (other, at) ->
+            if (other.id == chosen.id || !nested(at, node)) return@filter false
+            val outer = if (at.length < node.length) at else node
+            val inside = clicks.map { it.second }.filter { it == outer || it.startsWith("$outer.") }
+            inside.all { a -> inside.all { b -> nested(a, b) } }
+        }.map { it.first }
     }
 
     private fun choice(answer: JSONObject, options: Set<String>): String {

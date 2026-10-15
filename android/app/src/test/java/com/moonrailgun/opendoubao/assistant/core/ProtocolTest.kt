@@ -71,6 +71,23 @@ class ProtocolTest {
         assertEquals(Effect.UNKNOWN, decision.effect)
     }
 
+    @Test fun nestedClicksOnOneTargetShareTheirProbability() {
+        // 2026-10-15: a Feishu contact row came as the row and its avatar; Jev gave 0.56 + 0.32, then 0.64 + 0.21, neither
+        // alone reaching 0.7, and both steps went to the vision model, which clicked the avatar.
+        val row = listOf(Candidate("c0", Action.Click("0.1"), "点击「」"), Candidate("c1", Action.Click("0.1.0"), "点击「avatar_item」"),
+            Candidate("c2", Action.Click("0.1.0.2"), "点击「」"), Candidate("c3", Action.Click("0.2"), "点击「btn_send」"))
+        assertEquals(Action.Click("0.1.0"), JevProtocol.parse(answer("c1", .55,
+            mapOf("c0" to .32, "c1" to .56, "c2" to .02, "c3" to .05, "none" to .05)), row).action)
+        assertNull(JevProtocol.parse(answer("c1", .55, mapOf("c0" to .02, "c1" to .56, "c2" to .02, "c3" to .35, "none" to .05)), row).action)
+        // A header around the profile button and the search button is not one target.
+        val header = listOf(Candidate("c0", Action.Click("0.1"), "点击「tab_title_container」"),
+            Candidate("c1", Action.Click("0.1.0"), "点击「avatar_click_wrapper」"), Candidate("c2", Action.Click("0.1.5"), "点击「function_btn_1」"))
+        assertNull(JevProtocol.parse(answer("c2", .55, mapOf("c0" to .32, "c1" to .06, "c2" to .56, "none" to .06)), header).action)
+        // Typing into a field is another action than clicking it.
+        val field = listOf(Candidate("c0", Action.Click("0.1"), "点击「搜索」"), Candidate("c1", Action.Type("0.1.0", "Lyon"), "填写「搜索」：Lyon"))
+        assertNull(JevProtocol.parse(answer("c0", .55, mapOf("c0" to .56, "c1" to .4, "none" to .04)), field).action)
+    }
+
     @Test fun lowConfidenceChoiceFallsBackInsteadOfExecuting() {
         assertNull(JevProtocol.parse(answer("c0", .3), candidates).action)
         assertNull(JevProtocol.parse(answer("none", .99), candidates).action)
@@ -150,6 +167,9 @@ class ProtocolTest {
     private fun placementAnswer(choice: String, confidence: Double) = """{"answers":{"placement":{"type":"choice","choice":"$choice",
         "confidence":$confidence,"probabilities":{"virtual":${if (choice == "virtual") confidence else 1 - confidence},
         "foreground":${if (choice == "foreground") confidence else 1 - confidence}}}}}"""
+
+    private fun answer(choice: String, confidence: Double, probabilities: Map<String, Double>) = JSONObject(answer(choice, confidence))
+        .apply { getJSONObject("answers").getJSONObject("next").put("probabilities", JSONObject(probabilities)) }.toString()
 
     private fun answer(choice: String, confidence: Double, done: Double = .02) = """{
       "model":"jev-1.13.0","answers":{
