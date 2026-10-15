@@ -20,6 +20,9 @@ import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import android.text.method.ScrollingMovementMethod
+import android.os.BatteryManager
+import android.os.Environment
+import android.os.StatFs
 import android.os.SystemClock
 import android.os.PowerManager
 import android.view.Gravity
@@ -280,10 +283,12 @@ class AssistantService : AccessibilityService() {
             .also { virtual = it }
         // Chosen per task: the setting may change between tasks, and other systems always run in the foreground.
         val choice = executionChoice(this)
+        val labels = catalog.associate { it.packageName to it.label }
+        val quick: suspend (String) -> String? = { quick(it, apps, labels) }
         val next = when {
-            !virtualDisplayAvailable(this) || choice == EXECUTION_FOREGROUND -> TaskController(scope, phone, models, remember = ::remember)
-            choice == EXECUTION_VIRTUAL -> TaskController(scope, phone, models, remember = ::remember, place = { offscreen() to "设置" })
-            else -> TaskController(scope, phone, models, remember = ::remember, place = {
+            !virtualDisplayAvailable(this) || choice == EXECUTION_FOREGROUND -> TaskController(scope, phone, models, remember = ::remember, quick = quick)
+            choice == EXECUTION_VIRTUAL -> TaskController(scope, phone, models, remember = ::remember, place = { offscreen() to "设置" }, quick = quick)
+            else -> TaskController(scope, phone, models, remember = ::remember, quick = quick, place = {
                 val (placement, how) = models.placement(goal)
                 Diagnostics.log("执行方式：${if (placement == Placement.VIRTUAL) "虚拟屏" else "前台"}（$how）")
                 (if (placement == Placement.VIRTUAL) offscreen() else phone) to how
@@ -331,6 +336,25 @@ class AssistantService : AccessibilityService() {
         }
         return record.id
     }
+
+    /** Carries out a plain command on the user's own screen (see QuickCommand); null hands the goal to the full flow. */
+    private suspend fun quick(goal: String, apps: Set<String>, labels: Map<String, String>): String? =
+        when (val command = QuickCommand.parse(goal, labels.filterKeys { it in apps && phone.canLaunch(it) })) {
+            null -> null
+            is Quick.OpenApp -> if (phone.execute(Action.OpenApp(command.packageName), null)) "已打开${command.label}" else null
+            Quick.Home -> if (phone.execute(Action.Home, null)) "已回到桌面" else null
+            Quick.Back -> if (phone.execute(Action.Back, null)) "已返回上一页" else null
+            // Settings' pages are its own; outside the task's apps the full flow says why it cannot go there.
+            is Quick.SettingsPage -> if ("com.android.settings" !in apps) null
+                else if (runCatching { startActivity(Intent(command.action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess)
+                    "已打开${command.label}设置" else null
+            Quick.Battery -> getSystemService(BatteryManager::class.java).let {
+                // isCharging stays true on a full battery left on the charger (2026-10-15: 100%, status "not charging").
+                QuickCommand.batteryText(it.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),
+                    it.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS) == BatteryManager.BATTERY_STATUS_CHARGING)
+            }
+            Quick.Storage -> StatFs(Environment.getDataDirectory().path).let { QuickCommand.storageText(it.availableBytes, it.totalBytes) }
+        }
 
     private fun remember(ops: List<MemoryOp>): String {
         var summary = ""

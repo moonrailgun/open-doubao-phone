@@ -27,6 +27,8 @@ class TaskController(
     private val remember: (List<MemoryOp>) -> String = { "无变化" },
     /** Picks where the task runs once per task, alongside planning: the phone to use and how it was chosen, for the trace. */
     private val place: (suspend () -> Pair<Phone, String>)? = null,
+    /** Carries out a plain command at once (see QuickCommand) and returns its fixed result, or null for the full flow. */
+    private val quick: (suspend (String) -> String?)? = null,
 ) {
     private var phone = phone
     private val mutable = MutableStateFlow(TaskState())
@@ -129,6 +131,19 @@ class TaskController(
             try {
                 withTimeout(remainingActiveMillis) {
                     if (plan == null) {
+                        if (chat == null && quick != null) {
+                            // A plain command needs no model: done the moment it is carried out, with a fixed result.
+                            val done = try { timed("快速通道") { quick.invoke(state.value.goal) } }
+                                catch (e: CancellationException) { throw e }
+                                catch (e: Exception) { trace("快速通道没成功（${e.message}），改走完整流程"); null }
+                            checkCurrent(token)
+                            if (done != null) {
+                                trace("快速通道：$done")
+                                mutable.value = state.value.copy(result = done)
+                                finish(TaskStatus.COMPLETED, "任务已完成")
+                                return@withTimeout
+                            }
+                        }
                         val initialScreen = try {
                             phone.observe().takeIf { it.packageName in apps && !it.protected }
                         } catch (e: CancellationException) { throw e }
