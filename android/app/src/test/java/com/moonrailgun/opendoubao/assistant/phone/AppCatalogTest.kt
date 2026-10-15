@@ -9,13 +9,20 @@ class AppCatalogTest {
     private val gms = InstalledApp("com.google.android.gms", "Google Play services", launchable = false)
     private val catalog = listOf(browser, settings, gms)
 
-    @Test fun defaultsOnlySelectLaunchableApps() {
-        assertEquals(setOf(browser.packageName, settings.packageName), catalogSelection(catalog, emptySet(), false))
+    @Test fun everyInstalledAppAndComponentIsAllowedByDefault() {
+        // 2026-10-15: Settings' search page is a separate component, and a task paused there because it was not picked.
+        assertEquals(setOf(browser.packageName, settings.packageName, gms.packageName), allowedApps(catalog, emptySet()))
     }
 
-    @Test fun savedComponentsRemainSelectedAndUninstalledPackagesAreRemoved() {
-        assertEquals(setOf(gms.packageName), catalogSelection(catalog, setOf(gms.packageName, "removed.app"), true))
-        assertEquals(emptySet<String>(), catalogSelection(catalog, emptySet(), true))
+    @Test fun onlyExcludedAppsAreLeftOut() {
+        assertEquals(setOf(settings.packageName, gms.packageName), allowedApps(catalog, setOf(browser.packageName, "removed.app")))
+        assertEquals(emptySet<String>(), allowedApps(catalog, catalog.map { it.packageName }.toSet()))
+    }
+
+    @Test fun anAllowedListFromTheDesktopIsStoredAsTheAppsItLeavesOut() {
+        // An app excluded earlier that is disabled or uninstalled right now stays excluded when it comes back.
+        assertEquals(setOf(gms.packageName, "bank.app"),
+            excludedApps(catalog, setOf(browser.packageName, settings.packageName), setOf("bank.app", browser.packageName)))
     }
 
     @Test fun unfilteredListOnlyShowsComponentsWhenRequested() {

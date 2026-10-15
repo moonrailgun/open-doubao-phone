@@ -40,7 +40,7 @@ import com.moonrailgun.opendoubao.assistant.model.HttpTransport
 import com.moonrailgun.opendoubao.assistant.remote.RemoteCommands
 import com.moonrailgun.opendoubao.assistant.remote.RemoteReceiver
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
-import com.moonrailgun.opendoubao.assistant.phone.catalogSelection
+import com.moonrailgun.opendoubao.assistant.phone.allowedApps
 import com.moonrailgun.opendoubao.assistant.phone.loadAppCatalog
 import kotlinx.coroutines.*
 import org.junit.Assert.*
@@ -559,23 +559,19 @@ class NativeBridgeTest {
         }
     }
 
-    @Test fun vaultPreservesExplicitEmptyAppSelection() {
+    @Test fun vaultKeepsExcludedApps() {
         val folder = File(context.cacheDir, "app-selection-test").apply { deleteRecursively(); mkdirs() }
         val isolated = object : ContextWrapper(context) { override fun getNoBackupFilesDir() = folder }
         val vault = Vault(isolated)
         try {
-            assertFalse(vault.read().appsConfigured)
-            vault.write(Saved(apps = setOf("browser.app"), appsConfigured = true))
-            assertEquals(setOf("browser.app"), vault.read().apps)
-            vault.write(vault.read().copy(apps = emptySet()))
+            assertTrue(vault.read().excludedApps.isEmpty())
+            vault.write(Saved(excludedApps = setOf("browser.app")))
             vault.record(Record("one", 10, "goal", "COMPLETED", "result"))
-            val restored = Vault(isolated).read()
-            assertTrue("Explicitly clearing apps must not restore the default selection", restored.appsConfigured)
-            assertTrue(restored.apps.isEmpty())
+            assertEquals(setOf("browser.app"), Vault(isolated).read().excludedApps)
         } finally { folder.deleteRecursively() }
     }
 
-    @Test fun installedComponentsWithoutLauncherCanBeSelectedAndRetained() = runBlocking {
+    @Test fun installedComponentsWithoutLauncherAreAllowedUntilExcluded() = runBlocking {
         val service = fixture()
         val testPackage = instrumentation.context.packageName
         val catalog = loadAppCatalog(context)
@@ -583,8 +579,8 @@ class NativeBridgeTest {
         assertFalse("The test APK has no launcher entry", component.launchable)
         assertFalse(service.phone.canLaunch(testPackage))
         assertTrue(service.phone.canLaunch(context.packageName))
-        assertFalse(catalogSelection(catalog, emptySet(), appsConfigured = false).contains(testPackage))
-        assertEquals(setOf(testPackage), catalogSelection(catalog, setOf(testPackage), appsConfigured = true))
+        assertTrue(allowedApps(catalog, emptySet()).contains(testPackage))
+        assertFalse(allowedApps(catalog, setOf(testPackage)).contains(testPackage))
         assertFalse(catalog.any { it.packageName == context.packageName })
         val playServicesInstalled = context.packageManager.getInstalledApplications(0).any { it.enabled && it.packageName == "com.google.android.gms" }
         assertEquals("Google Play services must be listed when installed", playServicesInstalled,

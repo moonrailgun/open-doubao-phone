@@ -371,7 +371,7 @@ class TaskController(
             val reason = if (screen.packageName == "com.google.android.gms") {
                 "当前是 Google Play 服务页面（com.google.android.gms），请手动完成登录或选择账号，返回可用应用后点击继续"
             } else {
-                "当前应用 ${screen.packageName} 不在可用范围内，请手动处理并返回已选应用后点击继续"
+                "当前应用 ${screen.packageName} 不在助手可操作的范围内，请手动处理后点击继续"
             }
             pause(reason)
             return null

@@ -20,8 +20,9 @@ import javax.crypto.spec.GCMParameterSpec
 
 data class Record(val id: String, val time: Long, val goal: String, val status: String, val result: String,
     val log: List<String> = emptyList())
-data class Saved(val config: ModelConfig = ModelConfig(), val apps: Set<String> = emptySet(),
-    val records: List<Record> = emptyList(), val appsConfigured: Boolean = apps.isNotEmpty(),
+/** [excludedApps]: apps the assistant must not operate; every other installed app and component is allowed. */
+data class Saved(val config: ModelConfig = ModelConfig(), val excludedApps: Set<String> = emptySet(),
+    val records: List<Record> = emptyList(),
     val remote: RemoteConfig = RemoteConfig(), val onlineTtsToken: String = "", val onlineTtsEndpoint: String = "",
     val onlineTtsModel: String = DEFAULT_TTS_MODEL, val onlineTtsVoice: String = DEFAULT_TTS_VOICE,
     val memory: List<Memory> = emptyList(), val memorySeeded: Set<String> = emptySet()) {
@@ -93,18 +94,18 @@ class Vault(context: Context) {
             cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, data.copyOfRange(0, 12)))
             val json = JSONObject(String(cipher.doFinal(data.copyOfRange(12, data.size)), Charsets.UTF_8))
             val cfg = json.getJSONObject("config")
-            val apps = json.getJSONArray("apps")
+            // The allow list in "apps" (v1.50 and older) is dropped: everything is allowed until the user excludes an app.
+            val excluded = json.optJSONArray("excludedApps") ?: JSONArray()
             val records = json.getJSONArray("records")
             val remote = json.optJSONObject("remote")
             val memory = json.optJSONArray("memory") ?: JSONArray()
             return Saved(ModelConfig(cfg.getString("jevEndpoint"), cfg.getString("jevModel"), cfg.getString("jevKey"),
                 cfg.getString("chatEndpoint"), cfg.getString("chatModel"), cfg.getString("chatKey"), cfg.optString("language")),
-                (0 until apps.length()).map { apps.getString(it) }.toSet(),
+                (0 until excluded.length()).map { excluded.getString(it) }.toSet(),
                 (0 until records.length()).map { records.getJSONObject(it).let { r ->
                     val log = r.optJSONArray("log") ?: JSONArray()
                     Record(r.getString("id"), r.getLong("time"), r.getString("goal"), r.getString("status"), r.getString("result"),
                         (0 until log.length()).map { log.getString(it) }) } },
-                json.optBoolean("appsConfigured", apps.length() > 0),
                 RemoteConfig(remote?.optString("deviceId").orEmpty(), remote?.optJSONObject("binding")?.let(Pairing::fromJson),
                     remote?.optBoolean("enabled") ?: false), json.optString("onlineTtsToken"), json.optString("onlineTtsEndpoint"),
                 json.optString("onlineTtsModel", Saved.DEFAULT_TTS_MODEL), json.optString("onlineTtsVoice", Saved.DEFAULT_TTS_VOICE),
@@ -120,7 +121,9 @@ class Vault(context: Context) {
         val json = JSONObject().put("config", JSONObject().put("jevEndpoint", cfg.jevEndpoint).put("jevModel", cfg.jevModel)
             .put("jevKey", cfg.jevKey).put("chatEndpoint", cfg.chatEndpoint).put("chatModel", cfg.chatModel).put("chatKey", cfg.chatKey)
             .put("language", cfg.language))
-            .put("apps", JSONArray(saved.apps.toList())).put("appsConfigured", saved.appsConfigured)
+            .put("excludedApps", JSONArray(saved.excludedApps.toList()))
+            // Older images require "apps"; an empty, unconfigured one lets a rollback start with all launchable apps.
+            .put("apps", JSONArray()).put("appsConfigured", false)
             .put("onlineTtsToken", saved.onlineTtsToken)
             .put("onlineTtsEndpoint", saved.onlineTtsEndpoint)
             .put("onlineTtsModel", saved.onlineTtsModel).put("onlineTtsVoice", saved.onlineTtsVoice)

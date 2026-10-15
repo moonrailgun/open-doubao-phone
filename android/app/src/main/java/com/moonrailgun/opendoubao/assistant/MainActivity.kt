@@ -76,7 +76,6 @@ import com.moonrailgun.opendoubao.assistant.model.CloudModels
 import com.moonrailgun.opendoubao.assistant.model.warmModels
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
 import com.moonrailgun.opendoubao.assistant.phone.InstalledApp
-import com.moonrailgun.opendoubao.assistant.phone.catalogSelection
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_AUTO
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_FOREGROUND
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_VIRTUAL
@@ -168,9 +167,12 @@ class MainActivity : ComponentActivity() {
         }
         val saved = initial.getOrThrow()
         val allApps = remember { installed.map { it.packageName }.toSet() }
-        val launcherApps = remember { installed.filter { it.launchable }.map { it.packageName }.toSet() }
         var config by remember { mutableStateOf(saved.config) }
-        var apps by remember { mutableStateOf(catalogSelection(installed, saved.apps, saved.appsConfigured)) }
+        // Everything is allowed except what the user excludes. Exclusions of apps that are disabled or uninstalled right
+        // now are kept, so those apps stay excluded when they come back; counts show the installed ones.
+        var excluded by remember { mutableStateOf(saved.excludedApps) }
+        val apps = allApps - excluded
+        val excludedHere = excluded.intersect(allApps)
         var records by remember { mutableStateOf(saved.records) }
         var goal by remember { mutableStateOf("") }
         var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -209,13 +211,13 @@ class MainActivity : ComponentActivity() {
         val busy = task.status == TaskStatus.RUNNING || paused
         val configReady = remember(config) { runCatching { config.validate() }.isSuccess }
         val appsLabel = when {
-            apps.isEmpty() -> "未选择应用"
-            apps == allApps -> "全部 ${apps.size} 个应用可用"
-            else -> "${apps.size} 个应用可用"
+            apps.isEmpty() -> "所有应用都被排除了"
+            excludedHere.isEmpty() -> "全部应用可用"
+            else -> "已排除 ${excludedHere.size} 个应用"
         }
         fun save() {
             config.validate()
-            vault.write(vault.read().copy(config = config, apps = apps, appsConfigured = true))
+            vault.write(vault.read().copy(config = config, excludedApps = excluded))
         }
         fun attempt(action: () -> Unit) {
             try { action() } catch (e: Exception) { message = e.message ?: "操作失败" }
@@ -224,7 +226,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(remoteEditVersion) { attempt {
             val fresh = vault.read()
             config = fresh.config
-            apps = catalogSelection(installed, fresh.apps, fresh.appsConfigured)
+            excluded = fresh.excludedApps
             records = fresh.records
         } }
         val recordSaveVersion by AssistantService.recordSaveVersion.collectAsState()
@@ -315,7 +317,7 @@ class MainActivity : ComponentActivity() {
                                             colors = if (apps.isEmpty()) ButtonDefaults.textButtonColors(contentColor = colors.error)
                                             else ButtonDefaults.textButtonColors()) {
                                             Icon(painterResource(R.drawable.lucide_layout_grid), null, Modifier.size(18.dp))
-                                            Text("${apps.size}", Modifier.padding(start = 6.dp))
+                                            if (excludedHere.isNotEmpty()) Text("排除 ${excludedHere.size}", Modifier.padding(start = 6.dp))
                                         }
                                         FilledIconButton({ start() }, Modifier.size(48.dp), enabled = service != null && configReady && goal.isNotBlank()) {
                                             Icon(painterResource(R.drawable.lucide_play), "开始任务")
@@ -323,7 +325,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            if (apps.isNotEmpty() && apps != launcherApps) Text("可用：" + installed.filter { it.packageName in apps }.joinToString("、") { it.label },
+                            if (excludedHere.isNotEmpty()) Text("不操作：" + installed.filter { it.packageName in excluded }.joinToString("、") { it.label },
                                 Modifier.padding(horizontal = 4.dp), fontSize = 13.sp, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             if (goal.isBlank()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Examples.forEach { (title, text, glyph) ->
@@ -434,10 +436,10 @@ class MainActivity : ComponentActivity() {
             var showSystemComponents by remember { mutableStateOf(false) }
             val visibleApps = visibleAppCatalog(installed, query, showSystemComponents)
             val visiblePackages = visibleApps.map { it.packageName }.toSet()
-            AlertDialog(onDismissRequest = { choosingApps = false }, title = { Text("选择可用应用") },
+            AlertDialog(onDismissRequest = { choosingApps = false }, title = { Text("不让助手操作的应用") },
                 text = {
                     Column(Modifier.heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("任务只会在勾选的应用里操作。", fontSize = 14.sp, color = colors.onSurfaceVariant)
+                        Text("默认可以操作所有应用和系统组件，勾选的不会被操作。", fontSize = 14.sp, color = colors.onSurfaceVariant)
                         OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text("搜索应用名称或包名") }, singleLine = true,
                             leadingIcon = { Icon(painterResource(R.drawable.lucide_search), null, Modifier.size(20.dp)) },
                             shape = RoundedCornerShape(14.dp))
@@ -446,26 +448,26 @@ class MainActivity : ComponentActivity() {
                             Checkbox(showSystemComponents, null)
                             Text("显示系统组件", fontSize = 14.sp)
                         }
-                        Text(if (query.isBlank()) "开启后可选择 Google Play 服务等无启动入口的组件。" else "搜索包含系统组件，勾选后才可操作。",
+                        Text(if (query.isBlank()) "开启后也可排除 Google Play 服务等无启动入口的组件。" else "搜索结果包含系统组件。",
                             fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton({ apps = apps + visiblePackages }, enabled = visiblePackages.any { it !in apps }) {
-                                Icon(painterResource(R.drawable.lucide_list_checks), "全选当前列表")
+                            IconButton({ excluded = excluded + visiblePackages }, enabled = visiblePackages.any { it !in excluded }) {
+                                Icon(painterResource(R.drawable.lucide_list_checks), "排除当前列表")
                             }
-                            IconButton({ apps = apps - visiblePackages }, enabled = visiblePackages.any { it in apps }) {
-                                Icon(painterResource(R.drawable.lucide_list_x), "取消当前列表选择")
+                            IconButton({ excluded = excluded - visiblePackages }, enabled = visiblePackages.any { it in excluded }) {
+                                Icon(painterResource(R.drawable.lucide_list_x), "取消排除当前列表")
                             }
-                            Text("已选 ${apps.size} 个", Modifier.weight(1f), textAlign = TextAlign.End, fontSize = 13.sp,
-                                color = if (apps.isEmpty()) colors.error else colors.onSurfaceVariant)
+                            Text(if (apps.isEmpty()) "全部排除了，至少留一个" else "已排除 ${excludedHere.size} 个", Modifier.weight(1f),
+                                textAlign = TextAlign.End, fontSize = 13.sp, color = if (apps.isEmpty()) colors.error else colors.onSurfaceVariant)
                         }
                         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                             if (visibleApps.isEmpty()) Text("没有匹配的应用或组件", Modifier.padding(12.dp), fontSize = 14.sp, color = colors.onSurfaceVariant)
                             visibleApps.forEach { app ->
                                 val pkg = app.packageName
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                    .toggleable(pkg in apps, role = Role.Checkbox) { apps = if (it) apps + pkg else apps - pkg }
+                                    .toggleable(pkg in excluded, role = Role.Checkbox) { excluded = if (it) excluded + pkg else excluded - pkg }
                                     .padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(pkg in apps, null, Modifier.padding(horizontal = 8.dp))
+                                    Checkbox(pkg in excluded, null, Modifier.padding(horizontal = 8.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(app.label, fontSize = 15.sp)
                                         Text(pkg, fontSize = 11.sp, color = colors.onSurfaceVariant)
@@ -476,7 +478,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }, confirmButton = { IconButton({ attempt {
-                    vault.write(vault.read().copy(apps = apps, appsConfigured = true))
+                    vault.write(vault.read().copy(excludedApps = excluded))
                     choosingApps = false
                 } }) { Icon(painterResource(R.drawable.lucide_check), "完成") } })
         }

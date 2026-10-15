@@ -192,11 +192,12 @@ class AssistantService : AccessibilityService() {
                     override fun access(): AppAccess {
                         val saved = vault.read()
                         val catalog = loadAppCatalog(this@AssistantService)
-                        return AppAccess(catalog, catalogSelection(catalog, saved.apps, saved.appsConfigured))
+                        return AppAccess(catalog, allowedApps(catalog, saved.excludedApps))
                     }
                     override fun saveAccess(apps: Set<String>) {
                         check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改应用范围" }
-                        vault.write(vault.read().copy(apps = apps, appsConfigured = true))
+                        val saved = vault.read()
+                        vault.write(saved.copy(excludedApps = excludedApps(loadAppCatalog(this@AssistantService), apps, saved.excludedApps)))
                         remoteEdits.value++
                     }
                     override fun tts() = vault.read().tts()
@@ -252,11 +253,10 @@ class AssistantService : AccessibilityService() {
         val saved = vault.read()
         check(saved.records.none { it.id == taskId }) { "任务 ID 已存在" }
         val record = Record(taskId, System.currentTimeMillis(), goal.trim(), "RUNNING", "")
-        // Same default as the app pickers: all launchable apps until a scope is saved.
         val catalog = loadAppCatalog(this)
-        val apps = catalogSelection(catalog, saved.apps, saved.appsConfigured)
+        val apps = allowedApps(catalog, saved.excludedApps)
         val models = try {
-            check(apps.isNotEmpty()) { "请先选择本次任务允许访问的应用" }
+            check(apps.isNotEmpty()) { "所有应用都被排除了，请至少留一个给助手操作" }
             CloudModels(saved.config, HttpTransport(secrets = saved.config.secrets, log = { vault.modelCalls.append(taskId, it) }),
                 memory = saved.memory,
                 recent = saved.records.filter { it.status == "COMPLETED" }.take(3).map { PastTask(it.goal, it.result.take(600)) },
