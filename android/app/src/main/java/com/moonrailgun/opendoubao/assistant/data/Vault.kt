@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
+import com.moonrailgun.opendoubao.assistant.core.DefaultMemory
 import com.moonrailgun.opendoubao.assistant.core.Memory
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
 import com.moonrailgun.opendoubao.assistant.remote.Pairing
@@ -23,7 +24,7 @@ data class Saved(val config: ModelConfig = ModelConfig(), val apps: Set<String> 
     val records: List<Record> = emptyList(), val appsConfigured: Boolean = apps.isNotEmpty(),
     val remote: RemoteConfig = RemoteConfig(), val onlineTtsToken: String = "", val onlineTtsEndpoint: String = "",
     val onlineTtsModel: String = DEFAULT_TTS_MODEL, val onlineTtsVoice: String = DEFAULT_TTS_VOICE,
-    val memory: List<Memory> = emptyList()) {
+    val memory: List<Memory> = emptyList(), val memorySeeded: Set<String> = emptySet()) {
     companion object {
         const val DEFAULT_TTS_MODEL = "elevenlabs/eleven_v3"
         const val DEFAULT_TTS_VOICE = "bhJUNIXWQQ94l8eI2VUf"
@@ -77,7 +78,13 @@ class Vault(context: Context) {
         update { saved -> saved.copy(records = (listOf(record) + saved.records.filterNot { it.id == record.id }).take(30)) }
     }
 
-    private fun load(): Saved {
+    /** Built-in memories join here, so a fresh install and an upgrade both get them; the next write persists them. */
+    private fun load(): Saved = readFile().let { saved ->
+        val (memory, seeded) = DefaultMemory.seed(saved.memory, saved.memorySeeded)
+        saved.copy(memory = memory, memorySeeded = seeded)
+    }
+
+    private fun readFile(): Saved {
         if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) return Saved()
         try {
             val data = file.readFully()
@@ -101,7 +108,8 @@ class Vault(context: Context) {
                 RemoteConfig(remote?.optString("deviceId").orEmpty(), remote?.optJSONObject("binding")?.let(Pairing::fromJson),
                     remote?.optBoolean("enabled") ?: false), json.optString("onlineTtsToken"), json.optString("onlineTtsEndpoint"),
                 json.optString("onlineTtsModel", Saved.DEFAULT_TTS_MODEL), json.optString("onlineTtsVoice", Saved.DEFAULT_TTS_VOICE),
-                (0 until memory.length()).map { memory.getJSONObject(it).let { m -> Memory(m.getString("id"), m.getString("text"), m.getLong("updated")) } })
+                (0 until memory.length()).map { memory.getJSONObject(it).let { m -> Memory(m.getString("id"), m.getString("text"), m.getLong("updated")) } },
+                json.optJSONArray("memorySeeded")?.let { seeded -> (0 until seeded.length()).map { seeded.getString(it) }.toSet() }.orEmpty())
         } catch (e: Exception) { throw IllegalStateException("本地加密记录无法读取，原文件已保留", e) }
     }
 
@@ -117,6 +125,7 @@ class Vault(context: Context) {
             .put("onlineTtsEndpoint", saved.onlineTtsEndpoint)
             .put("onlineTtsModel", saved.onlineTtsModel).put("onlineTtsVoice", saved.onlineTtsVoice)
             .put("memory", JSONArray(saved.memory.map { it.json().put("updated", it.updated) }))
+            .put("memorySeeded", JSONArray(saved.memorySeeded.toList()))
             .put("remote", JSONObject().put("deviceId", saved.remote.deviceId).put("enabled", saved.remote.enabled)
                 .put("binding", saved.remote.binding?.json() ?: JSONObject.NULL))
             .put("records", JSONArray(saved.records.map { r -> JSONObject().put("id", r.id).put("time", r.time)

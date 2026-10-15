@@ -23,6 +23,16 @@ class MemoryTest {
         assertEquals(MemoryOps.LIMIT, apply(full, MemoryOp.Delete("m0"), MemoryOp.Add("one more")).memory.size)
     }
 
+    @Test fun defaultsAreSeededOnceSoADeletedOneStaysGone() {
+        val ids = DefaultMemory.ALL.map { it.id }.toSet()
+        assertEquals(DefaultMemory.ALL.map { it.copy(updated = 5) } to ids, DefaultMemory.seed(emptyList(), emptySet(), now = 5))
+        assertEquals(emptyList<Memory>() to ids, DefaultMemory.seed(emptyList(), ids))
+        val full = (0 until MemoryOps.LIMIT).map { Memory("m$it", "fact $it", 1) }
+        assertEquals(full to emptySet<String>(), DefaultMemory.seed(full, emptySet()))
+        val typed = DefaultMemory.ALL.map { Memory("u-${it.id}", it.text, 1) }
+        assertEquals(typed to ids, DefaultMemory.seed(typed, emptySet()))
+    }
+
     @Test fun planCarriesMemoryEditsAndADirectReply() {
         val reply = ModelProtocol.parsePlan("""{"reply":"记住了","memory":[{"op":"add","text":"车停在 B2-17"},
             {"op":"delete","id":"a"},{"op":"update","id":"b"},{"op":"forget","id":"c"},"junk",{"op":"add","text":42}]}""", setOf("browser.app"))

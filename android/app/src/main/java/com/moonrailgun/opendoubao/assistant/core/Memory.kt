@@ -58,3 +58,20 @@ object MemoryOps {
 
     fun json(memory: List<Memory>) = JSONArray(memory.map { it.json() })
 }
+
+/** Memory every install starts with. Each one is added once per id, so deleting it is final. */
+object DefaultMemory {
+    // A new id, not a new text under "dao-browser": phones that were seeded with the Dao default would never get this one.
+    val ALL = listOf(Memory("chrome-browser", "用户说「浏览器」时，一般指 Chrome 浏览器", 0))
+
+    /** Adds the defaults not in [seeded] yet and returns the ids now seeded; a full list gets them on a later load. */
+    fun seed(memory: List<Memory>, seeded: Set<String>, now: Long = System.currentTimeMillis()): Pair<List<Memory>, Set<String>> {
+        var list = memory
+        var done = seeded
+        ALL.filterNot { it.id in seeded }.forEach { default ->
+            if (list.any { it.id == default.id || it.text == default.text }) done = done + default.id
+            else if (list.size < MemoryOps.LIMIT) { list = list + default.copy(updated = now); done = done + default.id }
+        }
+        return list to done
+    }
+}

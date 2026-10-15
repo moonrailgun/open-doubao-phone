@@ -3,6 +3,7 @@ package com.moonrailgun.opendoubao.assistant
 import android.content.ContextWrapper
 import android.content.pm.ApplicationInfo
 import androidx.test.platform.app.InstrumentationRegistry
+import com.moonrailgun.opendoubao.assistant.core.DefaultMemory
 import com.moonrailgun.opendoubao.assistant.data.Saved
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
@@ -21,7 +22,10 @@ class SystemUpgradeTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val folder = File(context.noBackupFilesDir, "system-upgrade-check")
         val isolated = object : ContextWrapper(context) { override fun getNoBackupFilesDir() = folder }
-        val sentinel = Saved(config = ModelConfig(chatKey = "system-upgrade-keystore-sentinel"))
+        // Seeded with a fixed time, so both phases build the same value a reload returns.
+        val sentinel = DefaultMemory.seed(emptyList(), emptySet(), now = 1).let { (memory, seeded) ->
+            Saved(config = ModelConfig(chatKey = "system-upgrade-keystore-sentinel"), memory = memory, memorySeeded = seeded)
+        }
         val baseline = File(folder, "baseline.json")
         fun digest(file: File): String = if (file.exists()) MessageDigest.getInstance("SHA-256")
             .digest(file.readBytes()).joinToString("") { "%02x".format(it) } else "absent"
