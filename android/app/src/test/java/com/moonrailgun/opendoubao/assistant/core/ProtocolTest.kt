@@ -41,6 +41,18 @@ class ProtocolTest {
         assertNull(JevProtocol.request("jev-latest", "goal", screen(), tooMany, null))
     }
 
+    @Test fun initialPageIntentFitsTheBudgetAndOmitsPasswordNodes() {
+        val page = screen().copy(elements = listOf(screen().elements.first().copy(text = "secret", password = true)) +
+            (0 until 350).map { screen().elements.first().copy(id = "0.$it", text = "长".repeat(2000)) })
+        val request = JevProtocol.intentRequest("jev-latest", "当前文章说了什么", page)
+        assertTrue(request.toString().toByteArray().size <= JevProtocol.BUDGET)
+        assertFalse(request.toString().contains("secret"))
+        val sent = request.getJSONObject("state").getJSONObject("screen")
+        assertEquals("browser.app", sent.getString("app"))
+        assertTrue(sent.getBoolean("truncated"))
+        assertTrue(sent.getJSONArray("elements").length() > 0)
+    }
+
     @Test fun jevKeepsMemoryAndRecentTasksWhenTheScreensAreTrimmed() {
         // Feishu on 2026-10-13: 孙淼 shows as 孙大炮, which only an earlier task's result said, and Jev scored the open chat 0.13–0.16 done.
         val context = JSONObject().put("memory", org.json.JSONArray()).put("recent_tasks", org.json.JSONArray()

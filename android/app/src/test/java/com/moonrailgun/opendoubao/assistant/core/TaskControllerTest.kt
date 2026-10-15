@@ -14,8 +14,8 @@ class TaskControllerTest {
             var replies = 0
             val saved = mutableListOf<MemoryOp>()
             val models = object : Models by FakeModels() {
-                override suspend fun isChat(goal: String): Boolean { classifications++; return true }
-                override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan = error("Chat must not plan")
+                override suspend fun isChat(goal: String, screen: Screen?): Boolean { classifications++; return true }
+                override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?): Plan = error("Chat must not plan")
                 override suspend fun reply(goal: String, screen: Screen, image: String): Plan {
                     replies++
                     assertEquals(phone.current, screen)
@@ -44,7 +44,7 @@ class TaskControllerTest {
         for (stopAtIntent in listOf(true, false)) {
             val phone = FakePhone()
             val models = object : Models by FakeModels() {
-                override suspend fun isChat(goal: String): Boolean {
+                override suspend fun isChat(goal: String, screen: Screen?): Boolean {
                     if (stopAtIntent) withContext(NonCancellable) { delay(1000) }
                     return true
                 }
@@ -81,12 +81,12 @@ class TaskControllerTest {
         controller.start("Write a draft", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app"), Action.Click("0.1"), Action.Type("0.1", "draft")), phone.actions)
+        assertEquals(listOf(Action.Click("0.1"), Action.Type("0.1", "draft")), phone.actions)
         assertEquals("Observed result", controller.state.value.result)
     }
 
     @Test fun thePlacementChoiceRunsOnceBeforePlanningAndActionsLandOnTheChosenPhone() = runTest {
-        val start = FakePhone()
+        val start = FakePhone().apply { current = screen("launcher.app") }
         val chosen = object : Phone by FakePhone() {
             val actions = mutableListOf<Action>()
             override val mode = "虚拟屏"
@@ -108,7 +108,7 @@ class TaskControllerTest {
     }
 
     @Test fun stoppingDuringThePlacementChoiceEndsTheTaskWithoutActing() = runTest {
-        val phone = FakePhone()
+        val phone = FakePhone().apply { current = screen("launcher.app") }
         val controller = TaskController(this, phone, FakeModels(), place = { delay(5_000); phone to "Jev" })
         controller.start("查天气", setOf("browser.app"))
         advanceTimeBy(1_000)
@@ -123,7 +123,7 @@ class TaskControllerTest {
         val phone = FakePhone()
         val saved = mutableListOf<MemoryOp>()
         val models = object : Models by FakeModels() {
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) =
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?) =
                 Plan("", emptyList(), emptyList(), memory = listOf(MemoryOp.Add("车停在 B2-17")), reply = "好的，记住了")
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision =
                 error("A reply must not observe or decide")
@@ -140,10 +140,10 @@ class TaskControllerTest {
     }
 
     @Test fun aDirectReplyCancelsPlacementWithoutWaitingForIt() = runTest {
-        val phone = FakePhone()
+        val phone = FakePhone().apply { current = screen("launcher.app") }
         var placementCancelled = false
         val models = object : Models by FakeModels() {
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan {
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?): Plan {
                 delay(100)
                 return Plan("", emptyList(), emptyList(), reply = "车停在 B2-17")
             }
@@ -176,7 +176,7 @@ class TaskControllerTest {
         controller.start("Recover the page", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app"), Action.Wait, Action.Back), phone.actions)
+        assertEquals(listOf(Action.Wait, Action.Back), phone.actions)
     }
 
     @Test fun rateLimitedJevHandsTheStepToTheVisionModel() = runTest {
@@ -191,7 +191,7 @@ class TaskControllerTest {
         controller.start("Read the page", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app"), Action.Back), phone.actions)
+        assertEquals(listOf(Action.Back), phone.actions)
         assertTrue(controller.state.value.trace.any { it.contains("Jev 不可用：Jev 决策请求失败：模型服务返回 HTTP 429") })
     }
 
@@ -220,7 +220,7 @@ class TaskControllerTest {
         controller.start("Recover the page", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app"), Action.Wait, Action.Back), phone.actions)
+        assertEquals(listOf(Action.Wait, Action.Back), phone.actions)
         assertEquals(12_000L, testScheduler.currentTime)
         assertEquals(2, decisions)
         assertTrue(controller.state.value.trace.any { "转视觉模型：上一步未能派发" in it })
@@ -303,7 +303,7 @@ class TaskControllerTest {
         controller.start("Read the page", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.PAUSED, controller.state.value.status)
-        assertEquals(6, observations)
+        assertEquals(7, observations)
         assertTrue(controller.state.value.message.contains("页面持续变化"))
         unstable = false
         controller.resume()
@@ -418,7 +418,7 @@ class TaskControllerTest {
     }
 
     @Test fun unavailableAppPausesAndResumesWithoutReopening() = runTest {
-        val phone = FakePhone().apply { result = false }
+        val phone = FakePhone().apply { result = false; current = screen("launcher.app") }
         val models = FakeModels().apply { finish = true }
         val controller = TaskController(this, phone, models)
         controller.start("search", setOf("browser.app"))
@@ -426,6 +426,7 @@ class TaskControllerTest {
         assertEquals(TaskStatus.PAUSED, controller.state.value.status)
         assertEquals(1, phone.actions.size)
         phone.result = true
+        phone.current = screen()
         controller.resume()
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
@@ -448,7 +449,7 @@ class TaskControllerTest {
         controller.stop()
         advanceUntilIdle()
         assertEquals(TaskStatus.STOPPED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
+        assertEquals(emptyList<Action>(), phone.actions)
     }
 
     @Test fun stepLimitEndsWithoutDispatchingAnotherAction() = runTest {
@@ -488,7 +489,7 @@ class TaskControllerTest {
         advanceUntilIdle()
         assertEquals(TaskStatus.FAILED, controller.state.value.status)
         assertEquals("service disconnected", controller.state.value.message)
-        assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
+        assertEquals(emptyList<Action>(), phone.actions)
     }
 
     @Test fun failureLeavesATraceOfThePlanTheFailingCallAndTheError() = runTest {
@@ -558,7 +559,7 @@ class TaskControllerTest {
         var decisions = 0
         var summaryEvidence: Evidence? = null
         val models = object : Models by FakeModels() {
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan {
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?): Plan {
                 plans++
                 return Plan("browser.app", listOf("Read source", "Summarize"), emptyList())
             }
@@ -593,7 +594,7 @@ class TaskControllerTest {
         assertEquals(1, controller.state.value.steps)
         assertEquals(savedPlan, controller.state.value.plan)
         assertTrue(controller.state.value.log.containsAll(savedLog))
-        assertEquals(listOf(Action.OpenApp("browser.app"), Action.Click("0.1")), device.actions)
+        assertEquals(listOf(Action.Click("0.1")), device.actions)
         assertTrue(summaryEvidence!!.sources.any { it.text == "Original source" })
         assertTrue(summaryEvidence!!.sources.any { it.text == "After manual handling" })
         assertTrue(summaryEvidence!!.screens.all { it.packageName == "browser.app" })
@@ -658,12 +659,12 @@ class TaskControllerTest {
         controller.start("search", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.PAUSED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
+        assertEquals(emptyList<Action>(), phone.actions)
         phone.current = screen(text = "Returned page")
         controller.resume()
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
+        assertEquals(emptyList<Action>(), phone.actions)
     }
 
     @Test fun passwordPagePausesBeforeCaptureOrDecisionAndCanResumeAfterManualHandling() = runTest {
@@ -711,7 +712,7 @@ class TaskControllerTest {
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
         assertTrue(summarizedSources.any { it.text == "Read before handover" && it.visual })
-        assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
+        assertEquals(emptyList<Action>(), phone.actions)
     }
 
     @Test fun rejectedActionIsRetriedWithANewDecisionWithoutDispatch() = runTest {
@@ -726,7 +727,7 @@ class TaskControllerTest {
         controller.start("search", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
+        assertEquals(emptyList<Action>(), phone.actions)
         assertEquals(2, decisions)
         assertTrue(controller.state.value.trace.any { it.contains("没能推进（连续第 1 次）：此操作超出本次任务的允许范围") })
     }
@@ -774,7 +775,7 @@ class TaskControllerTest {
         }
         var turns = 0
         val models = object : Models by FakeModels() {
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan {
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?): Plan {
                 assertEquals(setOf("browser.app", component), apps)
                 assertEquals(setOf("browser.app"), launchableApps)
                 return Plan("browser.app", listOf("Select account"), emptyList())
@@ -793,7 +794,7 @@ class TaskControllerTest {
         controller.start("Select the account", setOf("browser.app", component))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app"), Action.Click("0.1"), Action.Click("0.1")), device.actions)
+        assertEquals(listOf(Action.Click("0.1"), Action.Click("0.1")), device.actions)
     }
 
     @Test fun nonlaunchablePlanPausesUntilManualEntryThenResumesWithoutReplanning() = runTest {
@@ -801,7 +802,7 @@ class TaskControllerTest {
         val phone = FakePhone().apply { nonlaunchableApps += component }
         var plans = 0
         val models = object : Models by (FakeModels().apply { finish = true }) {
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan {
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?): Plan {
                 plans++
                 return Plan(component, listOf("Read account choices"), emptyList())
             }
@@ -824,7 +825,7 @@ class TaskControllerTest {
         val component = "com.google.android.gms"
         val phone = FakePhone().apply { current = screen(component); nonlaunchableApps += component }
         val models = object : Models by (FakeModels().apply { finish = true }) {
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) =
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?) =
                 Plan(component, listOf("Read choices"), emptyList())
         }
         val controller = TaskController(this, phone, models)
@@ -849,7 +850,7 @@ class TaskControllerTest {
         advanceUntilIdle()
         assertEquals(TaskStatus.PAUSED, controller.state.value.status)
         assertTrue(controller.state.value.message.contains("无法直接打开"))
-        assertEquals(listOf(Action.OpenApp("browser.app")), phone.actions)
+        assertEquals(emptyList<Action>(), phone.actions)
         phone.current = screen(component)
         finish = true
         controller.resume()
@@ -907,7 +908,7 @@ class TaskControllerTest {
         controller.resume()
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("browser.app"), Action.Click("0.1")), phone.actions)
+        assertEquals(listOf(Action.Click("0.1")), phone.actions)
         assertEquals(listOf(emptyList(), listOf(ask), listOf(ask)), approvals)
         assertTrue(controller.state.value.trace.any { it.contains("已同意「$ask」") })
     }
@@ -943,7 +944,7 @@ class TaskControllerTest {
             controller.resume()
             advanceUntilIdle()
             assertEquals(stage, TaskStatus.COMPLETED, controller.state.value.status)
-            assertEquals(stage, listOf(Action.OpenApp("browser.app")), device.actions)
+            assertEquals(stage, if (stage == "observe") listOf(Action.OpenApp("browser.app")) else emptyList<Action>(), device.actions)
         }
     }
 
@@ -981,13 +982,13 @@ class TaskControllerTest {
     }
 
     private class FakeModels : Models {
-        override suspend fun isChat(goal: String) = false
+        override suspend fun isChat(goal: String, screen: Screen?) = false
         override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
         var slow = false
         var finish = false
         var click = false
         var lastScreen: Screen? = null
-        override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) = Plan("browser.app", listOf("search"), emptyList())
+        override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?) = Plan("browser.app", listOf("search"), emptyList())
         override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
             lastScreen = screen
             if (slow) withContext(NonCancellable) { delay(1000) }

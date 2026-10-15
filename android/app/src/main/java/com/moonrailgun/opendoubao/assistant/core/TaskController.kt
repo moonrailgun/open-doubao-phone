@@ -129,9 +129,21 @@ class TaskController(
             try {
                 withTimeout(remainingActiveMillis) {
                     if (plan == null) {
+                        val initialScreen = try {
+                            phone.observe().takeIf { it.packageName in apps && !it.protected }
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { trace("未读到初始页面：${e.message}"); null }
+                        checkCurrent(token)
+                        val initialImage = initialScreen?.let {
+                            keep(it)
+                            try { timed("初始截图") { phone.screenshot(it) } }
+                            catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { trace("初始截图不可用，使用页面文字：${e.message}"); null }
+                        }
+                        checkCurrent(token)
                         if (chat == null) {
                             update("正在判断聊天还是任务")
-                            val isChat = timed("意图判断") { models.isChat(state.value.goal) }
+                            val isChat = timed("意图判断") { models.isChat(state.value.goal, initialScreen) }
                             checkCurrent(token)
                             chat = isChat
                             trace("指令类型：${if (chat == true) "聊天" else "任务"}")
@@ -139,21 +151,32 @@ class TaskController(
                         var early: Deferred<String?>? = null
                         val planned = if (chat == true) {
                             update("正在看当前屏幕、回复")
-                            val screen = observe(token) ?: return@withTimeout
-                            val image = timed("截图") { phone.screenshot(screen) }
+                            val screen = initialScreen ?: observe(token) ?: return@withTimeout
+                            val image = initialImage ?: timed("截图") { phone.screenshot(screen) }
                             checkCurrent(token)
                             timed("聊天回复") { withTimeout(60_000) { models.reply(state.value.goal, screen, image) } }
                                 .also { require(it.reply != null) { "聊天模型没有返回回复" } }
                         } else {
                             update(if (place == null) "正在理解任务、规划步骤" else "正在判断执行方式、规划步骤")
-                            // Both need only the goal, so the placement question runs beside the planning call.
-                            val placing = place?.let { choose -> async { timed("执行方式") { choose() } } }
-                            // Jev's guess at the app opens it while planning is still under way, so the app's cold start
-                            // overlaps the slowest call before the first step.
-                            early = async { openEarly(placing) }
-                            val result = timed("规划") { withTimeout(60_000) { models.plan(state.value.goal, apps, launchableApps) } }
-                            if (result.reply != null) { placing?.cancel(); early.cancel() }
-                            else placing?.await()?.let { (chosen, how) -> phone = chosen; trace("执行方式：${chosen.mode}（$how）") }
+                            val planning: Deferred<Result<Plan>> = async {
+                                try { Result.success(timed("规划") { withTimeout(60_000) {
+                                    models.plan(state.value.goal, apps, launchableApps, initialScreen, initialImage)
+                                } }) }
+                                catch (e: TimeoutCancellationException) { Result.failure<Plan>(e) }
+                                catch (e: CancellationException) { throw e }
+                                catch (e: Exception) { Result.failure<Plan>(e) }
+                            }
+                            // An early open or virtual display would lose the page the user is referring to.
+                            val placing = if (initialScreen == null) place?.let { choose -> async { timed("执行方式") { choose() } } } else null
+                            if (initialScreen == null) early = async { openEarly(placing) }
+                            val result = planning.await().getOrThrow()
+                            checkCurrent(token)
+                            if (result.reply != null) { placing?.cancel(); early?.cancel() }
+                            else if (result.app != initialScreen?.packageName) {
+                                (placing?.await() ?: place?.let { timed("执行方式") { it() } })?.let { (chosen, how) ->
+                                    phone = chosen; trace("执行方式：${chosen.mode}（$how）")
+                                }
+                            }
                             result
                         }
                         checkCurrent(token)
@@ -170,7 +193,9 @@ class TaskController(
                         mutable.value = state.value.copy(plan = planned.steps)
                         val guessed = early?.await()
                         checkCurrent(token)
-                        if (guessed == planned.app) {
+                        if (planned.app == initialScreen?.packageName) {
+                            trace("继续当前页面 ${planned.app}，不重新打开应用")
+                        } else if (guessed == planned.app) {
                             trace("规划同为 ${planned.app}，已提前打开")
                         } else if (planned.app in launchableApps) {
                             val opened = phone.execute(Action.OpenApp(planned.app), null)
@@ -203,15 +228,7 @@ class TaskController(
                             }
                             trace("页面 ${screen.packageName}：${screen.elements.size} 个节点${if (screen.truncated) "（已截断）" else ""}" +
                                 if (unchanged > 0) "，连续 $unchanged 次无变化" else "")
-                            if (evidence.lastOrNull()?.fingerprint != screen.fingerprint) {
-                                screen.elements.forEach { node ->
-                                    listOf(node.text, node.description).filter { it.isNotBlank() }.forEach {
-                                        retain(Source(screen.packageName, it))
-                                    }
-                                }
-                                evidence.addLast(screen)
-                                while (evidence.size > 8) evidence.removeFirst()
-                            }
+                            keep(screen)
                             update("正在决定下一步", logged = false)
                             // These cases always need vision, so there is no Jev result worth waiting for.
                             val recovery = when {
@@ -384,6 +401,16 @@ class TaskController(
     }
 
     private fun taskEvidence() = Evidence(evidence.toList(), sources.toList(), approvals.toList())
+
+    /** Adds a page to the evidence and its text to the task's sources, once per distinct page. */
+    private fun keep(screen: Screen) {
+        if (evidence.lastOrNull()?.fingerprint == screen.fingerprint) return
+        screen.elements.forEach { node ->
+            listOf(node.text, node.description).filter { it.isNotBlank() }.forEach { retain(Source(screen.packageName, it)) }
+        }
+        evidence.addLast(screen)
+        while (evidence.size > 8) evidence.removeFirst()
+    }
 
     private fun retain(source: Source) {
         if (source in sources) return

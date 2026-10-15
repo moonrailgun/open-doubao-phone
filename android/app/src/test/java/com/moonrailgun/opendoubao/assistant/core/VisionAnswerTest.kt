@@ -57,7 +57,7 @@ class VisionAnswerTest {
     @Test fun doneOnAWindowThatIsGoneIsJudgedAgain() = runTest {
         var reads = 0
         // The judged window is replaced by another one before the re-check, so the judgement must be made again.
-        val phone = object : Phone by StillPhone() { override suspend fun observe() = screen().copy(windowId = if (++reads == 1) 7 else 8) }
+        val phone = object : Phone by StillPhone() { override suspend fun observe() = screen().copy(windowId = if (++reads <= 2) 7 else 8) }
         val models = VisionModels(answer = "已打开")
         val controller = TaskController(this, phone, models)
         controller.start("打开和孙淼的聊天窗口", setOf("browser.app"))
@@ -71,9 +71,9 @@ class VisionAnswerTest {
     private class VisionModels(private val answer: String) : Models {
         var summaries = 0
         var visions = 0
-        override suspend fun isChat(goal: String) = false
+        override suspend fun isChat(goal: String, screen: Screen?) = false
         override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
-        override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) = Plan("browser.app", listOf("open"), emptyList())
+        override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?) = Plan("browser.app", listOf("open"), emptyList())
         override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
             Decision(null, false, Effect.UNKNOWN)
         override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {

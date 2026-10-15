@@ -23,9 +23,9 @@ class LookAheadTest {
 
     private fun models(jevSure: Boolean, visions: MutableList<String>) = object : Models {
         var decisions = 0
-        override suspend fun isChat(goal: String) = false
+        override suspend fun isChat(goal: String, screen: Screen?) = false
         override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
-        override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) = Plan("lark.app", listOf("search"), emptyList())
+        override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?) = Plan("lark.app", listOf("search"), emptyList())
         override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
             delay(2_000)
             return if (!jevSure) Decision(null, false, Effect.UNKNOWN)
@@ -59,7 +59,7 @@ class LookAheadTest {
         controller.start("打开搜索", setOf("lark.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals(listOf(Action.OpenApp("lark.app"), Action.Click("0.1")), actions)
+        assertEquals(listOf(Action.Click("0.1")), actions)
         // Two Jev steps of 2 s each; neither waited for its 10 s vision call, which never finished.
         assertEquals(4_000L, testScheduler.currentTime)
         assertEquals(listOf("started", "started"), visions)
@@ -72,14 +72,14 @@ class LookAheadTest {
         var reads = 0
         val phone = object : Phone {
             override fun canLaunch(packageName: String) = true
-            override suspend fun observe() = if (++reads == 1) splash else page
+            override suspend fun observe() = if (++reads <= 2) splash else page
             override suspend fun screenshot(screen: Screen) = "pixels"
             override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?) = true
         }
         val models = object : Models {
-            override suspend fun isChat(goal: String) = false
+            override suspend fun isChat(goal: String, screen: Screen?) = false
             override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) = Plan("lark.app", listOf("search"), emptyList())
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?) = Plan("lark.app", listOf("search"), emptyList())
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
                 delay(1_000)
                 return Decision(null, false, Effect.UNKNOWN)

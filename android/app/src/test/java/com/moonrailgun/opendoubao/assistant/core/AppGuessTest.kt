@@ -40,7 +40,7 @@ class AppGuessTest {
         val opened = mutableListOf<Opened>()
         val phone = object : Phone {
             override fun canLaunch(packageName: String) = true
-            override suspend fun observe() = page
+            override suspend fun observe() = if (opened.isEmpty()) page.copy(packageName = "launcher.app") else page
             override suspend fun screenshot(screen: Screen) = "pixels"
             override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean {
                 opened += Opened(action, testScheduler.currentTime)
@@ -48,9 +48,9 @@ class AppGuessTest {
             }
         }
         val models = object : Models {
-            override suspend fun isChat(goal: String) = false
+            override suspend fun isChat(goal: String, screen: Screen?) = false
             override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>): Plan { delay(5_000); return plan }
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?): Plan { delay(5_000); return plan }
             override suspend fun guessApp(goal: String, apps: Set<String>): String? { delay(guessMillis); return guess }
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
                 Decision(null, true, Effect.YES)

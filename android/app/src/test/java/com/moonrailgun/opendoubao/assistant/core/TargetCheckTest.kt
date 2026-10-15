@@ -42,9 +42,9 @@ class TargetCheckTest {
         }
         var decisions = 0
         val models = object : Models {
-            override suspend fun isChat(goal: String) = false
+            override suspend fun isChat(goal: String, screen: Screen?) = false
             override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
-            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>) = Plan("lark.app", listOf("search"), emptyList())
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?) = Plan("lark.app", listOf("search"), emptyList())
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision =
                 if (++decisions == 1) Decision(Action.Click("0.1"), false, Effect.UNKNOWN) else Decision(null, true, Effect.YES)
             override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?) = ModelStep(Action.Wait)

@@ -15,7 +15,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CloudModelsTest {
-    @Test fun chatReadsTheCurrentScreenWithoutPlanningOrChoosingAnotherPhone() = runBlocking {
+    @Test fun chatReadsTheCurrentScreenWithoutChoosingAnotherPhoneOrActing() = runBlocking {
         val requests = mutableListOf<JSONObject>()
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val buffer = Buffer()
@@ -47,8 +47,12 @@ class CloudModelsTest {
         assertFalse(placed)
         assertEquals(1, screenshots)
         assertEquals(2, requests.size)
-        assertTrue(requests.first().getJSONObject("questions").has("intent"))
-        val content = requests.last().getJSONArray("messages").getJSONObject(1).getJSONArray("content")
+        assertTrue(requests.single { it.has("questions") }.getJSONObject("questions").has("intent"))
+        val intentScreen = requests.single { it.has("questions") }.getJSONObject("state").getJSONObject("screen")
+        assertEquals("browser.app", intentScreen.getString("app"))
+        assertEquals("42", intentScreen.getJSONArray("elements").getJSONObject(0).getString("text"))
+        val content = requests.single { it.optJSONArray("messages")?.getJSONObject(0)?.optString("content")?.startsWith("Reply directly") == true }
+            .getJSONArray("messages").getJSONObject(1).getJSONArray("content")
         assertEquals("data:image/jpeg;base64,current-screen", content.getJSONObject(1).getJSONObject("image_url").getString("url"))
         assertEquals("42", JSONObject(content.getJSONObject(0).getString("text")).getJSONObject("screen")
             .getJSONArray("elements").getJSONObject(0).getString("text"))
@@ -306,7 +310,7 @@ class CloudModelsTest {
         assertEquals(2, sent.size)
     }
 
-    @Test fun planningDistinguishesAuthorizedComponentsFromLaunchableApps() = runBlocking {
+    @Test fun planningStartsOnlyFromAppsItCanOpen() = runBlocking {
         var sent: JSONObject? = null
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val buffer = Buffer()
@@ -321,9 +325,11 @@ class CloudModelsTest {
         val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
         val plan = models.plan("选择已有账号", setOf("browser.app", "com.google.android.gms"), setOf("browser.app", "unselected.app"))
         val context = JSONObject(sent!!.getJSONArray("messages").getJSONObject(1).getString("content"))
-        val allowed = context.getJSONArray("allowed_apps")
-        assertEquals(setOf("browser.app", "com.google.android.gms"), (0 until allowed.length()).map(allowed::getString).toSet())
-        assertEquals(listOf("browser.app"), context.getJSONArray("launchable_apps").let { (0 until it.length()).map(it::getString) })
+        // Every installed component is allowed now (2026-10-15); listing all 183 would double the request, and one with no
+        // entry point can only be reached through an app anyway.
+        assertEquals(listOf("browser.app"), context.getJSONArray("allowed_apps").let { (0 until it.length()).map(it::getString) })
+        assertFalse(context.has("launchable_apps"))
+        // A component the plan names anyway is still one the task may operate.
         assertEquals("com.google.android.gms", plan.app)
     }
 
