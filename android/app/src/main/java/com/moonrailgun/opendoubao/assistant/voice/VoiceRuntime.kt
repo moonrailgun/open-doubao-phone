@@ -16,6 +16,7 @@ import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.CloudModels
 import com.moonrailgun.opendoubao.assistant.model.HttpTransport
+import com.moonrailgun.opendoubao.assistant.model.warmModels
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -221,6 +222,8 @@ object VoiceRuntime {
         if (!hasMic(context)) { mutableListening.value = null; mutableError.value = "请先在应用中授权麦克风"; return }
         val id = begin(context, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE, "正在加载本地语音")
             ?: run { mutableListening.value = null; return }
+        // While the user speaks, the model connections open, so the task's first call needs no handshake.
+        if (dispatch) warmModels(context)
         // The assist gesture listens without a wake word, so the card may open here; a final result still on display from
         // the previous command is replaced, or its close timer would fold this card away.
         mutableListening.update { if (it == null || (!it.hearing && it.text.isNotEmpty())) Listening() else it }

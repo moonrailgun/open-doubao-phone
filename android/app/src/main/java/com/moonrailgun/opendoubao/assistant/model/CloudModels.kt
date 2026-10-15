@@ -60,10 +60,32 @@ internal fun redactModelSecrets(text: String, secrets: List<String>): String = s
     .flatMap { listOf(it, JSONObject.quote(it).drop(1).dropLast(1)) }.distinct().sortedByDescending { it.length }
     .fold(text) { value, secret -> value.replace(secret, "[已隐藏]") }
 
-class HttpTransport(private val client: OkHttpClient = OkHttpClient.Builder()
-    .callTimeout(60, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).connectTimeout(15, TimeUnit.SECONDS)
-    .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build(),
+/** One client for every task, so the next task's first call reuses a connection a recent call or [HttpTransport.warm] opened. */
+private val sharedClient: OkHttpClient by lazy {
+    OkHttpClient.Builder().callTimeout(60, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).connectTimeout(15, TimeUnit.SECONDS)
+        .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build()
+}
+
+class HttpTransport(private val client: OkHttpClient = sharedClient,
     private val secrets: List<String> = emptyList(), private val log: ((JSONObject) -> Unit)? = null) {
+    companion object {
+        /**
+         * Opens a connection to each endpoint's server ahead of a task, with a bare HEAD that carries no key. The model
+         * router sits in us-east-2: a fresh TLS handshake there took 0.5–1 s and pushed the first Jev call of a task past
+         * its 3 s timeout. Its load balancer drops idle connections after about a minute, so this runs as the user starts
+         * a command rather than once.
+         */
+        fun warm(endpoints: Collection<String>) {
+            endpoints.mapNotNull { url -> runCatching { URI(url) }.getOrNull()?.takeIf { it.scheme == "https" || it.scheme == "http" } }
+                .map { "${it.scheme}://${it.rawAuthority}/" }.distinct().forEach { origin ->
+                    sharedClient.newCall(Request.Builder().url(origin).head().build()).enqueue(object : Callback {
+                        override fun onFailure(call: Call, e: IOException) = Unit
+                        override fun onResponse(call: Call, response: Response) = response.close()
+                    })
+                }
+        }
+    }
+
     suspend fun post(url: String, key: String, body: JSONObject, stage: String = "模型"): String = withContext(Dispatchers.IO) {
         val callId = UUID.randomUUID().toString()
         val started = System.nanoTime()

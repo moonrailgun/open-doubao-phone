@@ -37,6 +37,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,6 +73,7 @@ import com.moonrailgun.opendoubao.assistant.data.Record
 import com.moonrailgun.opendoubao.assistant.data.Saved
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.CloudModels
+import com.moonrailgun.opendoubao.assistant.model.warmModels
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
 import com.moonrailgun.opendoubao.assistant.phone.InstalledApp
 import com.moonrailgun.opendoubao.assistant.phone.catalogSelection
@@ -297,7 +299,9 @@ class MainActivity : ComponentActivity() {
                         if (!busy) {
                             Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, colors.outlineVariant)) {
                                 Column {
-                                    TextField(goal, { goal = it.take(4000) }, Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    // Typing a command opens the model connections, so the task's first call needs no handshake.
+                                    TextField(goal, { goal = it.take(4000) }, Modifier.fillMaxWidth().padding(top = 4.dp)
+                                        .onFocusChanged { if (it.isFocused) warmModels(this@MainActivity) },
                                         placeholder = { Text("例如：在浏览器里搜索北京这周末的天气，告诉我适不适合出门") },
                                         textStyle = LocalTextStyle.current.copy(fontSize = 17.sp, lineHeight = 26.sp), minLines = 4, maxLines = 8,
                                         colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,

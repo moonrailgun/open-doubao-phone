@@ -49,6 +49,7 @@ import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.CloudModels
 import com.moonrailgun.opendoubao.assistant.model.HttpTransport
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
+import com.moonrailgun.opendoubao.assistant.model.warmModels
 import com.moonrailgun.opendoubao.assistant.remote.AppAccess
 import com.moonrailgun.opendoubao.assistant.remote.RemoteProtocol
 import com.moonrailgun.opendoubao.assistant.remote.RemoteReceiver
@@ -528,7 +529,7 @@ class AssistantService : AccessibilityService() {
             setOnEditorActionListener { _, _, _ -> submit(); true }
             // The window only takes focus while typing, so an auto-opened summary never steals the keyboard.
             // A first tap only focuses the field, so touch starts typing on down; the click covers TalkBack.
-            fun startTyping() { if (!typing) { typing = true; applyOverlay() } }
+            fun startTyping() { if (!typing) { typing = true; applyOverlay(); warmModels(this@AssistantService) } }
             setOnClickListener { startTyping() }
             setOnTouchListener { _, event ->
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) startTyping()
