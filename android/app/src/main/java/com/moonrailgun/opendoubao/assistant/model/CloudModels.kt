@@ -333,26 +333,27 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
         """.trimIndent(), evidence.json().put("goal", goal).withContext().toString()) }.also { require(it.isNotBlank()) { "模型没有返回结果" } }
 
     /**
-     * Where a task should run, with how it was decided for the trace: Jev first (one cheap question), the chat model when Jev
-     * is down or slow, and the foreground when both fail. Each call gets 8 s, so the judgement never stalls a task.
+     * Where a task should run, with how it was decided for the trace: Jev (one cheap question, 3 s at most) when it is
+     * configured, otherwise the chat model (8 s), and the foreground whenever no answer comes, as unsure runs where the
+     * user can see it. A slow Jev is not worth waiting another model for: on 2026-10-15 that cost 13.6 s.
      */
     suspend fun placement(goal: String): Pair<Placement, String> {
-        // Wrapped in a list so a timeout (null) stays apart from no Jev configured (a list holding null).
-        val jev = runCatching { if (!config.hasJev) listOf(null) else withTimeoutOrNull(8_000) { labelled("Jev 执行方式") {
-            listOf(JevProtocol.parsePlacement(http.post(config.jevEndpoint, config.jevKey, JevProtocol.placementRequest(config.jevModel, goal), "Jev 执行方式")))
-        } } }
-        jev.exceptionOrNull()?.let { if (it is CancellationException) throw it }
-        jev.getOrNull()?.firstOrNull()?.let { return it to "Jev" }
-        val why = if (!config.hasJev) "未配置 Jev" else jev.exceptionOrNull()?.let { "Jev 不可用：${it.message?.lineSequence()?.first()}" }
-            ?: "Jev 超时"
+        if (config.hasJev) {
+            val jev = runCatching { withTimeoutOrNull(3_000) { labelled("Jev 执行方式") {
+                JevProtocol.parsePlacement(http.post(config.jevEndpoint, config.jevKey, JevProtocol.placementRequest(config.jevModel, goal), "Jev 执行方式"))
+            } } }
+            jev.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+            jev.getOrNull()?.let { return it to "Jev" }
+            return Placement.FOREGROUND to "默认，" + (jev.exceptionOrNull()?.let { "Jev 不可用：${it.message?.lineSequence()?.first()}" } ?: "Jev 超时")
+        }
         val chat = runCatching { withTimeoutOrNull(8_000) { labelled("执行方式") {
             ModelProtocol.parsePlacement(chat("执行方式", "Decide where a phone assistant should run a task. Return only " +
                 """{"placement":"virtual"} or {"placement":"foreground"}. """ + JevProtocol.PLACEMENT_RULE,
                 JSONObject().put("goal", goal).toString()))
         } } }
         chat.exceptionOrNull()?.let { if (it is CancellationException) throw it }
-        chat.getOrNull()?.let { return it to "Chat 模型，$why" }
-        return Placement.FOREGROUND to "默认，$why；Chat 模型${chat.exceptionOrNull()?.let { "失败：${it.message?.lineSequence()?.first()}" } ?: "超时"}"
+        chat.getOrNull()?.let { return it to "Chat 模型，未配置 Jev" }
+        return Placement.FOREGROUND to "默认，未配置 Jev；Chat 模型${chat.exceptionOrNull()?.let { "失败：${it.message?.lineSequence()?.first()}" } ?: "超时"}"
     }
 
     /** Retells a written summary as a short spoken reply; the full summary stays on screen. */

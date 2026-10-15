@@ -104,7 +104,7 @@ class DebugActivity : ComponentActivity() {
                     }
                 }
 
-                DebugSection("执行方式判断", "先问 Jev，Jev 不可用时问 Chat 模型，两者都失败按前台。") {
+                DebugSection("执行方式判断", "配置了 Jev 时只问 Jev，3 秒内没答复或出错按前台；未配置 Jev 时问 Chat 模型。") {
                     var goal by remember { mutableStateOf("帮我查一下明天北京的天气") }
                     var verdict by remember { mutableStateOf("") }
                     OutlinedTextField(goal, { goal = it }, Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp))

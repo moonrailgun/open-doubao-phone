@@ -174,7 +174,7 @@ class CloudModelsTest {
         assertEquals("The chart shows 42 units.", controller.state.value.result)
     }
 
-    @Test fun placementAsksJevFirstAndTheChatModelOnlyWhenJevIsDown() = runBlocking {
+    @Test fun placementAsksJevAndTheChatModelOnlyWithoutJev() = runBlocking {
         var jevConfidence = .9; var jevDown = false; var chatDown = false; var chats = 0
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val buffer = Buffer()
@@ -202,14 +202,19 @@ class CloudModelsTest {
         // An unsure Jev still decides, by the likelier of the two (foreground at .6 here), without a chat call.
         jevConfidence = .4
         assertEquals(Placement.FOREGROUND to "Jev", models.placement("付款"))
+        // 2026-10-15: Jev timed out at 8 s and the chat model took 5.6 s more, 13.6 s on the task's critical path. Unsure
+        // runs in the foreground anyway, so a Jev that is down or slow means the foreground at once.
         jevDown = true
         val down = models.placement("付款")
         assertEquals(Placement.FOREGROUND, down.first)
-        assertTrue(down.second, down.second.startsWith("Chat 模型，Jev 不可用"))
+        assertTrue(down.second, down.second.startsWith("默认，Jev 不可用"))
+        assertEquals(0, chats)
+        // Without Jev the chat model judges; with it down too, nothing says it is a pure lookup.
+        val noJev = CloudModels(ModelConfig(jevKey = "", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"), HttpTransport(client))
+        assertEquals(Placement.FOREGROUND to "Chat 模型，未配置 Jev", noJev.placement("付款"))
         assertEquals(1, chats)
-        // With both models down nothing says it is a pure lookup, so it runs in the foreground.
         chatDown = true
-        val none = models.placement("付款")
+        val none = noJev.placement("付款")
         assertEquals(Placement.FOREGROUND, none.first)
         assertTrue(none.second, none.second.startsWith("默认"))
     }
