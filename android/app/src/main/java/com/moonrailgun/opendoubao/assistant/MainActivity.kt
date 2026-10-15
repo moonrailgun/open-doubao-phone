@@ -298,7 +298,7 @@ class MainActivity : ComponentActivity() {
                             Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, colors.outlineVariant)) {
                                 Column {
                                     TextField(goal, { goal = it.take(4000) }, Modifier.fillMaxWidth().padding(top = 4.dp),
-                                        placeholder = { Text("例如：在浏览器里搜索杭州这周末的天气，告诉我适不适合出门") },
+                                        placeholder = { Text("例如：在浏览器里搜索北京这周末的天气，告诉我适不适合出门") },
                                         textStyle = LocalTextStyle.current.copy(fontSize = 17.sp, lineHeight = 26.sp), minLines = 4, maxLines = 8,
                                         colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
                                             focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
@@ -527,7 +527,7 @@ class MainActivity : ComponentActivity() {
     Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, colors.outlineVariant)) {
         Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             TextField(draft, { draft = it.take(MemoryOps.LENGTH) }, Modifier.weight(1f),
-                placeholder = { Text(if (full) "已满 ${MemoryOps.LIMIT} 条，请先删除或合并" else "例如：我住在杭州西湖区") }, maxLines = 4,
+                placeholder = { Text(if (full) "已满 ${MemoryOps.LIMIT} 条，请先删除或合并" else "例如：我住在北京朝阳区") }, maxLines = 4,
                 colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
             FilledIconButton({ if (apply(MemoryOp.Add(draft))) draft = "" }, enabled = draft.isNotBlank() && !full) {

@@ -105,7 +105,7 @@ class DebugActivity : ComponentActivity() {
                 }
 
                 DebugSection("执行方式判断", "先问 Jev，Jev 不可用时问 Chat 模型，两者都失败按前台。") {
-                    var goal by remember { mutableStateOf("帮我查一下明天杭州的天气") }
+                    var goal by remember { mutableStateOf("帮我查一下明天北京的天气") }
                     var verdict by remember { mutableStateOf("") }
                     OutlinedTextField(goal, { goal = it }, Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp))
                     Button({ scope.launch {
