@@ -3,6 +3,7 @@ package com.moonrailgun.opendoubao.assistant.core
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.selects.select
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -44,6 +45,8 @@ class TaskController(
     private val sources = linkedSetOf<Source>()
     private var unchanged = 0
     private var failures = 0
+    /** A vision reply whose action already went ahead, with the app it looked at, until its observations are kept. */
+    private var trailing: Pair<String, Deferred<Result<Pair<String, ModelStep>>>>? = null
     /** How often each action ran on each exact page; a third run means the task is going round in a loop. */
     private val attempts = mutableMapOf<Pair<String, Action>, Int>()
     /** Handover requests the user answered with continue; the vision model may then do what each one asked permission for. */
@@ -66,6 +69,7 @@ class TaskController(
         unchanged = 0
         failures = 0
         attempts.clear()
+        trailing = null
         approvals.clear()
         asking = null
         remainingActiveMillis = TASK_TIMEOUT_MILLIS
@@ -260,11 +264,14 @@ class TaskController(
                             // The screenshot and vision call start alongside Jev rather than after it: on pages it does not know
                             // Jev is rarely sure, and its 1–2 s "no" sat in front of every vision step. A sure Jev cancels them, at
                             // the price of a vision request on steps Jev could do alone. Failures wait for a step that needs the result.
+                            val early = CompletableDeferred<Pair<String, ModelStep>>()
                             val look = async {
                                 try {
                                     val shot = timed("截图") { phone.screenshot(screen) }
                                     Result.success(shot to timed("视觉模型") {
-                                        withTimeout(60_000) { models.fallback(state.value.goal, screen, plan!!, previous, taskEvidence(), shot) }
+                                        withTimeout(60_000) { withContext(EarlyAction { early.complete(shot to it) }) {
+                                            models.fallback(state.value.goal, screen, plan!!, previous, taskEvidence(), shot)
+                                        } }
                                     })
                                 } catch (e: TimeoutCancellationException) { Result.failure(e) }
                                 catch (e: CancellationException) { throw e }
@@ -304,11 +311,16 @@ class TaskController(
                                     look.cancelAndJoin()
                                     throw ScreenChangedException()
                                 }
-                                val (shot, fallback) = look.await().getOrThrow()
+                                // The action can arrive ahead of the observations still being written; those are kept once they are in.
+                                val first = select { early.onAwait { it }; look.onAwait { it.getOrThrow() } }
+                                val following = !look.isCompleted
+                                if (following) trailing = screen.packageName to look
+                                val (shot, fallback) = if (following) first else look.await().getOrNull() ?: first
                                 image = shot
                                 checkCurrent(token)
                                 trace("视觉模型：${fallback.action?.description(screen) ?: "无动作"}，完成=${fallback.done}" +
-                                    (fallback.handover?.let { "，交还：$it" } ?: "") + "，观察 ${fallback.observations.length} 字")
+                                    (fallback.handover?.let { "，交还：$it" } ?: "") +
+                                    if (following) "，动作先到，观察随后补上" else "，观察 ${fallback.observations.length} 字")
                                 if (fallback.observations.isNotBlank()) retain(Source(screen.packageName, fallback.observations, visual = true))
                                 if (fallback.handover != null) {
                                     pause(fallback.handover, ask = true)
@@ -428,7 +440,20 @@ class TaskController(
         return screen
     }
 
-    private fun taskEvidence() = Evidence(evidence.toList(), sources.toList(), approvals.toList())
+    private suspend fun taskEvidence(): Evidence {
+        trailing?.let { (app, look) ->
+            // Cleared only once its observations are in: a caller cancelled while waiting (a sure Jev cancels the next
+            // vision call) leaves them for the next one.
+            val observations = try { look.await().getOrNull()?.second?.observations } catch (e: CancellationException) {
+                currentCoroutineContext().ensureActive(); null
+            }
+            if (trailing?.second === look) {
+                trailing = null
+                if (!observations.isNullOrBlank()) retain(Source(app, observations, visual = true))
+            }
+        }
+        return Evidence(evidence.toList(), sources.toList(), approvals.toList())
+    }
 
     /** Adds a page to the evidence and its text to the task's sources, once per distinct page. */
     private fun keep(screen: Screen) {

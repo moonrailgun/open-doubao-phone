@@ -4,6 +4,7 @@ import com.moonrailgun.opendoubao.assistant.core.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -86,7 +87,8 @@ class HttpTransport(private val client: OkHttpClient = sharedClient,
         }
     }
 
-    suspend fun post(url: String, key: String, body: JSONObject, stage: String = "模型"): String = withContext(Dispatchers.IO) {
+    /** With [lines], a successful response is read line by line as it streams in (server-sent events), each line handed over. */
+    suspend fun post(url: String, key: String, body: JSONObject, stage: String = "模型", lines: ((String) -> Unit)? = null): String = withContext(Dispatchers.IO) {
         val callId = UUID.randomUUID().toString()
         val started = System.nanoTime()
         val requestBody = body.toString()
@@ -122,6 +124,16 @@ class HttpTransport(private val client: OkHttpClient = sharedClient,
                                     .put("contentType", it.header("content-type"))
                                 received.set(details)
                                 val source = it.body?.source() ?: throw IOException("模型返回空响应")
+                                if (lines != null && it.isSuccessful) return@use buildString {
+                                    try {
+                                        while (true) {
+                                            val line = source.readUtf8Line() ?: break
+                                            if (length + line.length >= 1_048_576) throw IOException("模型响应超过 1 MB 限制")
+                                            append(line).append('\n')
+                                            lines(line)
+                                        }
+                                    } finally { received.set(JSONObject(details.toString()).put("body", toString())) }
+                                }
                                 val oversized = try { source.request(1_048_577) } catch (e: IOException) {
                                     received.set(JSONObject(details.toString()).put("body", source.buffer.clone().readUtf8())
                                         .put("truncated", true))
@@ -321,7 +333,14 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
         fun parse(raw: String) = ModelProtocol.parseStep(raw).also {
             require(image == null || !it.done || it.observations.isNotBlank()) { "视觉模型未提供可用于总结的观察内容" }
         }
-        val first = labelled("视觉模型") { chat("视觉模型", instructions, state.toString(), image) }
+        // The action comes ahead of the observations, so the step can go ahead while they are still being written.
+        val early = currentCoroutineContext()[EarlyAction]
+        var taken: ModelStep? = null
+        val first = labelled("视觉模型") { chat("视觉模型", instructions, state.toString(), image, partial = early?.let { listener -> { text ->
+            if (taken == null) ModelProtocol.earlyStep(text)?.let { taken = it; listener.take(it) }
+        } }) }
+        // Once the action has gone ahead, a reply that breaks down after it costs only its observations, never a second action.
+        taken?.let { step -> return runCatching { parse(first) }.getOrDefault(step) }
         return try { parse(first) } catch (e: IllegalArgumentException) {
             // One schema slip should not end the task: ask once more with the parser's complaint.
             val complaint = generateSequence<Throwable>(e) { it.cause }.last().message ?: "invalid reply"
@@ -423,14 +442,22 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
             "${MemoryOps.LIMIT} items, so update or delete instead of duplicating. Never store passwords, verification codes, card numbers or other credentials."
     }
 
-    private suspend fun chat(stage: String, system: String, text: String, image: String? = null): String {
+    /** With [partial], the reply streams in and [partial] sees all of it so far after every piece. */
+    private suspend fun chat(stage: String, system: String, text: String, image: String? = null, partial: ((String) -> Unit)? = null): String {
         val content: Any = if (image == null) text else JSONArray()
             .put(JSONObject().put("type", "text").put("text", text))
             .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$image")))
-        val body = JSONObject().put("model", config.chatModel).put("stream", false).put("max_tokens", 2048)
+        val body = JSONObject().put("model", config.chatModel).put("stream", partial != null).put("max_tokens", 2048)
             .put("messages", JSONArray().put(JSONObject().put("role", "system").put("content", system))
                 .put(JSONObject().put("role", "user").put("content", content)))
-        val raw = http.post(config.chatEndpoint, config.chatKey, body, stage)
+        val streamed = StringBuilder()
+        val raw = http.post(config.chatEndpoint, config.chatKey, body, stage, lines = partial?.let { take -> { line: String ->
+            val event = line.takeIf { it.startsWith("data:") }?.removePrefix("data:")?.trim()?.takeIf { it.startsWith("{") }
+            val piece = event?.let { runCatching { JSONObject(it).getJSONArray("choices").getJSONObject(0).getJSONObject("delta").opt("content") }.getOrNull() }
+            if (piece is String && piece.isNotEmpty()) take(streamed.append(piece).toString())
+        } })
+        // A server that ignores "stream" answers with the usual single JSON body.
+        if (streamed.isNotBlank()) return streamed.toString()
         return try {
             val message = JSONObject(raw).getJSONArray("choices").getJSONObject(0).getJSONObject("message")
             val result = message.get("content")

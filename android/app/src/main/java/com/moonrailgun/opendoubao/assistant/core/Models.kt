@@ -2,6 +2,8 @@ package com.moonrailgun.opendoubao.assistant.core
 
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import java.net.URI
 import java.security.MessageDigest
 
@@ -135,6 +137,15 @@ data class Decision(val action: Action?, val done: Boolean, val effect: Effect, 
 /** [result] is the answer for the user that may come with [done]; blank leaves it to the summary call. */
 data class ModelStep(val action: Action? = null, val done: Boolean = false, val handover: String? = null,
     val observations: String = "", val result: String = "")
+
+/**
+ * Put in the context of [Models.fallback] to be handed the action as soon as it is known, while the observations that
+ * follow it are still being written; the call still returns the whole step. A context element rather than a parameter,
+ * so the many [Models] stand-ins built by delegation keep working.
+ */
+class EarlyAction(val take: (ModelStep) -> Unit) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<EarlyAction>
+}
 data class Source(val app: String, val text: String, val visual: Boolean = false) {
     fun json() = JSONObject().put("app", app).put("text", text).put("visual_model_observation", visual)
 }

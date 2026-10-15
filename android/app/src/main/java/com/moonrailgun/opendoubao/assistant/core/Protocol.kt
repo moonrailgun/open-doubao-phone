@@ -232,6 +232,17 @@ object ModelProtocol {
         }.copy(observations = observations)
     }
 
+    /**
+     * The action of a vision reply still streaming in, as soon as the fields it needs are complete: the reply up to its
+     * last comma, or up to "observations" when that arrived in the same piece, parses as a whole action. A comma inside a
+     * string that is still being written leaves invalid JSON, so a half-written text never counts. Null until then, and
+     * for done and handover, whose answer or reason has to be read in full.
+     */
+    fun earlyStep(partial: String): ModelStep? = listOfNotNull(
+        partial.lastIndexOf(',').takeIf { it >= 0 },
+        Regex(""",\s*"observations"\s*:""").find(partial)?.range?.first,
+    ).firstNotNullOfOrNull { cut -> runCatching { parseStep(partial.substring(0, cut) + "}") }.getOrNull()?.takeIf { it.action != null } }
+
     fun parseAction(obj: JSONObject): Action = parseSafely {
         val action = when (obj.strictString("action")) {
             "open_app" -> Action.OpenApp(obj.strictString("package"))
