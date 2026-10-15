@@ -44,6 +44,8 @@ class TaskController(
     private val sources = linkedSetOf<Source>()
     private var unchanged = 0
     private var failures = 0
+    /** How often each action ran on each exact page; a third run means the task is going round in a loop. */
+    private val attempts = mutableMapOf<Pair<String, Action>, Int>()
     /** Handover requests the user answered with continue; the vision model may then do what each one asked permission for. */
     private val approvals = mutableListOf<String>()
     private var asking: String? = null
@@ -63,6 +65,7 @@ class TaskController(
         sources.clear()
         unchanged = 0
         failures = 0
+        attempts.clear()
         approvals.clear()
         asking = null
         remainingActiveMillis = TASK_TIMEOUT_MILLIS
@@ -94,6 +97,7 @@ class TaskController(
         previous = null
         unchanged = 0
         failures = 0
+        attempts.clear()
         asking?.let { approvals += it }
         trace(asking?.let { "继续任务：已同意「$it」，重新观察当前页面" } ?: "继续任务：重新观察当前页面")
         asking = null
@@ -355,6 +359,11 @@ class TaskController(
                                     if (action is Action.OpenApp && action.packageName !in launchableApps) {
                                         if (stuck("无法直接打开 ${action.packageName}，请通过其他应用或手动进入该页面后点击继续")) return@withTimeout
                                         continue
+                                    }
+                                    // Waiting on the same page is what unchanged counts; scrolling or counting up changes the page.
+                                    if (action != Action.Wait && (attempts.merge(fresh.fingerprint to action, 1, Int::plus) ?: 0) > 2) {
+                                        pause("同一页面上的同一操作已做过 2 次仍没有进展，请手动处理后点击继续")
+                                        return@withTimeout
                                     }
                                     perform(action, fresh, token, image)
                                 }
