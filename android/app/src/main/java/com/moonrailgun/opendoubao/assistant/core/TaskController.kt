@@ -170,7 +170,7 @@ class TaskController(
                             update(if (place == null) "正在理解任务、规划步骤" else "正在判断执行方式、规划步骤")
                             // An early open or virtual display would lose the page the user is referring to.
                             val placing = if (initialScreen == null) place?.let { choose -> async { timed("执行方式") { choose() } } } else null
-                            if (initialScreen == null) early = async { openEarly(placing) }
+                            if (initialScreen == null) early = async { openEarly(placing, planning!!, token) }
                             val result = planning!!.await().getOrThrow()
                             checkCurrent(token)
                             if (result.reply != null) { placing?.cancel(); early?.cancel() }
@@ -420,17 +420,20 @@ class TaskController(
         sources += source
     }
 
-    private suspend fun perform(action: Action, screen: Screen, token: Long, image: String? = null) {
+    private suspend fun perform(action: Action, screen: Screen, token: Long, image: String? = null, on: Phone = phone) {
         checkCurrent(token)
-        val success = phone.execute(action, screen, image)
+        val success = on.execute(action, screen, image)
         checkCurrent(token)
         previous = Previous(screen, action, success)
         mutable.value = state.value.copy(steps = state.value.steps + 1)
         update("第 ${state.value.steps} 步：${action.description(screen)}${if (success) "" else "（未生效，正在调整）"}")
     }
 
-    /** Opens Jev's guess at the task's app on the phone placement chose; the package once it is open, else null. */
-    private suspend fun openEarly(placing: Deferred<Pair<Phone, String>>?): String? {
+    /**
+     * Opens Jev's guess at the task's app on the phone placement chose, then takes the clicks Jev is sure of until the plan
+     * is back; typing waits for the plan's texts. Returns the package once it is open, else null.
+     */
+    private suspend fun openEarly(placing: Deferred<Pair<Phone, String>>?, planning: Deferred<Result<Plan>>, token: Long): String? {
         val app = try { timed("应用预判") { models.guessApp(state.value.goal, launchableApps) } }
             catch (e: CancellationException) { throw e } catch (_: Exception) { null }
         trace("Jev 预判应用：${app ?: "不确定，等规划"}")
@@ -444,7 +447,32 @@ class TaskController(
         }
         val opened = try { target.execute(Action.OpenApp(app), null) } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
         trace("打开 $app：${if (opened) "成功" else "失败"}（Jev 预判，规划同时进行）")
-        return app.takeIf { opened }
+        if (!opened) return null
+        val provisional = Plan(app, listOf(state.value.goal), emptyList())
+        // Anything that goes wrong here only ends the head start; the main loop meets it again with the plan in hand.
+        try {
+            while (!planning.isCompleted) {
+                val screen = target.observe()
+                checkCurrent(token)
+                if (screen.packageName != app) break
+                val decision = timed("Jev 决策（规划还没返回）") {
+                    models.decide(state.value.goal, screen, provisional, Candidates.build(screen, provisional, apps, launchableApps), previous)
+                }
+                checkCurrent(token)
+                val click = decision.action as? Action.Click ?: break
+                // A plan that came back meanwhile may name another app, where this click has no business.
+                if (decision.done || planning.isCompleted && planning.await().getOrNull()?.app != app) break
+                // Jev took a second or so, and a cold-starting app redraws meanwhile: a click against the page it saw would
+                // not be sent, and the failure would hand the first planned step to the vision model.
+                val fresh = target.observe()
+                checkCurrent(token)
+                if (!sameTarget(click, screen, fresh) || ActionPolicy.assess(click, fresh, apps) != Permission.ALLOW) break
+                trace("规划还没返回，先做 Jev 有把握的点击")
+                perform(click, fresh, token, on = target)
+                if (previous?.dispatched == false) { previous = null; break }
+            }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { trace("规划前先走一步中止：${e.message}") }
+        return app
     }
 
     private suspend fun checkCurrent(token: Long) {
