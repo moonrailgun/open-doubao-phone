@@ -287,8 +287,9 @@ object VoiceRuntime {
             yield()
             val result = service.state.first { it.status !in setOf(TaskStatus.IDLE, TaskStatus.RUNNING) }
             if (!screenAvailable(context)) return@launch
-            // Speak a short retelling of the summary; a slow or failed rewrite falls back to the summary itself.
-            val spoken = result.result.takeIf { it.isNotBlank() }?.let { summary ->
+            // Speak a short retelling of the summary; a slow or failed rewrite falls back to the summary itself. A one-line
+            // result such as a quick command's "已打开飞书" is read as it is.
+            val spoken = result.result.takeIf { it.isNotBlank() && (it.length > 40 || '\n' in it) }?.let { summary ->
                 try { withTimeoutOrNull(15_000) {
                     val vault = Vault(context)
                     val config = vault.read().config
