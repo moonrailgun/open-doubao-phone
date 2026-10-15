@@ -16,7 +16,7 @@ import org.junit.Test
 
 class CloudModelsTest {
     @Test fun chatReadsTheCurrentScreenWithoutChoosingAnotherPhoneOrActing() = runBlocking {
-        val requests = mutableListOf<JSONObject>()
+        val requests = java.util.Collections.synchronizedList(mutableListOf<JSONObject>())
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val buffer = Buffer()
             chain.request().body!!.writeTo(buffer)
@@ -46,7 +46,8 @@ class CloudModelsTest {
         assertEquals("屏幕上是 42", controller.state.value.result)
         assertFalse(placed)
         assertEquals(1, screenshots)
-        assertEquals(2, requests.size)
+        // Planning starts beside the intent check and is dropped once it says chat, so its request may have gone out too.
+        assertTrue(requests.size in 2..3)
         assertTrue(requests.single { it.has("questions") }.getJSONObject("questions").has("intent"))
         val intentScreen = requests.single { it.has("questions") }.getJSONObject("state").getJSONObject("screen")
         assertEquals("browser.app", intentScreen.getString("app"))

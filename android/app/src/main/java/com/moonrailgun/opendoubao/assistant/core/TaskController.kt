@@ -141,6 +141,15 @@ class TaskController(
                             catch (e: Exception) { trace("初始截图不可用，使用页面文字：${e.message}"); null }
                         }
                         checkCurrent(token)
+                        // Both models see the same page before anything can switch apps.
+                        val planning: Deferred<Result<Plan>>? = if (chat != true) async {
+                            try { Result.success(timed("规划") { withTimeout(60_000) {
+                                models.plan(state.value.goal, apps, launchableApps, initialScreen, initialImage)
+                            } }) }
+                            catch (e: TimeoutCancellationException) { Result.failure<Plan>(e) }
+                            catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { Result.failure<Plan>(e) }
+                        } else null
                         if (chat == null) {
                             update("正在判断聊天还是任务")
                             val isChat = timed("意图判断") { models.isChat(state.value.goal, initialScreen) }
@@ -150,6 +159,7 @@ class TaskController(
                         }
                         var early: Deferred<String?>? = null
                         val planned = if (chat == true) {
+                            planning?.cancelAndJoin()
                             update("正在看当前屏幕、回复")
                             val screen = initialScreen ?: observe(token) ?: return@withTimeout
                             val image = initialImage ?: timed("截图") { phone.screenshot(screen) }
@@ -158,18 +168,10 @@ class TaskController(
                                 .also { require(it.reply != null) { "聊天模型没有返回回复" } }
                         } else {
                             update(if (place == null) "正在理解任务、规划步骤" else "正在判断执行方式、规划步骤")
-                            val planning: Deferred<Result<Plan>> = async {
-                                try { Result.success(timed("规划") { withTimeout(60_000) {
-                                    models.plan(state.value.goal, apps, launchableApps, initialScreen, initialImage)
-                                } }) }
-                                catch (e: TimeoutCancellationException) { Result.failure<Plan>(e) }
-                                catch (e: CancellationException) { throw e }
-                                catch (e: Exception) { Result.failure<Plan>(e) }
-                            }
                             // An early open or virtual display would lose the page the user is referring to.
                             val placing = if (initialScreen == null) place?.let { choose -> async { timed("执行方式") { choose() } } } else null
                             if (initialScreen == null) early = async { openEarly(placing) }
-                            val result = planning.await().getOrThrow()
+                            val result = planning!!.await().getOrThrow()
                             checkCurrent(token)
                             if (result.reply != null) { placing?.cancel(); early?.cancel() }
                             else if (result.app != initialScreen?.packageName) {
