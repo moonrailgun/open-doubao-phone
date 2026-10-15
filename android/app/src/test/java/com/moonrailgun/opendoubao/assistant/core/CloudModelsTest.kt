@@ -237,6 +237,8 @@ class CloudModelsTest {
         val instruction = sent!!.getJSONArray("messages").getJSONObject(0).getString("content")
         assertTrue(instruction.contains("selecting an existing"))
         assertTrue(instruction.contains("Entering credentials"))
+        // 2026-10-15: "给 lyon chen 发个你好" paused to ask before sending what the goal had already said to send.
+        assertTrue(instruction.contains("the goal is the user's permission to send it"))
         assertTrue(instruction.contains("user_approvals"))
         assertEquals(0, context.getJSONArray("user_approvals").length())
         assertTrue(instruction.contains("cannot be read or operated reliably"))
