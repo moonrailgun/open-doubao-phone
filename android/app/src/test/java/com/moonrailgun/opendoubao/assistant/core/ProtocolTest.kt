@@ -41,7 +41,7 @@ class ProtocolTest {
         assertNull(JevProtocol.request("jev-latest", "goal", screen(), tooMany, null))
     }
 
-    @Test fun jevSeesMemoryAndRecentTasksUnlessTheScreenNeedsTheRoom() {
+    @Test fun jevKeepsMemoryAndRecentTasksWhenTheScreensAreTrimmed() {
         // Feishu on 2026-10-13: 孙淼 shows as 孙大炮, which only an earlier task's result said, and Jev scored the open chat 0.13–0.16 done.
         val context = JSONObject().put("memory", org.json.JSONArray()).put("recent_tasks", org.json.JSONArray()
             .put(JSONObject().put("goal", "打开和孙淼的聊天窗口").put("result", "孙淼在飞书中的显示名为“孙大炮”")))
@@ -51,7 +51,17 @@ class ProtocolTest {
         val big = screen().copy(elements = (0 until 350).map {
             Element("0.$it", "长".repeat(2000), "", "android.widget.TextView", "", Bounds(0, 0, 1, 1))
         })
-        assertFalse(JevProtocol.request("jev-latest", "goal", big, candidates, null, context = context)!!.getJSONObject("state").has("recent_tasks"))
+        // 2026-10-15: on Feishu the previous page alone filled the budget, and dropping the memory first left Jev without
+        // the 孙淼 = 孙大炮 alias on every page but the splash. The screens give way first now.
+        val trimmed = JevProtocol.request("jev-latest", "goal", big, candidates, null, context = context)!!
+        assertTrue(trimmed.toString().toByteArray().size <= JevProtocol.BUDGET)
+        assertTrue(trimmed.getJSONObject("state").has("recent_tasks"))
+        assertTrue(trimmed.getJSONObject("state").getJSONObject("screen").getBoolean("truncated"))
+        val afterBigPage = JevProtocol.request("jev-latest", "goal", screen(), candidates, Previous(big, Action.Back, true), context = context)!!
+            .getJSONObject("state")
+        assertTrue(afterBigPage.has("recent_tasks"))
+        assertEquals(1, afterBigPage.getJSONObject("screen").getJSONArray("elements").length())
+        assertEquals(0, afterBigPage.getJSONObject("previous").getJSONObject("screen").getJSONArray("elements").length())
     }
 
     @Test fun jevReturnsOnlyAnExistingCandidate() {

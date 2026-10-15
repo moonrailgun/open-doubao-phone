@@ -9,8 +9,9 @@ object JevProtocol {
     // unpublished, so cap UTF-8 bytes — 48 KB stays under 32k even at 1.5 bytes per token. Raise if decisions starve.
     const val BUDGET = 48_000
 
-    /** Over budget, [context] (memory and recent tasks) goes first, then the previous screen's elements, then the current
-     *  screen's trailing ones. Returns null when the candidates alone do not fit; the caller should use the vision model instead. */
+    /** Over budget, the previous screen's elements go first, then the current screen's trailing ones; [context] (memory and
+     *  recent tasks, a few KB holding facts such as a contact's alias) goes only if even empty screens leave it no room.
+     *  Returns null when the candidates alone do not fit; the caller should use the vision model instead. */
     fun request(model: String, goal: String, screen: Screen, candidates: List<Candidate>, previous: Previous?,
                 subgoals: List<String> = emptyList(), context: JSONObject = JSONObject()): JSONObject? {
         val criteria = JSONObject().put("none", "No candidate safely advances the goal, or more reasoning / new text is needed.")
@@ -27,15 +28,17 @@ object JevProtocol {
             previous?.let { state.put("previous", JSONObject().put("screen", before!!.json()).put("action", it.action.json()).put("dispatched", it.dispatched)) }
             return JSONObject().put("model", model).put("state", state).put("questions", questions)
         }
-        build(screen, previous?.screen, context).let { if (size(it) <= BUDGET) return it }
-        val full = build(screen, previous?.screen)
-        if (size(full) <= BUDGET) return full
-        val before = previous?.screen?.copy(elements = emptyList(), truncated = true)
-        var room = BUDGET - size(build(screen.copy(elements = emptyList()), before))
-        if (room < 0) return null
-        val visible = screen.elements.filterNot { it.password }
-        val kept = visible.takeWhile { room -= size(it.json()) + 1; room >= 0 }
-        return build(screen.copy(elements = kept, truncated = screen.truncated || kept.size < visible.size), before)
+        fun fit(extra: JSONObject): JSONObject? {
+            build(screen, previous?.screen, extra).let { if (size(it) <= BUDGET) return it }
+            val before = previous?.screen?.copy(elements = emptyList(), truncated = true)
+            build(screen, before, extra).let { if (size(it) <= BUDGET) return it }
+            var room = BUDGET - size(build(screen.copy(elements = emptyList()), before, extra))
+            if (room < 0) return null
+            val visible = screen.elements.filterNot { it.password }
+            val kept = visible.takeWhile { room -= size(it.json()) + 1; room >= 0 }
+            return build(screen.copy(elements = kept, truncated = screen.truncated || kept.size < visible.size), before, extra)
+        }
+        return fit(context) ?: fit(JSONObject())
     }
 
     private fun size(json: JSONObject) = json.toString().toByteArray().size
