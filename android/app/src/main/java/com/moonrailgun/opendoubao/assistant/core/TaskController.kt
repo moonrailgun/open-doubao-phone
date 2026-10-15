@@ -436,6 +436,12 @@ class TaskController(
         trace("Jev 预判应用：${app ?: "不确定，等规划"}")
         if (app == null) return null
         val target = placing?.await()?.first ?: phone
+        // Opening an app on the virtual display asks for the user's consent. Asked before the plan was back, the dialog
+        // stayed on screen when the plan then answered from memory (2026-10-15), so there the app opens after the plan.
+        if (target !== phone) {
+            trace("虚拟屏上等规划返回再打开 $app")
+            return null
+        }
         val opened = try { target.execute(Action.OpenApp(app), null) } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
         trace("打开 $app：${if (opened) "成功" else "失败"}（Jev 预判，规划同时进行）")
         return app.takeIf { opened }
