@@ -25,8 +25,9 @@ class AppGuessTest {
             "confidence":$confidence,"probabilities":{"none":${1 - probability},"a0":$probability,"a1":0}}}}"""
         val apps = listOf("lark.app", "notes.app")
         assertEquals("lark.app", JevProtocol.parseApp(answer("a0", .9, .9), apps))
-        assertNull(JevProtocol.parseApp(answer("a0", .7, .9), apps))
-        assertNull(JevProtocol.parseApp(answer("a0", .9, .7), apps))
+        assertEquals("lark.app", JevProtocol.parseApp(answer("a0", .7, .7), apps))
+        assertNull(JevProtocol.parseApp(answer("a0", .699, .9), apps))
+        assertNull(JevProtocol.parseApp(answer("a0", .9, .699), apps))
         assertNull(JevProtocol.parseApp(answer("none", .9, .1), apps))
     }
 

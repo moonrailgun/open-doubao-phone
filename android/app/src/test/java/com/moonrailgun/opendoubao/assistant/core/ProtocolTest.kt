@@ -76,10 +76,17 @@ class ProtocolTest {
         assertNull(JevProtocol.parse(answer("none", .99), candidates).action)
     }
 
-    @Test fun jevFinishesFromEightyPercent() {
-        // Settings on 2026-10-14: the battery page Jev scored 0.85 and 0.87 was done; pages still on the way stayed at 0.2 or less.
-        assertTrue(JevProtocol.parse(answer("none", .99, done = .8), candidates).done)
-        assertFalse(JevProtocol.parse(answer("none", .99, done = .79), candidates).done)
+    @Test fun normalModeUsesPointSevenForActionsCompletionAndEffects() {
+        for (score in listOf(.6, .699, .7, .8)) {
+            assertEquals(score >= .7, JevProtocol.parse(answer("none", .99, done = score), candidates).done)
+            assertEquals(score >= .7, JevProtocol.parse(answer("c0", score), candidates).action != null)
+            val raw = JSONObject(answer("c0", .99))
+            raw.getJSONObject("answers").getJSONObject("next").put("probabilities", JSONObject().put("c0", score).put("none", 1 - score))
+            assertEquals(score >= .7, JevProtocol.parse(raw.toString(), candidates).action != null)
+            raw.getJSONObject("answers").getJSONObject("effect").put("choice", "yes").put("confidence", score)
+                .put("probabilities", JSONObject().put("yes", .95).put("no", .04).put("unknown", .01))
+            assertEquals(if (score >= .7) Effect.YES else Effect.UNKNOWN, JevProtocol.parse(raw.toString(), candidates).effect)
+        }
     }
 
     @Test fun invalidChoiceAndProbabilityAreRejected() {

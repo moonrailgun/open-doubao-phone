@@ -5,6 +5,7 @@ import org.json.JSONObject
 import kotlin.math.abs
 
 object JevProtocol {
+    const val MIN_CONFIDENCE = .7
     // ponytail: Jev rejects state + longest question over 32k tokens (HTTP 400 max_tokens_exceeded); its tokenizer is
     // unpublished, so cap UTF-8 bytes — 48 KB stays under 32k even at 1.5 bytes per token. Raise if decisions starve.
     const val BUDGET = 48_000
@@ -53,10 +54,10 @@ object JevProtocol {
             .put("criteria", JSONObject().put("chat", "Reply using the current screen and conversation; no phone operations.")
                 .put("task", "Carry out a task on the phone, or intent is uncertain."))))
 
-    fun parseIntent(raw: String): Boolean = parseSafely {
+    fun parseIntent(raw: String, minConfidence: Double = MIN_CONFIDENCE): Boolean = parseSafely {
         val answer = JSONObject(raw).getJSONObject("answers").getJSONObject("intent")
-        choice(answer, setOf("chat", "task")) == "chat" && probability(answer, "confidence") >= .65 &&
-            probability(answer.getJSONObject("probabilities"), "chat") >= .65
+        choice(answer, setOf("chat", "task")) == "chat" && probability(answer, "confidence") >= minConfidence &&
+            probability(answer.getJSONObject("probabilities"), "chat") >= minConfidence
     }
 
     /** The one rule both models apply before a task starts; the goal inside is data, never instructions. */
@@ -86,11 +87,10 @@ object JevProtocol {
                 .put("criteria", criteria)))
     }
 
-    // ponytail: .8 on both, above the .65 used elsewhere, since a wrong guess opens an app the plan then leaves.
-    fun parseApp(raw: String, apps: List<String>): String? = parseSafely {
+    fun parseApp(raw: String, apps: List<String>, minConfidence: Double = MIN_CONFIDENCE): String? = parseSafely {
         val answer = JSONObject(raw).getJSONObject("answers").getJSONObject("app")
         val choice = choice(answer, apps.indices.map { "a$it" }.toSet() + "none")
-        if (choice == "none" || probability(answer, "confidence") < .8 || probability(answer.getJSONObject("probabilities"), choice) < .8) null
+        if (choice == "none" || probability(answer, "confidence") < minConfidence || probability(answer.getJSONObject("probabilities"), choice) < minConfidence) null
         else apps[choice.drop(1).toInt()]
     }
 
@@ -114,14 +114,13 @@ object JevProtocol {
         val done = answers.getJSONObject("done")
         require(done.getString("type") == "noul")
         val doneProbability = probability(done, "noul")
-        // Across six recorded tasks, pages short of the goal stayed at 0.2 or less while a finished one reached 0.85.
-        val finished = doneProbability >= .8
+        val finished = doneProbability >= MIN_CONFIDENCE
         val effect = answers.getJSONObject("effect")
         val effectChoice = choice(effect, setOf("yes", "no", "unknown"))
-        val confirmedEffect = if (probability(effect, "confidence") < .65) Effect.UNKNOWN else when (effectChoice) {
+        val confirmedEffect = if (probability(effect, "confidence") < MIN_CONFIDENCE) Effect.UNKNOWN else when (effectChoice) {
             "yes" -> Effect.YES; "no" -> Effect.NO; else -> Effect.UNKNOWN
         }
-        val action = if (choice == "none" || probability(next, "confidence") < .65 || probability(next.getJSONObject("probabilities"), choice) < .65) null
+        val action = if (choice == "none" || probability(next, "confidence") < MIN_CONFIDENCE || probability(next.getJSONObject("probabilities"), choice) < MIN_CONFIDENCE) null
             else candidates.single { it.id == choice }.action
         Decision(action, finished, confirmedEffect, doneProbability)
     }
