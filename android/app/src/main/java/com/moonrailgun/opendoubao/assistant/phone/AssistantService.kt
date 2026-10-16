@@ -80,6 +80,7 @@ private val VoiceRing = androidx.compose.ui.graphics.Color(0xFF3DBB82)
 
 class AssistantService : AccessibilityService() {
     companion object {
+        private const val PAUSE_LIT_MILLIS = 60_000L
         private val connection = MutableStateFlow<AssistantService?>(null)
         val connected = connection.asStateFlow()
         private val remoteEdits = MutableStateFlow(0)
@@ -142,6 +143,7 @@ class AssistantService : AccessibilityService() {
     private var locked = false
     private var running = false
     private var paused = false
+    private var pausedAt = 0L
     private var conversing = false
     private var expanded = false
     private var typing = false
@@ -154,8 +156,12 @@ class AssistantService : AccessibilityService() {
     private val typeCaption = Runnable { captionQueued = false; stepCaption() }
     private val lockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // The overlay sits above the keyguard, so it stays hidden from screen off until the phone is unlocked.
-            if (intent?.action == Intent.ACTION_SCREEN_OFF) { locked = true; controller?.fail("手机已息屏") }
+            // The overlay sits above the keyguard, so it stays hidden from screen off until the phone is unlocked. A running
+            // task cannot act on a locked phone; a paused one only waits for the user, who can unlock and continue it.
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                locked = true
+                if (controller?.state?.value?.status == TaskStatus.RUNNING) controller?.fail("手机已息屏")
+            }
             else locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
             applyOverlay()
         }
@@ -672,8 +678,10 @@ class AssistantService : AccessibilityService() {
 
     private fun renderOverlay(value: TaskState) {
         val wasRunning = running
+        val wasPaused = paused
         running = value.status == TaskStatus.RUNNING
         paused = value.status == TaskStatus.PAUSED
+        if (paused && !wasPaused) { pausedAt = SystemClock.uptimeMillis(); overlay?.postDelayed(::applyOverlay, PAUSE_LIT_MILLIS) }
         // Fold away while working; open for manual intervention or the final result.
         if (running != wasRunning || paused) { expanded = !running; typing = false }
         if (running) voiceStatus?.visibility = View.GONE
@@ -777,8 +785,10 @@ class AssistantService : AccessibilityService() {
         val focusable = typing && expanded && !voice && !running && !paused && !captureHidden && !locked
         val focusFlags = if (focusable) params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
             else params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        // Screen off fails a running task, so this always-present window keeps it lit; a paused task waits on the user and may sleep.
-        val flags = if (running) focusFlags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        // Screen off fails a running task, so this always-present window keeps it lit. A pause stays lit for a minute so the
+        // prompt is seen (the screen slept 11 s into one on 2026-10-16), then may sleep: a paused task survives screen off.
+        val lit = running || paused && SystemClock.uptimeMillis() - pausedAt < PAUSE_LIT_MILLIS
+        val flags = if (lit) focusFlags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             else focusFlags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
         if (flags != params.flags) {
             if (!focusable) input?.let { getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(it.windowToken, 0) }

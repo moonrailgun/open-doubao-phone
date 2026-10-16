@@ -6,6 +6,7 @@ import android.app.KeyguardManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Path
@@ -24,6 +25,7 @@ import com.moonrailgun.opendoubao.assistant.core.*
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
+import kotlin.math.ceil
 import kotlin.coroutines.resumeWithException
 
 class AndroidPhone(private val service: AssistantService) : Phone {
@@ -59,6 +61,8 @@ class AndroidPhone(private val service: AssistantService) : Phone {
     }
 
     override suspend fun screenshot(screen: Screen): String = capture(screen, restoreOverlay = true)
+
+    override fun sameImage(before: String, after: String, screen: Screen, region: Bounds) = screenshotsMatch(before, after, screen, region)
 
     private suspend fun capture(screen: Screen, restoreOverlay: Boolean): String {
         if (observe().fingerprint != screen.fingerprint) throw ScreenChangedException()
@@ -156,8 +160,8 @@ class AndroidPhone(private val service: AssistantService) : Phone {
     private suspend fun gesture(path: Path, duration: Long, expected: Screen, expectedImage: String, region: Bounds): Boolean {
         service.setOverlayVisible(false)
         try {
-            // shortcut: exact image matching requires a stable page; animated canvases need human control.
-            if (capture(expected, restoreOverlay = false) != expectedImage) return false
+            // Animated canvases near the gesture still need human control; a cursor elsewhere does not (ImageMatch).
+            if (!screenshotsMatch(expectedImage, capture(expected, restoreOverlay = false), expected, region)) return false
             if (observe().fingerprint != expected.fingerprint) return false
             val target = window()
             if (service.windows.any { other ->
@@ -270,6 +274,27 @@ internal fun performOnNode(root: AccessibilityNodeInfo, action: Action): Boolean
         }
         return node.isEnabled && !node.isPassword && node.performAction(code, bundle)
     } finally { node.recycle() }
+}
+
+/** [ImageMatch] on two [encodeScreenshot] images of [screen], read at a quarter size; [region] is in display coordinates. */
+internal fun screenshotsMatch(before: String, after: String, screen: Screen, region: Bounds): Boolean {
+    if (before == after) return true
+    fun decode(image: String): Bitmap? = Base64.decode(image, Base64.NO_WRAP).let { bytes ->
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+    }
+    val a = decode(before) ?: return false
+    val b = decode(after) ?: run { a.recycle(); return false }
+    try {
+        if (a.width != b.width || a.height != b.height) return false
+        fun brightness(bitmap: Bitmap) = IntArray(bitmap.width * bitmap.height).also {
+            bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            for (i in it.indices) it[i] = (Color.red(it[i]) * 299 + Color.green(it[i]) * 587 + Color.blue(it[i]) * 114) / 1000
+        }
+        val scale = a.width.toFloat() / screen.width
+        val target = Bounds((region.left * scale).toInt(), (region.top * scale).toInt(),
+            ceil(region.right * scale).toInt(), ceil(region.bottom * scale).toInt())
+        return ImageMatch.same(brightness(a), brightness(b), a.width, a.height, target)
+    } finally { a.recycle(); b.recycle() }
 }
 
 /** JPEG of [source] drawn at [bounds], black elsewhere, keeping the original display coordinate system. */

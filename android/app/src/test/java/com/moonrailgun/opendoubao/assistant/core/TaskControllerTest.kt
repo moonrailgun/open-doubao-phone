@@ -418,6 +418,16 @@ class TaskControllerTest {
         assertTrue(controller.state.value.trace.any { "转视觉模型：连续 3 次页面无变化" in it })
     }
 
+    @Test fun aClickThatChangesNothingIsSentAgainAsATapAtTheElement() = runTest {
+        val phone = FakePhone()
+        val controller = TaskController(this, phone, FakeModels().apply { click = true })
+        controller.start("search", setOf("browser.app"))
+        advanceUntilIdle()
+        val presses = phone.actions.filter { it is Action.Click || it is Action.Tap }
+        assertEquals(listOf(Action.Click("0.1"), Action.Tap(100, 50)), presses.take(2))
+        assertTrue(controller.state.value.trace.any { "没有反应，改为按位置点击" in it })
+    }
+
     @Test fun unavailableAppPausesAndResumesWithoutReopening() = runTest {
         val phone = FakePhone().apply { result = false; current = screen("launcher.app") }
         val models = FakeModels().apply { finish = true }

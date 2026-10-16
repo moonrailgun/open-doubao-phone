@@ -164,6 +164,8 @@ interface Phone {
     suspend fun observe(): Screen
     suspend fun screenshot(screen: Screen): String
     suspend fun execute(action: Action, expected: Screen?, expectedImage: String? = null): Boolean
+    /** Whether screenshot [after] still shows [before] for a gesture at [region] of [screen]; devices tolerate a cursor ([ImageMatch]). */
+    fun sameImage(before: String, after: String, screen: Screen, region: Bounds): Boolean = before == after
 }
 
 interface Models {

@@ -338,8 +338,9 @@ class TaskController(
                             val stillThere = done && fresh.packageName == screen.packageName && fresh.windowId == screen.windowId
                             // Likewise an element action goes ahead while unrelated parts of the page change, if its own node is untouched.
                             val targetKept = !done && sameTarget(action, screen, fresh)
+                            val region = action?.gestureBounds()
                             if (!stillThere && !targetKept && (fresh.fingerprint != screen.fingerprint ||
-                                action?.gestureBounds() != null && (image == null || phone.screenshot(fresh) != image))) {
+                                region != null && (image == null || !phone.sameImage(image, phone.screenshot(fresh), fresh, region)))) {
                                 throw ScreenChangedException()
                             }
                             if (done) {
@@ -362,6 +363,16 @@ class TaskController(
                             if (unchanged >= 6) {
                                 pause("多次调整后屏幕仍没有变化，请手动处理后点击继续")
                                 return@withTimeout
+                            }
+                            // Some apps ignore an accessibility click (Amap's search results, 2026-10-16). When the same click left
+                            // the page unchanged, it is sent again as a tap at the element's center, the way a finger would press it.
+                            val ignored = action as? Action.Click
+                            val box = if (ignored != null && previous?.action == ignored && previous?.dispatched == true &&
+                                previous?.screen?.fingerprint == fresh.fingerprint) fresh.elements.firstOrNull { it.id == ignored.node }?.bounds else null
+                            if (ignored != null && box != null) {
+                                trace("${ignored.description(fresh)}没有反应，改为按位置点击")
+                                action = Action.Tap((box.left + box.right) / 2, (box.top + box.bottom) / 2)
+                                image = image ?: phone.screenshot(fresh)
                             }
                             when (ActionPolicy.assess(action, fresh, apps)) {
                                 Permission.REJECT -> {

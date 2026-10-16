@@ -115,6 +115,8 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         } finally { bitmap.recycle() }
     }
 
+    override fun sameImage(before: String, after: String, screen: Screen, region: Bounds) = screenshotsMatch(before, after, screen, region)
+
     override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean {
         if (handedOver) return foreground.execute(action, expected, expectedImage)
         currentCoroutineContext().ensureActive()
@@ -123,8 +125,8 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         if (action is Action.Tap || action is Action.Swipe) {
             if (expected == null || expectedImage == null ||
                 ActionPolicy.assess(action, expected, setOf(expected.packageName)) == Permission.REJECT) return false
-            // shortcut: exact image matching requires a stable page, as in the foreground; animated canvases need human control.
-            if (screenshot(expected) != expectedImage) return false
+            // As in the foreground: only small changes away from the gesture, such as a cursor, may differ (ImageMatch).
+            if (!screenshotsMatch(expectedImage, screenshot(expected), expected, action.gestureBounds()!!)) return false
         }
         val launched = when (action) { is Action.OpenApp -> action.packageName; is Action.OpenUrl -> action.packageName; else -> null }
         val live = launched?.let { forApp(it) } ?: live()
