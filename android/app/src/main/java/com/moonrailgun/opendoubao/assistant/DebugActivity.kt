@@ -1,6 +1,7 @@
 package com.moonrailgun.opendoubao.assistant
 
 import android.Manifest
+import android.app.AppOpsManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
@@ -9,6 +10,7 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -35,6 +37,7 @@ import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_VIRTUAL
 import com.moonrailgun.opendoubao.assistant.phone.executionChoice
 import com.moonrailgun.opendoubao.assistant.phone.virtualDisplayAvailable
 import com.moonrailgun.opendoubao.assistant.voice.VoiceRuntime
+import com.moonrailgun.opendoubao.assistant.voice.speechAttributes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -74,12 +77,23 @@ class DebugActivity : ComponentActivity() {
                         }
                     }
                     val audio = remember {
-                        val manager = getSystemService(AudioManager::class.java)
                         val minimum = AudioTrack.getMinBufferSize(24_000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
-                        "24 kHz 最小缓冲 $minimum 字节（${minimum / 48} ms）；启动阈值可调：${if (Build.VERSION.SDK_INT >= 31) "是" else "否（API ${Build.VERSION.SDK_INT}）"}；" +
-                            "媒体音量 ${manager.getStreamVolume(AudioManager.STREAM_MUSIC)}/${manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}"
+                        "24 kHz 最小缓冲 $minimum 字节（${minimum / 48} ms）；启动阈值可调：${if (Build.VERSION.SDK_INT >= 31) "是" else "否（API ${Build.VERSION.SDK_INT}）"}"
                     }
                     Text(audio, fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
+                    // The system mutes a track at zero volume or without the play-audio op after it starts, so the event
+                    // log still says 播报完成; re-read both whenever playback starts or ends.
+                    val manager = remember { getSystemService(AudioManager::class.java) }
+                    val stream = speechAttributes.volumeControlStream
+                    val volume = remember(voiceState) { manager.getStreamVolume(stream) }
+                    val playAudio = remember(voiceState) {
+                        getSystemService(AppOpsManager::class.java).unsafeCheckOpNoThrow("android:play_audio", Process.myUid(), packageName)
+                    }
+                    val muted = volume == 0 || playAudio != AppOpsManager.MODE_ALLOWED
+                    Text("播报音量 $volume/${manager.getStreamMaxVolume(stream)}（音量流 $stream）；播放权限：" +
+                        (if (playAudio == AppOpsManager.MODE_ALLOWED) "允许" else "未允许（mode $playAudio）") +
+                        (if (muted) "。系统会静音播报，事件里仍记为完成" else ""),
+                        fontSize = 12.sp, lineHeight = 18.sp, color = if (muted) colors.error else colors.onSurfaceVariant)
                 }
 
                 DebugSection("播报测试", "按设置用本地或在线合成播报这段文字。") {

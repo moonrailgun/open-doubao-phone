@@ -15,15 +15,18 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 
+/** How speech plays; its volume stream is what the debug page reports. Lazy, so JVM tests of [wavPcm] load this file. */
+internal val speechAttributes: AudioAttributes by lazy {
+    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+}
+
 /** Online or separate-UID local synthesis; PCM playback belongs to our foreground service. */
 class FileSpeech(private val context: Context, private val unlockPrompt: Boolean = false,
     private val online: OnlineSpeech = OnlineSpeech(), private val finished: (String?) -> Unit) {
     private val handler = Handler(Looper.getMainLooper())
     private val audio = context.getSystemService(AudioManager::class.java)
-    private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
-        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-        .setAudioAttributes(attributes).setOnAudioFocusChangeListener { if (it < 0) stop() }.build()
+        .setAudioAttributes(speechAttributes).setOnAudioFocusChangeListener { if (it < 0) stop() }.build()
     private var tts: TextToSpeech? = null
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val playback = Executors.newSingleThreadExecutor()
@@ -154,7 +157,7 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
             check(format == AudioFormat.ENCODING_PCM_16BIT && channels == 1 && sampleRate > 0) { "不支持的语音格式" }
             val minimum = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, format)
             check(minimum > 0) { "无法创建播放器" }
-            player = AudioTrack.Builder().setAudioAttributes(attributes)
+            player = AudioTrack.Builder().setAudioAttributes(speechAttributes)
                 .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(format)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
                 .setBufferSizeInBytes(maxOf(minimum, bufferBytes)).setTransferMode(AudioTrack.MODE_STREAM).build()
