@@ -147,7 +147,7 @@ class PairingScanTest {
             assertFalse(receiver.state.value.enabled)
             assertNull(vault.read().remote.binding)
 
-            val code = "odoubao://pair?v=1&host=192.168.255.254&port=1&fingerprint=${"a".repeat(64)}&token=${"b".repeat(64)}"
+            val code = "open-doubao://pair?v=1&host=192.168.255.254&port=1&fingerprint=${"a".repeat(64)}&token=${"b".repeat(64)}"
             scanResult(code + "&host=10.0.0.1")
             showsError("字段无效或重复")
             assertFalse(receiver.state.value.enabled)

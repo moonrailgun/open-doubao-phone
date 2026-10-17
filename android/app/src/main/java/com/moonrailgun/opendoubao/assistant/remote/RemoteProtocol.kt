@@ -18,7 +18,7 @@ data class Pairing(val host: String, val port: Int, val fingerprint: String, val
         fun parse(code: String): Pairing {
             require(code.length <= 2048) { "设备码过长" }
             val uri = try { URI(code.trim()) } catch (_: Exception) { throw IllegalArgumentException("设备码格式无效") }
-            require(uri.scheme == "odoubao" && uri.rawAuthority == "pair" && uri.rawPath.isNullOrEmpty() && uri.rawFragment == null) { "请粘贴桌面端的完整设备码" }
+            require(uri.scheme == "open-doubao" && uri.rawAuthority == "pair" && uri.rawPath.isNullOrEmpty() && uri.rawFragment == null) { "请粘贴桌面端的完整设备码" }
             val values = mutableMapOf<String, String>()
             for (entry in uri.rawQuery.orEmpty().split('&')) {
                 val part = entry.split('=', limit = 2)

@@ -29,7 +29,7 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
         if (command === 'create_pairing') {
           if (window.testPairingFailure) throw window.testPairingFailure;
           if (window.testPairingPending) await new Promise(resolve => { window.finishPairing = resolve; });
-          return { code: `odoubao://pair?v=1&host=192.168.1.20&port=38687&fingerprint=${'a'.repeat(64)}&token=${'b'.repeat(64)}`, expiresAt: Date.now() + 300000 };
+          return { code: `open-doubao://pair?v=1&host=192.168.1.20&port=38687&fingerprint=${'a'.repeat(64)}&token=${'b'.repeat(64)}`, expiresAt: Date.now() + 300000 };
         }
         if (command === 'forget_device') { window.testSnapshot.device = null; window.testSnapshot.connected = false; window.testSnapshot.state = null; return; }
         if (command === 'request') {
@@ -143,7 +143,7 @@ test('device code and unbinding have explicit controls and clear credentials', a
   await page.goto('/');
   await page.getByRole('button', { name: '绑定手机', exact: true }).click();
   await page.getByRole('button', { name: '生成设备码' }).click();
-  await expect(page.getByLabel('设备码', { exact: true })).toHaveValue(/odoubao:\/\/pair/);
+  await expect(page.getByLabel('设备码', { exact: true })).toHaveValue(/^open-doubao:\/\/pair\?/);
   await page.evaluate(() => { window.testSnapshot.device = { id: 'phone-1', name: '测试手机' }; window.testSnapshot.connected = true; });
   await expect(page.locator('#pair-dialog')).not.toBeVisible();
   await expect(page.locator('#pair-code')).toHaveValue('');

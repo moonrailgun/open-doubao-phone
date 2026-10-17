@@ -457,7 +457,7 @@ impl Bridge {
         let token = token();
         let expires_at = now_ms() + PAIRING_LIFETIME_MS;
         let code = format!(
-            "odoubao://pair?v=1&host={host}&port={PORT}&fingerprint={fingerprint}&token={token}"
+            "open-doubao://pair?v=1&host={host}&port={PORT}&fingerprint={fingerprint}&token={token}"
         );
         inner.pairing = Some(PendingPairing { token, expires_at });
         Ok(PairingCode { code, expires_at })

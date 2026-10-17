@@ -13,7 +13,7 @@ import org.junit.Test
 class RemoteProtocolTest {
     private val id = "ea6530be-cf90-4a2d-9628-b3cc0ebea6e2"
     private val otherId = "17f718cc-316d-4cbf-a84e-fe4af093f940"
-    private val code = "odoubao://pair?v=1&host=192.168.1.9&port=9417&fingerprint=${"a".repeat(64)}&token=${"b".repeat(64)}"
+    private val code = "open-doubao://pair?v=1&host=192.168.1.9&port=9417&fingerprint=${"a".repeat(64)}&token=${"b".repeat(64)}"
 
     @Test fun pairingAcceptsOnlyLiteralPrivateIpv4AndExactCredentialFields() {
         assertEquals("192.168.1.9", Pairing.parse(code).host)
@@ -23,7 +23,7 @@ class RemoteProtocolTest {
         listOf("8.8.8.8", "127.0.0.1", "172.32.0.1", "192.168.1.999", "192.168.001.9", "localhost", "[::1]").forEach {
             assertThrows(IllegalArgumentException::class.java) { Pairing.parse(code.replace("192.168.1.9", it)) }
         }
-        listOf(code + "&host=10.0.0.1", code + "&extra=1", code.replace("v=1", "v=2"),
+        listOf(code.replace("open-doubao://", "https://"), code + "&host=10.0.0.1", code + "&extra=1", code.replace("v=1", "v=2"),
             code.replace("port=9417", "port=0"), code.replace("port=9417", "port=65536"),
             code.replace("b".repeat(64), "short"), code + "#fragment", code.replace("pair?", "pair/path?"),
             code.replace("192.168.1.9", "%31%39%32.168.1.9")).forEach {

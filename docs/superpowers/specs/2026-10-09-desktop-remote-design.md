@@ -12,7 +12,7 @@ Desktop credentials remain in the native application data directory with private
 
 ## Protocol v1
 
-Device code: `odoubao://pair?v=1&host=<private IPv4>&port=38687&fingerprint=<64 hex>&token=<64 hex>`.
+Device code: `open-doubao://pair?v=1&host=<private IPv4>&port=38687&fingerprint=<64 hex>&token=<64 hex>`.
 
 All WebSocket frames are bounded JSON text, at most 256 KiB.
 

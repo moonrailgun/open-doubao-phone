@@ -34,7 +34,7 @@ import kotlin.coroutines.CoroutineContext
 class RemoteReceiverTest {
     private val deviceId = "ea6530be-cf90-4a2d-9628-b3cc0ebea6e2"
     private val binding = Pairing("192.168.1.9", 38687, "a".repeat(64), "b".repeat(64))
-    private val code = "odoubao://pair?v=1&host=${binding.host}&port=${binding.port}&fingerprint=${binding.fingerprint}&token=${binding.token}"
+    private val code = "open-doubao://pair?v=1&host=${binding.host}&port=${binding.port}&fingerprint=${binding.fingerprint}&token=${binding.token}"
 
     @Test fun disablingPreservesTheBindingWhileForgetRemovesIt() {
         Fixture(RemoteConfig(deviceId, binding, false)).use { fixture ->

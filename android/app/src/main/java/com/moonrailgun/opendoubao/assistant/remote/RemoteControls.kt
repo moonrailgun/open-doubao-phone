@@ -85,7 +85,7 @@ fun RemoteControls(service: AssistantService?, refresh: Int, vault: Vault, openA
                         .addExtra(Intents.Scan.SHOW_MISSING_CAMERA_PERMISSION_DIALOG, false))
                 } }, enabled = receiver != null && !status.enabled) { Text("扫码绑定") }
                 OutlinedTextField(code, { code = it.take(2048) }, Modifier.fillMaxWidth(), label = { Text("桌面设备码") },
-                    placeholder = { Text("粘贴 odoubao://pair…") }, singleLine = true,
+                    placeholder = { Text("粘贴 open-doubao://pair…") }, singleLine = true,
                     enabled = receiver != null && !status.enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
                     shape = RoundedCornerShape(14.dp))
