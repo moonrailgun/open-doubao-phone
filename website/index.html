@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f6f2" />
+    <meta name="description" content="Open Doubao 豆馅，一个真正能操作手机的开源 AI 助手。从 Android 应用、桌面工作台到豆馅 OS，一句话，让手机自己把事办完。" />
+    <meta property="og:title" content="Open Doubao · 一句话，手机替你动手。" />
+    <meta property="og:description" content="看懂界面、跨应用操作、把结果带回来。探索开源手机 AI 助手、桌面工作台与豆馅 OS。" />
+    <meta property="og:type" content="website" />
+    <title>Open Doubao · 一句话，手机替你动手。</title>
+    <link rel="icon" href="assets/logo.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="header wrap">
+      <a class="brand" href="#" aria-label="Open Doubao 首页">
+        <img src="assets/logo.png" width="38" height="38" alt="" />
+        <span>Open Doubao<span class="brand-cn">豆馅</span></span>
+      </a>
+      <nav aria-label="主导航">
+        <a class="nav-section" href="#demo">真实演示</a>
+        <a class="nav-section" href="#ecosystem">不止一个应用</a>
+        <a class="nav-github" href="https://github.com/moonrailgun/open-doubao-phone">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> 开源的手机 AI 助手</p>
+          <h1 id="hero-title">一句话，<br />手机替你<span class="accent">动手。</span></h1>
+          <p class="hero-description">查信息、切应用、整理笔记。<br />把目标告诉豆馅，让它自己操作手机，<br class="desktop-break" />把结果带回给你。</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#demo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 10 7-10 7Z" /></svg> 看它干活</a>
+            <a class="text-link" href="https://github.com/moonrailgun/open-doubao-phone#readme">开始体验 <span aria-hidden="true">↗</span></a>
+          </div>
+          <p class="hero-footnote">Android 11+ <span>·</span> 模型自由配置 <span>·</span> MIT 开源</p>
+        </div>
+        <figure class="hero-visual">
+          <div class="orbit orbit-one" aria-hidden="true"></div>
+          <div class="orbit orbit-two" aria-hidden="true"></div>
+          <div class="hero-disc" aria-hidden="true"></div>
+          <div class="request-bubble"><span class="bubble-label">你只需要说</span>查天气、找景点，<br />整理成笔记发给我。<span class="bubble-arrow" aria-hidden="true">↗</span></div>
+          <div class="phone hero-phone"><img src="assets/phone-home.jpg" alt="手机助手已完成 21 步任务，汇总颐和园行程并发送到飞书" width="450" height="975" fetchpriority="high" /></div>
+          <div class="done-bubble"><span class="done-mark" aria-hidden="true">✓</span><span><strong>事情办好了。</strong><small>天气、行程、笔记，都在这里。</small></span></div>
+          <figcaption>真实产品画面 · Pixel 6 Pro</figcaption>
+        </figure>
+      </section>
+
+      <div class="principles wrap" aria-label="产品特点">
+        <p><span class="principle-number">01</span><span><strong>在手机里，独立完成</strong><small>无需电脑、ADB 或 root</small></span></p>
+        <p><span class="principle-number">02</span><span><strong>跨过应用之间的边界</strong><small>让多个操作，成为一个任务</small></span></p>
+        <p><span class="principle-number">03</span><span><strong>你的模型，你来选择</strong><small>自行配置服务与 API Key</small></span></p>
+      </div>
+
+      <section class="demo-section wrap section" id="demo" aria-labelledby="demo-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">SEE IT IN ACTION / 真实演示</p><h2 id="demo-title">少一点琐碎。<br />多一点自己的时间。</h2></div>
+          <p class="heading-note">从一个周末出行计划开始，<br />看看它怎么把事情连起来。</p>
+        </div>
+        <div class="demo-stage">
+          <div class="demo-story">
+            <span class="tag">真机实录 / 跨应用任务</span>
+            <blockquote>“周六去颐和园玩，<br />查天气、看评分，<br />记好行程，发给我自己。”</blockquote>
+            <ol class="app-journey" aria-label="演示中的执行顺序">
+              <li><span class="app-letter">D</span><span><strong>Dao 浏览器</strong><small>查周六的天气</small></span></li>
+              <li><span class="app-letter">↗</span><span><strong>高德地图</strong><small>找景点、读评分和地址</small></span></li>
+              <li><span class="app-letter">≡</span><span><strong>笔记</strong><small>整理成一条出行笔记</small></span></li>
+              <li><span class="app-letter">↗</span><span><strong>飞书</strong><small>把行程发给自己</small></span></li>
+            </ol>
+            <div class="demo-stats"><p><strong>1</strong> 句话</p><p><strong>4</strong> 个应用</p><p><strong>21</strong> 步操作</p></div>
+            <p class="demo-note">本次演示中途有一次暂停，由人工点击「继续」。<br />单次录制结果，执行路径与耗时会随模型和页面状态变化。</p>
+            <a class="light-link" href="assets/task-demo-realtime.mp4">查看完整实时录屏 <span aria-hidden="true">↗</span></a>
+          </div>
+          <figure class="demo-video">
+            <video controls playsinline preload="none" poster="assets/phone-home.jpg" width="590" height="1280" aria-label="四应用任务真机录屏，2 倍速" aria-describedby="task-caption">
+              <source src="assets/task-demo.mp4" type="video/mp4" />
+              <a href="assets/task-demo.mp4">下载四应用演示视频</a>
+            </video>
+            <figcaption id="task-caption"><span class="record-dot" aria-hidden="true"></span> PIXEL 6 PRO · 2 倍速 · 点击播放</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="ecosystem section" id="ecosystem" aria-labelledby="ecosystem-title">
+        <div class="wrap">
+          <div class="section-heading">
+            <div><p class="eyebrow">ONE ASSISTANT, THREE WAYS / 三种形态</p><h2 id="ecosystem-title">从一个应用，<br />到你的整套工作流。</h2></div>
+            <p class="heading-note">手机先用起来。<br />电脑和系统，让它再往前一步。</p>
+          </div>
+          <div class="product-row">
+            <article><span class="product-index">01 / ANDROID</span><h3>口袋里的执行者</h3><p>输入或说出目标，让助手读页面、点按钮、填文字。偏好可以记住，也可以随时修改和删除。</p><a class="text-link" href="https://github.com/moonrailgun/open-doubao-phone#readme">了解手机助手 <span aria-hidden="true">↗</span></a></article>
+            <article><span class="product-index">02 / DESKTOP</span><h3>电脑上的工作台</h3><p>同一局域网扫码连接。在电脑上发任务，看手机的实时进度、结果与历史记录，无需部署服务器。</p><a class="text-link" href="#desktop">看看工作台 <span aria-hidden="true">↓</span></a></article>
+            <article><span class="product-index">03 / DOUXIAN OS</span><h3>系统里的原生助手</h3><p>基于 AOSP 定制，长按电源键或用唤醒词叫出助手。纯查询任务可在虚拟屏执行，前台继续用。</p><a class="text-link" href="#virtual">看看虚拟屏 <span aria-hidden="true">↓</span></a></article>
+          </div>
+          <figure class="desktop-showcase" id="desktop">
+            <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span><p>OPEN DOUBAO / DESKTOP WORKSPACE</p></div>
+            <img src="assets/desktop-workspace.jpg" alt="桌面工作台展示手机已完成的 21 步任务、行程总结、历史记录和配置入口" width="1560" height="975" loading="lazy" decoding="async" />
+            <figcaption><span>指令从电脑出发。结果，回到你手边。</span><span>局域网直连 · 手机执行</span></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="virtual-section wrap section" id="virtual" aria-labelledby="virtual-title">
+        <figure class="virtual-visual">
+          <span class="virtual-label">前台照常用，后台继续做。</span>
+          <video controls playsinline preload="none" poster="assets/virtual-poster.jpg" width="590" height="1280" aria-label="虚拟屏查询天气真机演示，等待部分已加速" aria-describedby="virtual-caption">
+            <source src="assets/virtual-demo.mp4" type="video/mp4" />
+            <a href="assets/virtual-demo.mp4">下载虚拟屏演示视频</a>
+          </video>
+          <figcaption id="virtual-caption">豆馅 OS 真机实录 · 等待部分已加速</figcaption>
+        </figure>
+        <div class="virtual-copy">
+          <p class="eyebrow">A LITTLE MORE FREEDOM / 豆馅 OS</p>
+          <h2 id="virtual-title">它忙它的，<br />你用你的。</h2>
+          <p class="section-description">查天气、读内容、找信息。纯查询任务可以交给虚拟屏，手机前台继续留给你。</p>
+          <ol class="virtual-steps">
+            <li><span>01</span><div><h3>说出目标</h3><p>助手判断是否适合在虚拟屏执行。</p></div></li>
+            <li><span>02</span><div><h3>继续用手机</h3><p>你可以回桌面、看时钟，在悬浮小窗查看执行画面。</p></div></li>
+            <li><span>03</span><div><h3>收下结果</h3><p>查询完成，结果直接回到小窗里。</p></div></li>
+          </ol>
+          <p class="scope-note">需要豆馅 OS，目前适配 Pixel 6 Pro。自动模式仅将纯查询放到虚拟屏；打开页面、发送、支付等任务仍在前台进行，首次使用需系统授权。</p>
+          <a class="text-link" href="https://github.com/moonrailgun/open-doubao-phone/blob/main/os/custom/README.md">探索豆馅 OS <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+
+      <section class="how-section section" aria-labelledby="how-title">
+        <div class="wrap">
+          <p class="eyebrow">BUILT TO ACT / 技术思路</p>
+          <div class="section-heading"><h2 id="how-title">看得懂。选得准。<br />做完，再看一眼。</h2><p class="heading-note">界面元素优先，Jev 快速决策，<br />视觉模型负责更复杂的理解。</p></div>
+          <ol class="decision-flow">
+            <li><span class="flow-number">01</span><h3>观察界面</h3><p>读取无障碍节点，<br />找到可执行的动作。</p></li>
+            <li><span class="flow-number">02</span><h3>选择下一步</h3><p>Jev 从候选动作中选择，<br />不确定时交给视觉模型。</p></li>
+            <li><span class="flow-number">03</span><h3>本地检查</h3><p>核对应用范围与页面状态，<br />画面变化就作废旧操作。</p></li>
+            <li><span class="flow-number">04</span><h3>执行与核对</h3><p>点击、输入、滚动，<br />重新观察后继续。</p></li>
+          </ol>
+          <p class="flow-footnote">Jev 为可选配置。任务循环在手机中运行，模型推理由你配置的服务提供。</p>
+        </div>
+      </section>
+
+      <section class="trust-section wrap section" aria-labelledby="trust-title">
+        <div class="trust-copy"><p class="eyebrow">YOU ARE IN CONTROL / 控制权在你</p><h2 id="trust-title">能替你动手，<br />也能随时叫停。</h2><p class="section-description">应用范围由你设定，记忆由你管理。<br />每次任务都有记录，执行过程可以回看。</p><a class="text-link" href="https://github.com/moonrailgun/open-doubao-phone#readme">了解运行机制 <span aria-hidden="true">↗</span></a></div>
+        <div class="faq">
+          <details open><summary>普通手机就能用吗？<span aria-hidden="true">+</span></summary><p>应用支持 Android 11 及以上，无需 root、ADB 或电脑。需要开启无障碍服务、保持手机解锁，并配置可用的模型服务。虚拟屏与系统唤醒能力需要豆馅 OS。</p></details>
+          <details><summary>我的数据会去哪里？<span aria-hidden="true">+</span></summary><p>配置、记忆和任务记录在本机加密保存。任务所需的页面文字、记忆与截图会发送到你配置的模型服务；它不是完全离线运行，模型调用也可能产生服务费用。</p></details>
+          <details><summary>执行时，哪些地方需要我参与？<span aria-hidden="true">+</span></summary><p>可以排除不希望助手访问的应用，随时停止任务。检测到密码输入框时本地直接暂停；系统授权等步骤交还给你。付款、删除等敏感动作的识别仍依赖模型判断，需要人工核对。</p></details>
+          <details><summary>现在适合怎样体验？<span aria-hidden="true">+</span></summary><p>目前是开源开发版，可以从源码构建，从搜索、摘要和笔记等任务开始体验。系统版目前适配 Pixel 6 Pro，桌面端已有 macOS 验证；模型、应用界面和设备状态都会影响实际执行结果。</p></details>
+        </div>
+      </section>
+
+      <section class="closing wrap" aria-labelledby="closing-title">
+        <div><p class="eyebrow">OPEN SOURCE. OPEN POSSIBILITIES.</p><h2 id="closing-title">手机的下一种用法，<br />一起做出来。</h2><p>从一个能跑起来的开源项目开始。</p><a class="button button-primary" href="https://github.com/moonrailgun/open-doubao-phone">在 GitHub 上探索 <span aria-hidden="true">↗</span></a></div>
+        <div class="closing-art" aria-hidden="true"><span>你好，<br />我是豆馅。</span><img src="assets/logo.png" width="220" height="220" alt="" loading="lazy" /></div>
+      </section>
+    </main>
+
+    <footer class="footer wrap">
+      <a class="brand" href="#"><img src="assets/logo.png" width="28" height="28" alt="" /><span>Open Doubao<span class="brand-cn">豆馅</span></span></a>
+      <p>让目标，变成行动。</p>
+      <nav aria-label="页脚导航"><a href="https://github.com/moonrailgun/open-doubao-phone/blob/main/LICENSE">MIT License</a><a href="https://github.com/moonrailgun/open-doubao-phone/issues">反馈</a><a href="https://kaonai.feishu.cn/slides/MkkqsrdL8lj1JLd65Aicv1tGnpc">演示 PPT <span aria-hidden="true">↗</span></a></nav>
+    </footer>
+  </body>
+</html>
