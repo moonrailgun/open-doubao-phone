@@ -2473,7 +2473,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "odoubao-desktop"
+name = "open-doubao-desktop"
 version = "0.1.0"
 dependencies = [
  "futures-util",
