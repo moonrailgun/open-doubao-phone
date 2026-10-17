@@ -29,4 +29,4 @@ Vercel 项目 `open-doubao` 位于个人空间 `lyon-chens-projects`，关联本
 | `assets/virtual-demo.mp4` | 虚拟屏演示，等待部分已加速 |
 | `assets/virtual-poster.jpg` | 虚拟屏视频第 8 秒的封面帧 |
 
-视频只在点击播放后加载；页面不依赖外部字体、脚本或统计服务。文档与 GitHub 链接指向项目仓库。
+视频只在点击播放后加载；页面不依赖外部字体，访问统计使用 Tianji。文档与 GitHub 链接指向项目仓库。
