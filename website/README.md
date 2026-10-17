@@ -8,6 +8,12 @@ python3 -m http.server 4175 --bind 127.0.0.1 --directory website
 
 打开 <http://127.0.0.1:4175>。发布时将 `website/` 作为静态站点目录；页面使用相对资源路径，也支持放在子目录中。
 
+## 线上部署
+
+访问 [open-doubao.moonrailgun.com](https://open-doubao.moonrailgun.com)，备用地址为 [open-doubao.vercel.app](https://open-doubao.vercel.app)。
+
+Vercel 项目 `open-doubao` 位于个人空间 `lyon-chens-projects`，关联本仓库，Root Directory 设为 `website`，Framework Preset 设为 `Other`，无需安装依赖或构建。Cloudflare 的 `open-doubao` CNAME 指向 `b02b3074dd4d816b.vercel-dns-017.com`，使用仅 DNS 模式。
+
 ## 展示素材
 
 素材复用自[项目演示 PPT](https://kaonai.feishu.cn/slides/MkkqsrdL8lj1JLd65Aicv1tGnpc)对应的本地文件。公开展示副本已将姓名替换为 `Demo User`、个人签名替换为“演示账号”，并处理个人头像、账号水印及局域网 IP；演示步骤与时序保持不变。
