@@ -52,7 +52,7 @@ internal class Guarded<T : Any> {
  */
 class Vault(context: Context) {
     private val file = AtomicFile(File(context.noBackupFilesDir, "assistant.enc"))
-    private val alias = "open-odoubao-v1"
+    private val alias = "open-doubao-v1"
     val modelCalls = ModelCallLog(File(context.noBackupFilesDir, "model-calls"), ::key)
 
     private companion object {
