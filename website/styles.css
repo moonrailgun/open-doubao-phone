@@ -69,7 +69,6 @@ h1 { font-size: clamp(48px, 5.4vw, 72px); line-height: 1.25; letter-spacing: -.0
 .done-mark { display: grid; place-items: center; width: 30px; height: 30px; color: #466345; border: 1px solid #bcccb9; border-radius: 50%; }
 .done-bubble strong { font-size: 14px; font-weight: 600; display: block; }
 .done-bubble small { display: block; font-size: 10px; margin-top: 4px; color: var(--muted); }
-.hero-visual figcaption { position: absolute; bottom: -7px; font-size: 10px; letter-spacing: .07em; color: var(--muted); }
 .principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding-block: 27px; }
 .principles p { display: flex; align-items: start; gap: 17px; }
 .principle-number { font-family: var(--mono); font-size: 10px; color: var(--accent); padding-top: 5px; }
@@ -88,11 +87,8 @@ h1 { font-size: clamp(48px, 5.4vw, 72px); line-height: 1.25; letter-spacing: -.0
 .demo-stats { border-top: 1px solid #50564c; padding-top: 22px; display: flex; gap: 30px; }
 .demo-stats p { color: #c9cdc2; font-size: 11px; }
 .demo-stats strong { font-family: var(--mono); color: #f4d7ae; font-size: 41px; line-height: 1; font-weight: 400; margin-right: 4px; }
-.light-link { display: inline-flex; gap: 18px; font-size: 11px; margin-top: 18px; text-decoration: underline; }
 .demo-video { justify-self: center; width: 258px; }
 .demo-video video { width: 100%; border: 5px solid #151715; border-radius: 24px; background: #151715; }
-.demo-video figcaption { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 17px; font-size: 9px; font-family: var(--mono); color: #c4c9bc; }
-.record-dot { height: 5px; width: 5px; border-radius: 50%; background: #df8d78; }
 .ecosystem { background: #eeeee7; }
 .product-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 38px; margin-top: 50px; }
 .product-row article { border-top: 1px solid #bfc3b6; padding-top: 24px; }
@@ -110,7 +106,6 @@ h1 { font-size: clamp(48px, 5.4vw, 72px); line-height: 1.25; letter-spacing: -.0
 .virtual-visual { border-radius: 18px; background: #e8dfd0; padding: 30px 50px 25px; position: relative; }
 .virtual-label { display: block; text-align: center; margin-bottom: 23px; font-size: 13px; letter-spacing: .06em; color: #655a4b; }
 .virtual-visual video { width: 246px; margin-inline: auto; border: 5px solid #34352f; border-radius: 24px; background: #34352f; }
-.virtual-visual figcaption { text-align: center; font-size: 9px; color: #655a4b; margin-top: 19px; }
 .section-description { color: var(--muted); font-size: 15px; line-height: 1.95; margin-top: 22px; }
 .virtual-steps { padding: 0; margin: 29px 0; list-style: none; display: grid; gap: 22px; }
 .virtual-steps li { display: flex; gap: 20px; }
@@ -199,7 +194,6 @@ details p { padding: 0 30px 24px 0; font-size: 12px; line-height: 1.95; color: v
   .done-bubble { right: 0; bottom: 40px; }
   .done-bubble strong { font-size: 12px; }
   .done-bubble small { font-size: 9px; }
-  .hero-visual figcaption { bottom: 1px; }
   .principles { gap: 18px; padding-block: 23px; }
   .principles p { display: block; }
   .principle-number { display: block; margin-bottom: 10px; }
