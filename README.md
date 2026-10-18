@@ -9,7 +9,7 @@
 一个真正能操作手机的开源 AI 助手。\
 读懂页面、点击输入、跨应用完成任务，把结果带回给你。
 
-[产品网站](https://open-doubao.moonrailgun.com) · [看它干活](#看它干活) · [安装与使用](docs/guide.md) · [豆馅 OS](os/custom/README.md) · [演示幻灯片](https://kaonai.feishu.cn/slides/MkkqsrdL8lj1JLd65Aicv1tGnpc)
+[产品网站](https://open-doubao.moonrailgun.com) · [看它干活](#看它干活) · [安装与使用](docs/guide.md) · [豆馅 OS](os/custom/README.md)
 
 Android 11+ · 手机独立运行 · 模型自由配置 · MIT
 
