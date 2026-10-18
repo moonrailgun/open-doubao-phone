@@ -115,12 +115,13 @@ h1 { font-size: clamp(48px, 5.4vw, 72px); line-height: 1.25; letter-spacing: -.0
 .scope-note { border-top: 1px solid var(--line); padding-top: 17px; font-size: 10px; line-height: 1.9; color: var(--muted); margin-bottom: 19px; }
 .how-section { background: #e7eadd; }
 .how-section .section-heading { margin-bottom: 50px; }
-.decision-flow { display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; padding: 0; list-style: none; }
-.decision-flow li { border-top: 1px solid #a3ae94; padding: 24px 25px 0 0; position: relative; }
-.decision-flow li:not(:last-child)::after { content: "→"; position: absolute; right: 25px; top: 22px; color: #5e6c4e; font-size: 18px; }
-.flow-number { font-family: var(--mono); font-size: 11px; color: #5e6c4e; }
-.decision-flow h3 { margin-top: 26px; font-size: 20px; font-weight: 550; }
-.decision-flow p { margin-top: 12px; font-size: 13px; line-height: 1.9; color: #616957; }
+.jev-comparison { width: 100%; border-collapse: collapse; table-layout: fixed; text-align: left; font-size: 14px; line-height: 1.9; }
+.jev-comparison th, .jev-comparison td { padding: 22px 24px; border-bottom: 1px solid #bdc5b1; vertical-align: top; }
+.jev-comparison th { font-weight: 550; }
+.jev-comparison thead th { border-top: 1px solid #a3ae94; }
+.jev-comparison th:first-child { width: 18%; padding-left: 0; }
+.jev-comparison td { color: #616957; }
+.jev-comparison th:last-child, .jev-comparison td:last-child { background: #ffffff38; }
 .trust-section { display: grid; grid-template-columns: 1fr 1.05fr; gap: 80px; }
 .trust-copy .text-link { margin-top: 27px; }
 .faq { border-top: 1px solid var(--line); }
@@ -230,11 +231,9 @@ details p { padding: 0 30px 24px 0; font-size: 12px; line-height: 1.95; color: v
   .section-description { font-size: 14px; }
   .virtual-steps { gap: 18px; }
   .how-section .section-heading { margin-bottom: 32px; }
-  .decision-flow { grid-template-columns: 1fr 1fr; gap: 32px 22px; }
-  .decision-flow li { padding: 18px 0 0; }
-  .decision-flow li:not(:last-child)::after { right: 5px; top: 16px; }
-  .decision-flow h3 { margin-top: 20px; font-size: 18px; }
-  .decision-flow p { font-size: 11px; }
+  .jev-comparison { font-size: 12px; }
+  .jev-comparison th, .jev-comparison td { padding: 16px 10px; }
+  .jev-comparison th:first-child { width: 22%; padding-right: 8px; }
   .trust-section { grid-template-columns: 1fr; gap: 35px; }
   summary { font-size: 14px; }
   details p { padding-right: 10px; }

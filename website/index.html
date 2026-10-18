@@ -122,16 +122,19 @@
         </div>
       </section>
 
-      <section class="how-section section" aria-labelledby="how-title">
+      <section class="how-section section" id="jev" aria-labelledby="how-title">
         <div class="wrap">
-          <p class="eyebrow">BUILT TO ACT / 技术思路</p>
-          <div class="section-heading"><h2 id="how-title">看得懂。选得准。<br />做完，再看一眼。</h2><p class="heading-note">界面元素优先，<br />按需接入 Jev 与视觉模型。</p></div>
-          <ol class="decision-flow">
-            <li><span class="flow-number">01</span><h3>观察界面</h3><p>识别页面内容，<br />找到可操作的元素。</p></li>
-            <li><span class="flow-number">02</span><h3>选择下一步</h3><p>Jev 从候选动作中选择，<br />不确定时交给视觉模型。</p></li>
-            <li><span class="flow-number">03</span><h3>本地检查</h3><p>确认当前页面，<br />检查操作范围。</p></li>
-            <li><span class="flow-number">04</span><h3>执行与核对</h3><p>点击、输入、滚动，<br />重新观察后继续。</p></li>
-          </ol>
+          <p class="eyebrow">POWERED BY JEV / 快速决策</p>
+          <div class="section-heading"><h2 id="how-title">Jev 选动作，<br />大模型解难题。</h2><p class="heading-note">让有把握的操作先走一步。<br />Jev 可选接入，不配置也能执行任务。</p></div>
+          <table class="jev-comparison" aria-labelledby="how-title">
+            <thead><tr><th scope="col">任务环节</th><th scope="col">未接入 Jev</th><th scope="col">接入 Jev 后</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">理解指令</th><td>由规划模型理解目标，选择直接回复或执行任务。</td><td>快速区分聊天与任务；纯聊天结合当前屏幕回复，无需操作手机。</td></tr>
+              <tr><th scope="row">选择动作</th><td>视觉模型结合截图，决定下一步操作。</td><td>从界面元素对应的候选动作中选择，同时判断上一步效果和任务是否完成。</td></tr>
+              <tr><th scope="row">推进任务</th><td>等待视觉模型给出下一步动作。</td><td>Jev 与视觉模型并行工作；Jev 有把握就先执行，拿不准或操作未生效时使用视觉模型的结果。</td></tr>
+            </tbody>
+          </table>
+          <p class="section-description">规划、文字生成与结果总结仍由大模型完成，操作前仍会检查当前页面与允许范围。还可开启 Jev 多模态实验，让 Jev 直接看图定位；不确定时由视觉模型接手当前一步。</p>
         </div>
       </section>
 
