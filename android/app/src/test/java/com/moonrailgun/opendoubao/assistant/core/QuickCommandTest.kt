@@ -18,8 +18,8 @@ class QuickCommandTest {
     }
 
     @Test fun anythingMoreThanTheAppGoesTheFullWay() {
-        assertNull(QuickCommand.parse("打开飞书搜一下孙淼", apps))
-        assertNull(QuickCommand.parse("打开和孙淼的聊天窗口", apps))
+        assertNull(QuickCommand.parse("打开飞书搜一下张三", apps))
+        assertNull(QuickCommand.parse("打开和张三的聊天窗口", apps))
         // A misheard command ("打开飞书" as "海飞书") names no app.
         assertNull(QuickCommand.parse("海飞书", apps))
         assertNull(QuickCommand.parse("打开微信", apps))

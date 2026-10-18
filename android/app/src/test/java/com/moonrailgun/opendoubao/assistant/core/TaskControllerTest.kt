@@ -897,7 +897,7 @@ class TaskControllerTest {
 
     @Test fun continuingAfterAPermissionHandoverLetsTheVisionModelDoIt() = runTest {
         val phone = FakePhone()
-        val ask = "要把“你好”发给孙淼，点继续即同意发送"
+        val ask = "要把“你好”发给张三，点继续即同意发送"
         val approvals = mutableListOf<List<String>>()
         val models = object : Models by FakeModels() {
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
@@ -912,7 +912,7 @@ class TaskControllerTest {
             }
         }
         val controller = TaskController(this, phone, models)
-        controller.start("给孙淼发你好", setOf("browser.app"))
+        controller.start("给张三发你好", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.PAUSED, controller.state.value.status)
         assertEquals(ask, controller.state.value.message)

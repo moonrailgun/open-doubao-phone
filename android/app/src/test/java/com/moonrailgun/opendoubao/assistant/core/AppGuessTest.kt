@@ -15,8 +15,8 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppGuessTest {
     @Test fun jevIsAskedWithLabelsAndContextAndOnlyASureAnswerCounts() {
-        val request = JevProtocol.appRequest("jev", "打开和孙淼的聊天窗口", listOf("lark.app" to "飞书", "notes.app" to ""),
-            JSONObject().put("recent_tasks", "已在飞书中打开与孙淼的单聊窗口"))
+        val request = JevProtocol.appRequest("jev", "打开和张三的聊天窗口", listOf("lark.app" to "飞书", "notes.app" to ""),
+            JSONObject().put("recent_tasks", "已在飞书中打开与张三的单聊窗口"))
         val question = request.getJSONObject("questions").getJSONObject("app")
         assertEquals("飞书 (lark.app)", question.getJSONObject("criteria").getString("a0"))
         assertEquals("notes.app", question.getJSONObject("criteria").getString("a1"))
@@ -59,7 +59,7 @@ class AppGuessTest {
             override suspend fun summarize(goal: String, evidence: Evidence) = "done"
         }
         val controller = TaskController(this, phone, models)
-        controller.start("打开和孙淼的聊天窗口", setOf("lark.app", "browser.app"))
+        controller.start("打开和张三的聊天窗口", setOf("lark.app", "browser.app"))
         advanceUntilIdle()
         return controller to opened
     }
@@ -85,7 +85,7 @@ class AppGuessTest {
         assertEquals(listOf(5_000L), opened.map { it.at })
         assertTrue(unsure.state.value.trace.any { "Jev 预判应用：不确定，等规划" in it })
         // A reply needs no phone, so a guess still pending when it arrives is dropped.
-        val (replied, none) = run("lark.app", Plan("", emptyList(), emptyList(), reply = "孙淼在飞书"), guessMillis = 8_000)
+        val (replied, none) = run("lark.app", Plan("", emptyList(), emptyList(), reply = "张三在飞书"), guessMillis = 8_000)
         assertEquals(TaskStatus.COMPLETED, replied.state.value.status)
         assertEquals(emptyList<Action>(), none.map { it.action })
     }

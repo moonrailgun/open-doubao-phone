@@ -52,7 +52,7 @@ class QuickPathTest {
                 override suspend fun summarize(goal: String, evidence: Evidence) = "done"
             }
             val controller = TaskController(this, phone, full, quick = quick)
-            controller.start("打开飞书搜一下孙淼", setOf("lark.app"))
+            controller.start("打开飞书搜一下张三", setOf("lark.app"))
             advanceUntilIdle()
             assertTrue(planned)
             assertEquals(TaskStatus.COMPLETED, controller.state.value.status)

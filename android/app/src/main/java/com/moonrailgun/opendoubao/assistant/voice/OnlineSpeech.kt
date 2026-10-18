@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** Kaon returns raw mono PCM16 at 24 kHz; callbacks run on the HTTP worker. */
+/** The speech endpoint returns raw mono PCM16 at 24 kHz; callbacks run on the HTTP worker. */
 class OnlineSpeech(private val client: OkHttpClient = http) {
     suspend fun stream(endpoint: String, token: String, text: String,
         model: String = Saved.DEFAULT_TTS_MODEL, voice: String = Saved.DEFAULT_TTS_VOICE, audio: (ByteArray) -> Unit) {

@@ -14,7 +14,7 @@ async function phone(page, logs) {
         if (args.method === 'records.list') return records;
         if (args.method === 'records.get') {
           const record = records.find((item) => item.id === args.params.taskId);
-          return { ...record, result: '已在飞书中打开与孙淼的单聊窗口', log: logs[record.goal] };
+          return { ...record, result: '已在飞书中打开与张三的单聊窗口', log: logs[record.goal] };
         }
         if (args.method === 'config.get') return { jevEndpoint: '', jevModel: '', hasJevKey: false, chatEndpoint: '', chatModel: '', hasChatKey: false, language: '' };
         if (args.method === 'apps.get') return { selected: [], apps: [] };
@@ -28,9 +28,9 @@ async function phone(page, logs) {
 test('record details draw the task trace as a waterfall above the plain log', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await phone(page, { 打开和孙淼的聊天窗口: feishuLog, 旧版本记录: ['12:00 读取 com.example.notes', '12:01 完成'] });
+  await phone(page, { 打开和张三的聊天窗口: feishuLog, 旧版本记录: ['12:00 读取 com.example.notes', '12:01 完成'] });
   await page.goto('/');
-  await page.getByRole('button', { name: /打开和孙淼的聊天窗口/ }).click();
+  await page.getByRole('button', { name: /打开和张三的聊天窗口/ }).click();
   const timeline = page.locator('#record-content .timeline');
   await expect(page.locator('#record-content h2').first()).toHaveText('执行时间线');
   await expect(timeline).toContainText('规划');

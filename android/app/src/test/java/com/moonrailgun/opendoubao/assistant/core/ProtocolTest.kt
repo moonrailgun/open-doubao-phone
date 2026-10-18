@@ -54,17 +54,17 @@ class ProtocolTest {
     }
 
     @Test fun jevKeepsMemoryAndRecentTasksWhenTheScreensAreTrimmed() {
-        // Feishu on 2026-10-13: 孙淼 shows as 孙大炮, which only an earlier task's result said, and Jev scored the open chat 0.13–0.16 done.
+        // Feishu on 2026-10-13: 张三 shows as 小张, which only an earlier task's result said, and Jev scored the open chat 0.13–0.16 done.
         val context = JSONObject().put("memory", org.json.JSONArray()).put("recent_tasks", org.json.JSONArray()
-            .put(JSONObject().put("goal", "打开和孙淼的聊天窗口").put("result", "孙淼在飞书中的显示名为“孙大炮”")))
-        val state = JevProtocol.request("jev-latest", "打开和孙淼的聊天窗口", screen(), candidates, null, context = context)!!.getJSONObject("state")
-        assertEquals("孙淼在飞书中的显示名为“孙大炮”", state.getJSONArray("recent_tasks").getJSONObject(0).getString("result"))
+            .put(JSONObject().put("goal", "打开和张三的聊天窗口").put("result", "张三在飞书中的显示名为“小张”")))
+        val state = JevProtocol.request("jev-latest", "打开和张三的聊天窗口", screen(), candidates, null, context = context)!!.getJSONObject("state")
+        assertEquals("张三在飞书中的显示名为“小张”", state.getJSONArray("recent_tasks").getJSONObject(0).getString("result"))
         assertTrue(state.has("memory"))
         val big = screen().copy(elements = (0 until 350).map {
             Element("0.$it", "长".repeat(2000), "", "android.widget.TextView", "", Bounds(0, 0, 1, 1))
         })
         // 2026-10-15: on Feishu the previous page alone filled the budget, and dropping the memory first left Jev without
-        // the 孙淼 = 孙大炮 alias on every page but the splash. The screens give way first now.
+        // the 张三 = 小张 alias on every page but the splash. The screens give way first now.
         val trimmed = JevProtocol.request("jev-latest", "goal", big, candidates, null, context = context)!!
         assertTrue(trimmed.toString().toByteArray().size <= JevProtocol.BUDGET)
         assertTrue(trimmed.getJSONObject("state").has("recent_tasks"))
@@ -96,7 +96,7 @@ class ProtocolTest {
             Candidate("c1", Action.Click("0.1.0"), "点击「avatar_click_wrapper」"), Candidate("c2", Action.Click("0.1.5"), "点击「function_btn_1」"))
         assertNull(JevProtocol.parse(answer("c2", .55, mapOf("c0" to .32, "c1" to .06, "c2" to .56, "none" to .06)), header).action)
         // Typing into a field is another action than clicking it.
-        val field = listOf(Candidate("c0", Action.Click("0.1"), "点击「搜索」"), Candidate("c1", Action.Type("0.1.0", "Lyon"), "填写「搜索」：Lyon"))
+        val field = listOf(Candidate("c0", Action.Click("0.1"), "点击「搜索」"), Candidate("c1", Action.Type("0.1.0", "Demo"), "填写「搜索」：Demo"))
         assertNull(JevProtocol.parse(answer("c0", .55, mapOf("c0" to .56, "c1" to .4, "none" to .04)), field).action)
     }
 

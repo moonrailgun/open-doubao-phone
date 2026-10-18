@@ -22,7 +22,7 @@ class CompactScreenTest {
         Element("0", "", "", "android.widget.FrameLayout", "", Bounds(0, 0, 1440, 3120)),
         Element("0.0", "", "", "android.widget.FrameLayout", "com.ss.android.lark:id/avatar_item_left_frame", Bounds(28, 726, 294, 894)),
         Element("0.1", "", "", "android.widget.ImageView", "com.ss.android.lark:id/function_btn_1", Bounds(1149, 208, 1233, 292), clickable = true),
-        Element("0.2", "孙大炮", "", "android.widget.TextView", "", Bounds(266, 1400, 638, 1472)),
+        Element("0.2", "小张", "", "android.widget.TextView", "", Bounds(266, 1400, 638, 1472)),
         Element("0.3", "", "", "android.widget.EditText", "", Bounds(0, 0, 10, 10), editable = true, enabled = false),
         Element("0.4", "secret", "", "android.widget.EditText", "", Bounds(0, 0, 10, 10), editable = true, password = true),
     ))
@@ -36,7 +36,7 @@ class CompactScreenTest {
         fun fields(index: Int) = elements.getJSONObject(index).let { node -> node.keys().asSequence().associateWith { node.get(it).toString() } }
         assertEquals(mapOf("id" to "0.1", "class" to "ImageView", "resource" to "function_btn_1", "bounds" to "[1149,208,1233,292]",
             "clickable" to "true"), fields(0))
-        assertEquals(mapOf("id" to "0.2", "text" to "孙大炮", "class" to "TextView", "bounds" to "[266,1400,638,1472]"), fields(1))
+        assertEquals(mapOf("id" to "0.2", "text" to "小张", "class" to "TextView", "bounds" to "[266,1400,638,1472]"), fields(1))
         assertEquals(mapOf("id" to "0.3", "class" to "EditText", "bounds" to "[0,0,10,10]", "editable" to "true", "enabled" to "false"), fields(2))
         // The full form still carries every node but the password field, field for field.
         assertEquals(listOf("0", "0.0", "0.1", "0.2", "0.3"), ids(page.json()))
@@ -55,7 +55,7 @@ class CompactScreenTest {
         }.build()
         val config = ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test")
         CloudModels(config, HttpTransport(client), compactScreens = compactScreens)
-            .fallback("打开和孙淼的聊天窗口", page, Plan("com.ss.android.lark", listOf("search"), emptyList()),
+            .fallback("打开和张三的聊天窗口", page, Plan("com.ss.android.lark", listOf("search"), emptyList()),
                 Previous(page, Action.Click("0.1"), true), Evidence(emptyList()), null)
         sent!!
     }

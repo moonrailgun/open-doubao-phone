@@ -20,12 +20,12 @@ class VisionAnswerTest {
     }
 
     @Test fun visionAnswerSkipsTheSummaryCall() = runTest {
-        val models = VisionModels(answer = "**已在飞书中打开与孙淼的聊天窗口**")
+        val models = VisionModels(answer = "**已在飞书中打开与张三的聊天窗口**")
         val controller = TaskController(this, StillPhone(), models)
-        controller.start("打开和孙淼的聊天窗口", setOf("browser.app"))
+        controller.start("打开和张三的聊天窗口", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
-        assertEquals("**已在飞书中打开与孙淼的聊天窗口**", controller.state.value.result)
+        assertEquals("**已在飞书中打开与张三的聊天窗口**", controller.state.value.result)
         assertEquals(0, models.summaries)
         assertTrue(controller.state.value.trace.any { "沿用视觉模型给出的结果" in it })
         assertFalse(controller.state.value.trace.any { "→ 总结" in it })
@@ -47,7 +47,7 @@ class VisionAnswerTest {
         val phone = object : Phone by StillPhone() { override suspend fun observe() = screen(text = "status ${++reads}") }
         val models = VisionModels(answer = "已打开")
         val controller = TaskController(this, phone, models)
-        controller.start("打开和孙淼的聊天窗口", setOf("browser.app"))
+        controller.start("打开和张三的聊天窗口", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
         assertEquals(1, models.visions)
@@ -81,7 +81,7 @@ class VisionAnswerTest {
         val phone = object : Phone by StillPhone() { override suspend fun observe() = screen().copy(windowId = if (++reads <= 2) 7 else 8) }
         val models = VisionModels(answer = "已打开")
         val controller = TaskController(this, phone, models)
-        controller.start("打开和孙淼的聊天窗口", setOf("browser.app"))
+        controller.start("打开和张三的聊天窗口", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
         assertEquals(2, models.visions)

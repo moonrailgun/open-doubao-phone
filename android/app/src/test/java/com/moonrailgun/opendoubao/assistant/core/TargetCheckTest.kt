@@ -18,12 +18,12 @@ class TargetCheckTest {
 
     @Test fun onlyAnIdenticalNodeAtTheSamePathCounts() {
         val click = Action.Click("0.1")
-        assertTrue(sameTarget(click, page("国实: 写一个复盘"), page("孙大炮: 谁写")))
+        assertTrue(sameTarget(click, page("李四: 写一个复盘"), page("小张: 谁写")))
         assertFalse(sameTarget(click, page("a"), page("a", buttonTop = 300)))
         assertFalse(sameTarget(click, page("a"), page("a").copy(windowId = 14)))
         assertFalse(sameTarget(Action.Click("0.9"), page("a"), page("a")))
         assertFalse(sameTarget(Action.Back, page("a"), page("b")))
-        assertTrue(sameTarget(Action.Type("0.1", "孙大炮"), page("a"), page("b")))
+        assertTrue(sameTarget(Action.Type("0.1", "小张"), page("a"), page("b")))
         assertTrue(sameTarget(Action.Submit("0.1"), page("a"), page("b")))
     }
 
