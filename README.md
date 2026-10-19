@@ -64,6 +64,8 @@ Pixel 6 Pro 真机实录，中途一次暂停后人工点击「继续」。上�
 - [Android 真机验收记录](android/acceptance.md)
 - [产品落地页源码与预览方式](website/)
 
+社区：[linux.do](https://linux.do/)
+
 欢迎通过 [Issues](https://github.com/moonrailgun/open-doubao-phone/issues) 分享使用反馈，或提交 Pull Request 一起完善。
 
 采用 [MIT License](LICENSE)。
