@@ -38,7 +38,6 @@ android {
         assets.srcDir("../.voice/assistant-assets")
         jniLibs.srcDir("../.voice/assistant-jni")
     }
-    androidResources { noCompress += listOf("onnx", "bin") }
     sourceSets.getByName("androidTest").assets.srcDir("../.voice/test-assets")
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
