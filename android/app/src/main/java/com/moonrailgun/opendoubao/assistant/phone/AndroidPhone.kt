@@ -23,14 +23,18 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import com.moonrailgun.opendoubao.assistant.core.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
 import kotlin.math.ceil
 import kotlin.coroutines.resumeWithException
 
-class AndroidPhone(private val service: AssistantService) : Phone {
+class AndroidPhone(private val service: AssistantService, private val displayId: Int = Display.DEFAULT_DISPLAY,
+    private val shell: IShellDisplay? = null) : Phone {
     var lastEvent: Long = 0
     private var lastCaptureAt = 0L
+    private val captures = Mutex()
     var lastPackage: String? = null
         private set
 
@@ -44,7 +48,7 @@ class AndroidPhone(private val service: AssistantService) : Phone {
     private suspend fun window(): AccessibilityWindowInfo {
         repeat(10) {
             unlocked()
-            pickWindow(service.windows)?.let { return it }
+            pickWindow(windows())?.let { return it }
             // Activity transitions can briefly expose a window with no visible bounds or root.
             delay(100)
         }
@@ -54,7 +58,8 @@ class AndroidPhone(private val service: AssistantService) : Phone {
     override suspend fun observe(): Screen {
         currentCoroutineContext().ensureActive()
         val window = window()
-        val display = service.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
+        val display = service.getSystemService(DisplayManager::class.java).getDisplay(displayId)
+            ?: throw PhoneUnavailableException("目标屏幕已断开")
         val size = android.graphics.Point().also(display::getRealSize)
         // Each of a few hundred nodes is a binder call; walking them on the main thread froze the overlay for up to 0.7 s.
         return withContext(Dispatchers.IO) { readScreen(window, size.x, size.y, display.rotation) }.also { lastPackage = it.packageName }
@@ -64,10 +69,12 @@ class AndroidPhone(private val service: AssistantService) : Phone {
 
     override fun sameImage(before: String, after: String, screen: Screen, region: Bounds) = screenshotsMatch(before, after, screen, region)
 
-    private suspend fun capture(screen: Screen, restoreOverlay: Boolean): String {
+    private fun windows() = service.windowsOnAllDisplays[displayId] ?: emptyList()
+
+    private suspend fun capture(screen: Screen, restoreOverlay: Boolean): String = captures.withLock {
         if (observe().fingerprint != screen.fingerprint) throw ScreenChangedException()
         if (screen.protected) throw PhoneUnavailableException("密码页面不可截图")
-        service.setOverlayVisible(false)
+        if (shell == null) service.setOverlayVisible(false)
         try {
             delay(120)
             delay((350 - (SystemClock.uptimeMillis() - lastCaptureAt)).coerceAtLeast(0))
@@ -76,7 +83,7 @@ class AndroidPhone(private val service: AssistantService) : Phone {
             val bounds = Rect().also(target::getBoundsInScreen)
             if (!bounds.intersect(0, 0, screen.width, screen.height)) throw ScreenChangedException()
             if (Build.VERSION.SDK_INT < 34) {
-                if (service.windows.any { other ->
+                if (windows().any { other ->
                     other.id != target.id && other.layer > target.layer &&
                         Rect.intersects(bounds, Rect().also(other::getBoundsInScreen))
                 }) throw PhoneUnavailableException("键盘或其他浮层遮挡，无法可靠截图")
@@ -102,7 +109,7 @@ class AndroidPhone(private val service: AssistantService) : Phone {
                 lastCaptureAt = SystemClock.uptimeMillis()
                 try {
                     if (Build.VERSION.SDK_INT >= 34) service.takeScreenshotOfWindow(target.id, service.mainExecutor, callback)
-                    else service.takeScreenshot(Display.DEFAULT_DISPLAY, service.mainExecutor, callback)
+                    else service.takeScreenshot(displayId, service.mainExecutor, callback)
                 } catch (_: SecurityException) {
                     if (continuation.isActive) continuation.resumeWithException(PhoneUnavailableException("系统未允许截图"))
                 }
@@ -111,7 +118,7 @@ class AndroidPhone(private val service: AssistantService) : Phone {
                 if (observe().fingerprint != screen.fingerprint) throw ScreenChangedException()
                 return encodeScreenshot(bitmap, if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else bounds, bounds, screen)
             } finally { bitmap.recycle() }
-        } finally { if (restoreOverlay) service.setOverlayVisible(true) }
+        } finally { if (restoreOverlay && shell == null) service.setOverlayVisible(true) }
     }
 
     override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean {
@@ -130,8 +137,8 @@ class AndroidPhone(private val service: AssistantService) : Phone {
                 performOnNode(window().root ?: throw PhoneUnavailableException("当前页面没有可访问节点"), action)
             is Action.Tap -> gesture(Path().apply { moveTo(action.x.toFloat(), action.y.toFloat()) }, 80, expected!!, expectedImage!!, action.gestureBounds()!!)
             is Action.Swipe -> gesture(Path().apply { moveTo(action.x1.toFloat(), action.y1.toFloat()); lineTo(action.x2.toFloat(), action.y2.toFloat()) }, 400, expected!!, expectedImage!!, action.gestureBounds()!!)
-            Action.Back -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-            Action.Home -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+            Action.Back -> if (shell != null) { shell.key(android.view.KeyEvent.KEYCODE_BACK); true } else service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            Action.Home -> if (shell != null) { shell.key(android.view.KeyEvent.KEYCODE_HOME); true } else service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
             Action.Wait -> true
         }
         val launched = when (action) { is Action.OpenApp -> action.packageName; is Action.OpenUrl -> action.packageName; else -> null }
@@ -141,6 +148,10 @@ class AndroidPhone(private val service: AssistantService) : Phone {
 
     private fun launch(intent: Intent): Boolean {
         try {
+            if (shell != null) {
+                shell.launch(intent.component?.packageName ?: requireNotNull(intent.`package`), intent.dataString)
+                return true
+            }
             service.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return true
         } catch (_: ActivityNotFoundException) {
@@ -153,31 +164,31 @@ class AndroidPhone(private val service: AssistantService) : Phone {
     // startActivity returns before the app is in front; a cold start can outlast settle() and the next read sees the old app.
     private suspend fun awaitForeground(pkg: String) {
         awaitPackage(pkg, 5_000, ::unlocked, front = {
-            pickWindow(service.windows)?.root?.let { root -> root.packageName?.toString().also { root.recycle() } }
+            pickWindow(windows())?.root?.let { root -> root.packageName?.toString().also { root.recycle() } }
         })
     }
 
     private suspend fun gesture(path: Path, duration: Long, expected: Screen, expectedImage: String, region: Bounds): Boolean {
-        service.setOverlayVisible(false)
+        if (shell == null) service.setOverlayVisible(false)
         try {
             // Animated canvases near the gesture still need human control; a cursor elsewhere does not (ImageMatch).
             if (!screenshotsMatch(expectedImage, capture(expected, restoreOverlay = false), expected, region)) return false
             if (observe().fingerprint != expected.fingerprint) return false
             val target = window()
-            if (service.windows.any { other ->
+            if (windows().any { other ->
                 val bounds = Rect().also(other::getBoundsInScreen)
                 other.id != target.id && other.layer > target.layer &&
                     region.intersects(Bounds(bounds.left, bounds.top, bounds.right, bounds.bottom))
             }) return false
             return suspendCancellableCoroutine { continuation ->
-        val dispatched = service.dispatchGesture(GestureDescription.Builder()
+        val dispatched = service.dispatchGesture(GestureDescription.Builder().setDisplayId(displayId)
             .addStroke(GestureDescription.StrokeDescription(path, 0, duration)).build(), object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) { if (continuation.isActive) continuation.resume(true) }
                 override fun onCancelled(gestureDescription: GestureDescription?) { if (continuation.isActive) continuation.resume(false) }
             }, null)
         if (!dispatched && continuation.isActive) continuation.resume(false)
             }
-        } finally { service.setOverlayVisible(true) }
+        } finally { if (shell == null) service.setOverlayVisible(true) }
     }
 
     private suspend fun settle() {

@@ -596,14 +596,16 @@ class MainActivity : ComponentActivity() {
 /** Where new tasks act: an unseen virtual display when the system supports it, or the user's own screen. */
 @Composable private fun ExecutionControls() {
     val context = LocalContext.current
-    val available = remember { virtualDisplayAvailable(context) }
+    val native = remember { virtualDisplayAvailable(context) }
+    val bridgeStatus by com.moonrailgun.opendoubao.assistant.phone.ShellBridge.status.collectAsState()
+    val available = native || remember(bridgeStatus) { com.moonrailgun.opendoubao.assistant.phone.ShellBridge.ready(context) }
     var choice by remember { mutableStateOf(executionChoice(context)) }
     Section("执行方式", "新任务开始时按这里的选择执行，正在进行的任务不受影响。") {
         listOf(EXECUTION_AUTO to ("自动判断（推荐）" to "开始前先由模型判断：只有单纯查信息、不用展示给你看的任务在虚拟屏执行，其余（打开应用、展示、发送、支付、改设置等）都在前台；拿不准或判断失败时按前台执行。判断依据记在任务日志里。"),
             EXECUTION_VIRTUAL to ("虚拟屏（后台）" to "在看不见的独立屏幕上操作，你可以继续用手机。任务页和悬浮球里能实时看到画面；需要手动处理时点「转到前台处理」。"),
             EXECUTION_FOREGROUND to ("前台" to "直接操作当前屏幕，任务进行时请不要操作手机。")).forEach { (value, text) ->
             val enabled = available || value == EXECUTION_FOREGROUND
-            val selected = if (available) choice == value else value == EXECUTION_FOREGROUND
+            val selected = choice == value
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                 .selectable(selected, enabled = enabled, role = Role.RadioButton) { choice = value; chooseExecution(context, value) }
                 .padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -614,8 +616,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        if (!available) Text("当前系统不支持虚拟屏执行，任务会在前台操作。需要 Open Doubao 系统 v1.15 或更新版本。",
-            fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!native) com.moonrailgun.opendoubao.assistant.phone.VirtualDisplaySetup()
     }
     var compact by remember { mutableStateOf(compactScreens(context)) }
     Section("看截图时的界面信息", "Jev 没把握时，截图会连同界面结构一起发给规划与视觉模型。新任务开始时生效。") {

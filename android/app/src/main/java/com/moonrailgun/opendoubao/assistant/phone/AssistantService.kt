@@ -168,6 +168,7 @@ class AssistantService : AccessibilityService() {
     }
 
     override fun onServiceConnected() {
+        ShellBridge.initialize(this)
         phone = AndroidPhone(this)
         locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
         registerReceiver(lockReceiver, IntentFilter().apply {
@@ -285,14 +286,15 @@ class AssistantService : AccessibilityService() {
         watcher?.cancel()
         virtual?.close()
         virtual = null
-        fun offscreen() = VirtualPhone(this, phone, mutableVirtualActive, onNotice = { controller?.notice(it) }) { controller?.fail(it) }
-            .also { virtual = it }
-        // Chosen per task: the setting may change between tasks, and other systems always run in the foreground.
+        fun offscreen(): OffscreenPhone = (if (virtualDisplayAvailable(this))
+            VirtualPhone(this, phone, mutableVirtualActive, onNotice = { controller?.notice(it) }) { controller?.fail(it) }
+            else ShellPhone(this, phone, mutableVirtualActive) { controller?.fail(it) }).also { virtual = it }
         val choice = executionChoice(this)
         val labels = catalog.associate { it.packageName to it.label }
         val quick: suspend (String) -> String? = { quick(it, apps, labels) }
         val next = when {
-            !virtualDisplayAvailable(this) || choice == EXECUTION_FOREGROUND -> TaskController(scope, phone, models, remember = ::remember, quick = quick)
+            choice == EXECUTION_FOREGROUND || (!virtualDisplayAvailable(this) && !ShellBridge.ready(this) && choice != EXECUTION_VIRTUAL) ->
+                TaskController(scope, phone, models, remember = ::remember, quick = quick)
             choice == EXECUTION_VIRTUAL -> TaskController(scope, phone, models, remember = ::remember, place = { offscreen() to "设置" }, quick = quick)
             else -> TaskController(scope, phone, models, remember = ::remember, quick = quick, place = {
                 val (placement, how) = models.placement(goal)

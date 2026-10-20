@@ -40,7 +40,7 @@ Pixel 6 Pro 真机实录，中途一次暂停后人工点击「继续」。上�
 
 <img src="website/assets/desktop-workspace.jpg" alt="Open Doubao 桌面工作台：电脑下发任务，实时查看手机的执行进度和结果" width="100%" />
 
-普通 Android 手机可以先用应用；虚拟屏和系统集成能力需要豆馅 OS，目前适配 Pixel 6 Pro。[看虚拟屏真机演示](website/assets/virtual-demo.mp4)
+普通 Android 手机可以直接使用应用；Android 14 及以上还可通过 [Shizuku 或 ADB + scrcpy 使用虚拟屏](docs/virtual-display.md)，无需刷机或 Root。电源键、唤醒词等系统集成由豆馅 OS 提供，目前适配 Pixel 6 Pro。[看豆馅 OS 虚拟屏真机演示](website/assets/virtual-demo.mp4)
 
 ## 为什么这样做
 
