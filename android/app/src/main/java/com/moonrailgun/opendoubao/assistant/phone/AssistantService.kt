@@ -127,12 +127,12 @@ class AssistantService : AccessibilityService() {
     private var handOverButton: View? = null
     private var peek: View? = null
     private var mirror: AutoCloseable? = null
-    private var virtual: VirtualPhone? = null
+    private var virtual: OffscreenPhone? = null
     private val mutableVirtualActive = MutableStateFlow(false)
     /** True while the current task has a virtual display session the app may show. */
     val virtualActive = mutableVirtualActive.asStateFlow()
     /** Mirrors the virtual display under [parent] for the app's live view; null when no session is open. */
-    fun peekVirtual(parent: SurfaceControl, width: Int, height: Int): AutoCloseable? = virtual?.peek(parent, width, height)
+    fun peekVirtual(parent: SurfaceControl, width: Int, height: Int, surface: android.view.Surface? = null): AutoCloseable? = virtual?.peek(parent, width, height, surface)
     private var openButton: View? = null
     private var inputRow: View? = null
     private var input: EditText? = null
@@ -572,7 +572,7 @@ class AssistantService : AccessibilityService() {
             holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) = Unit
                 override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                    if (mirror == null) mirror = virtual?.peek(surfaceControl, width, height)
+                    if (mirror == null) mirror = virtual?.peek(surfaceControl, width, height, holder.surface)
                 }
                 override fun surfaceDestroyed(holder: SurfaceHolder) { mirror?.let { runCatching { it.close() } }; mirror = null }
             })
@@ -776,7 +776,7 @@ class AssistantService : AccessibilityService() {
         voiceCard?.visibility = if (voice) View.VISIBLE else View.GONE
         stopButton?.visibility = if (running || paused) View.VISIBLE else View.GONE
         resumeButton?.visibility = if (paused) View.VISIBLE else View.GONE
-        val offscreen = virtual?.session != null
+        val offscreen = virtual?.hasSession == true
         peek?.visibility = if (expanded && offscreen) View.VISIBLE else View.GONE
         handOverButton?.visibility = if (paused && offscreen) View.VISIBLE else View.GONE
         // Keep the current app visible while automatic actions are running.

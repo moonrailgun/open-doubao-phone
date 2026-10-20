@@ -65,6 +65,14 @@ fun virtualDisplayAvailable(context: Context): Boolean = Build.VERSION.SDK_INT >
         .invoke(context.getSystemService(VirtualDeviceManager::class.java)) as Boolean
 }.getOrDefault(false)
 
+interface OffscreenPhone : Phone {
+    val hasSession: Boolean
+    fun resume()
+    fun handOver()
+    fun close()
+    fun peek(parent: SurfaceControl, width: Int, height: Int, surface: Surface? = null): AutoCloseable?
+}
+
 /**
  * Works on an Android 17 Computer Control virtual display, so the phone stays free while a task runs.
  * Needs the Open Doubao image: ACCESS_COMPUTER_CONTROL, hidden API access and the super agent overlay.
@@ -75,7 +83,7 @@ fun virtualDisplayAvailable(context: Context): Boolean = Build.VERSION.SDK_INT >
 class VirtualPhone(private val service: AssistantService, private val foreground: AndroidPhone,
     /** True while a session is open, so the app can show the display; false again after the task ends or hands over. */
     private val active: MutableStateFlow<Boolean>, private val onNotice: (String) -> Unit = {},
-    private val onLost: (String) -> Unit) : Phone {
+    private val onLost: (String) -> Unit) : OffscreenPhone {
     private val executor: Executor = service.mainExecutor
     /** The live session for the peek window: null before the first app opens and after the task ends or is handed over. */
     var session: ComputerControlSession? = null
@@ -88,6 +96,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
     private var lastImage: Pair<String, String>? = null
 
     override val mode = "虚拟屏"
+    override val hasSession get() = session != null
 
     override fun canLaunch(packageName: String) = foreground.canLaunch(packageName)
 
@@ -159,12 +168,12 @@ class VirtualPhone(private val service: AssistantService, private val foreground
     }
 
     /** Lets a blocked session continue after the user dealt with the reason; it blocks again if the reason remains. */
-    fun resume() {
+    override fun resume() {
         if (blocked != null && session?.requestResume() == true) blocked = null
     }
 
     /** Moves the automated apps to the main display for manual handling; later steps run in the foreground. */
-    fun handOver() {
+    override fun handOver() {
         val live = session ?: return
         // The system closes the session afterwards; its callbacks reach the main thread only after this returns.
         live.handOverApplications()
@@ -175,7 +184,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
     }
 
     /** Shows the virtual display under [parent], scaled to fit; view only, touches never reach the apps. */
-    fun peek(parent: SurfaceControl, width: Int, height: Int): AutoCloseable? {
+    override fun peek(parent: SurfaceControl, width: Int, height: Int, surface: Surface?): AutoCloseable? {
         val live = session ?: return null
         val mirror = runCatching {
             live.createInteractiveMirror(object : IResultReceiver.Stub() { override fun send(resultCode: Int, resultData: Bundle?) = Unit })
@@ -191,7 +200,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         }.getOrElse { runCatching { mirror.close() }; null }
     }
 
-    fun close() {
+    override fun close() {
         // Also set without a session, so a creation still pending at the end of the task never reports a loss.
         closing = true
         active.value = false

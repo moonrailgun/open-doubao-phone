@@ -647,7 +647,7 @@ class MainActivity : ComponentActivity() {
                     holder.addCallback(object : SurfaceHolder.Callback {
                         override fun surfaceCreated(holder: SurfaceHolder) = Unit
                         override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                            if (mirror == null) mirror = service.peekVirtual(surfaceControl, width, height)
+                            if (mirror == null) mirror = service.peekVirtual(surfaceControl, width, height, holder.surface)
                         }
                         override fun surfaceDestroyed(holder: SurfaceHolder) { mirror?.let { runCatching { it.close() } }; mirror = null }
                     })
