@@ -143,6 +143,12 @@ details p { padding: 0 30px 24px 0; font-size: 12px; line-height: 1.95; color: v
 .footer .brand-cn { font-size: 10px; }
 .footer p { font-size: 11px; color: var(--muted); }
 .footer nav { font-size: 10px; gap: 23px; color: var(--muted); }
+.meme-page { max-width: 760px; padding-block: 40px; }
+.meme-page h1 { font-size: clamp(36px, 6vw, 48px); }
+.meme-page figure { margin-top: 32px; }
+.meme-page figure img { width: 100%; border-radius: 8px; }
+.meme-page figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin-top: 18px; color: var(--muted); font-size: 13px; }
+.meme-page figcaption a { color: var(--ink); }
 
 @media (max-width: 1050px) {
   .wrap { width: calc(100% - 64px); }
