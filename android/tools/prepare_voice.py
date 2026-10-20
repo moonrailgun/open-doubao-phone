@@ -28,6 +28,13 @@ def sha256(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def extract_filter(member, path):
+    # sherpa-onnx 1.13.8 ships two Go example symlinks to its author's machine; the build never uses them.
+    if member.issym() and os.path.isabs(member.linkname):
+        return None
+    return tarfile.data_filter(member, path)
+
+
 def fetch():
     CACHE.mkdir(exist_ok=True)
     for name, (url, expected) in INPUTS.items():
@@ -50,7 +57,7 @@ def fetch():
             directory = 'sherpa-onnx-1.13.8' if name.startswith('sherpa-onnx-v') else name.split('.tar.')[0]
             if not (CACHE / directory).exists():
                 with tarfile.open(path) as archive:
-                    archive.extractall(CACHE, filter='data')
+                    archive.extractall(CACHE, filter=extract_filter)
 
 
 def copy(source, target):
