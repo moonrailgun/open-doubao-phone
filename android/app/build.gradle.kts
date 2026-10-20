@@ -16,7 +16,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
+    // CI signs release APKs from secrets; without RELEASE_KEYSTORE the release APK stays unsigned.
+    System.getenv("RELEASE_KEYSTORE")?.let { path ->
+        signingConfigs.create("release") {
+            storeFile = file(path)
+            storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+            keyPassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+        }
+    }
     buildTypes {
+        getByName("release") { signingConfig = signingConfigs.findByName("release") }
         create("system") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
