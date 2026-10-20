@@ -1,0 +1,49 @@
+name: Release APK
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check secrets and version
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          for name in RELEASE_KEYSTORE_BASE64 RELEASE_KEYSTORE_PASSWORD RELEASE_KEY_ALIAS; do
+            [ -n "${!name}" ] || { echo "::error::Missing secret $name"; exit 1; }
+          done
+          grep -qF "versionName = \"${GITHUB_REF_NAME#v}\"" app/build.gradle.kts ||
+            { echo "::error::Tag $GITHUB_REF_NAME does not match versionName in app/build.gradle.kts"; exit 1; }
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install SDK packages
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "ndk;28.2.13676358" > /dev/null
+      - name: Prepare voice assets
+        run: ANDROID_NDK="$ANDROID_HOME/ndk/28.2.13676358" python3 tools/prepare_voice.py
+      - name: Build and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          export RELEASE_KEYSTORE="$RUNNER_TEMP/release.jks"
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$RELEASE_KEYSTORE"
+          ./gradlew --no-daemon :app:assembleRelease
+          apk="$RUNNER_TEMP/open-doubao-phone-${GITHUB_REF_NAME#v}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
