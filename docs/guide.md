@@ -71,6 +71,8 @@ Android Studio 请直接打开 `android/`。各端的构建命令在对应目录
 
 在仓库根目录运行 `./release.sh`（或 `./release.sh patch|minor|major|X.Y.Z`），会同步更新 Android 与桌面安装包版本并创建 GitHub Release。发布后 CI 分别构建并上传 APK、macOS Apple Silicon / Intel 的 `.dmg`、Windows x64 的 `.exe` 安装包，以及 Linux x64 的 `.deb` 和 `.AppImage`。需要等对应构建任务完成，Release 附件才会出现。macOS 应用仅带临时签名，未做 Developer ID 签名或公证；Windows 安装包未配置代码签名。
 
+Android 普通安装版启动时会检查 GitHub 最新正式 Release，也可在手机「设置」底部点击「检查更新」。发现新版后可查看更新说明，并用浏览器下载安装包，再手动打开安装。启动检查失败不会弹窗；手动检查会显示错误并允许重试。Android 系统版随系统镜像更新，不使用普通 APK 覆盖。
+
 开发运行需要 Node.js 20.19+/22.12+、Rust stable，以及对应系统的 Tauri 构建环境（macOS 使用 Xcode Command Line Tools）。
 
 ```sh

@@ -1,5 +1,7 @@
 package com.moonrailgun.opendoubao.assistant
 
+import com.moonrailgun.opendoubao.assistant.update.AppUpdates
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -436,6 +438,7 @@ class MainActivity : ComponentActivity() {
                             Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                     }
                 }
+                AppUpdates(visible = tab == SETTINGS)
                 Spacer(Modifier.height(8.dp))
             }
         }
