@@ -466,7 +466,9 @@ class AssistantService : AccessibilityService() {
             layoutDirection = View.LAYOUT_DIRECTION_LTR
             setPadding(dp(16), 0, dp(16), 0)
             background = rounded(ink, 24)
-            addView(taskGoal); addView(taskStep)
+            // Wrap-width lines re-measure on every step; the vertical default (match parent) keeps the first step's width.
+            addView(taskGoal, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            addView(taskStep, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
         val chip = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
