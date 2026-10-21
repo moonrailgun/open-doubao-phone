@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Bump the Android app version, tag it and publish a GitHub release; CI then attaches the APK.
+# Bump app versions, tag and publish a GitHub release; CI attaches the APK and desktop installers.
 # Usage: ./release.sh [patch|minor|major|X.Y.Z]   (no argument: choose interactively)
 set -euo pipefail
 cd "$(dirname "$0")"
 
 gradle=android/app/build.gradle.kts
+tauri=desktop/src-tauri/tauri.conf.json
 die() { echo "$*" >&2; exit 1; }
 
 [ -z "$(git status --porcelain)" ] || die "Working tree is not clean"
 gh auth status > /dev/null 2>&1 || die "GitHub CLI is missing or not logged in; run gh auth login"
 git fetch -q origin
-[ "$(git rev-list --count HEAD..@{u})" = 0 ] || die "Branch is behind its upstream; pull first"
+[ "$(git rev-list --count 'HEAD..@{u}')" = 0 ] || die "Branch is behind its upstream; pull first"
 
 current=$(sed -n 's/^ *versionName = "\(.*\)"$/\1/p' "$gradle")
 code=$(( $(sed -n 's/^ *versionCode = \([0-9]*\)$/\1/p' "$gradle") + 1 ))
@@ -37,7 +38,8 @@ read -r -p "Release $current -> $version (versionCode $((code - 1)) -> $code) on
 [[ $answer == [yY] ]] || die "Aborted"
 
 perl -pi -e "s/^(\s*versionName = )\".*\"\$/\${1}\"$version\"/; s/^(\s*versionCode = )\d+\$/\${1}$code/" "$gradle"
-git commit -q -m "chore(release): v$version" "$gradle"
+perl -pi -e "s/^(\s*\"version\": )\".*\"/\${1}\"$version\"/" "$tauri"
+git commit -q -m "chore(release): v$version" "$gradle" "$tauri"
 git tag "v$version"
 git push --atomic origin HEAD "v$version"
 gh release create "v$version" --title "v$version" --generate-notes

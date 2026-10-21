@@ -69,7 +69,7 @@ Android Studio 请直接打开 `android/`。各端的构建命令在对应目录
 
 ## 桌面端与手机绑定
 
-本次构建产物：`artifacts/open-doubao-phone-desktop-0.1.0-macos-arm64.zip`（Apple Silicon Mac，解压得到 `.app`）和 `artifacts/open-doubao-phone-0.1.0-lan-debug.apk`。macOS 应用仅带本地临时签名，未做 Developer ID 签名或公证。
+在仓库根目录运行 `./release.sh`（或 `./release.sh patch|minor|major|X.Y.Z`），会同步更新 Android 与桌面安装包版本并创建 GitHub Release。发布后 CI 分别构建并上传 APK、macOS Apple Silicon / Intel 的 `.dmg`、Windows x64 的 `.exe` 安装包，以及 Linux x64 的 `.deb` 和 `.AppImage`。需要等对应构建任务完成，Release 附件才会出现。macOS 应用仅带临时签名，未做 Developer ID 签名或公证；Windows 安装包未配置代码签名。
 
 开发运行需要 Node.js 20.19+/22.12+、Rust stable，以及对应系统的 Tauri 构建环境（macOS 使用 Xcode Command Line Tools）。
 
@@ -79,7 +79,7 @@ npm ci
 npm run desktop
 ```
 
-1. 电脑和手机连接同一 Wi-Fi/局域网，在手机上安装本次构建的 `android/app/build/outputs/apk/debug/app-debug.apk`，完成模型配置与应用范围，并开启无障碍服务。
+1. 电脑和手机连接同一 Wi-Fi/局域网，在手机上安装对应版本的 APK，完成模型配置与应用范围，并开启无障碍服务。
 2. 桌面点击「绑定手机」，选择手机能访问的电脑局域网 IPv4 地址，点击「生成设备码」，显示绑定二维码和可复制的设备码。有 VPN 或多个网卡时应选择 Wi-Fi/有线网卡对应的地址。
 3. 在手机设置的「桌面远程」页签中点击「扫码绑定」，允许相机权限后扫描桌面二维码，自动绑定并开启接收；也可以粘贴完整设备码，点击「绑定并开启接收」。扫码在手机本地处理，无需 Google Play 服务。二维码与设备码五分钟内有效，重新生成会使旧码失效；绑定成功后用于后续重连的凭据会保存。二维码和设备码包含授权凭据，请只交给自己的手机。
 4. 桌面显示已连接后即可下发任务。手机需保持解锁，任务使用手机已保存的模型和应用范围；本地与桌面任务共用单任务限制，暂停中的任务也占用当前任务。可在桌面停止当前任务，或在手机悬浮球停止；需要手动处理时，在手机上处理完再点击手机或桌面的「继续」（桌面继续同样要求手机已解锁）。
