@@ -397,7 +397,7 @@ test('browser preview explains native runtime and has no horizontal overflow', a
 test('model settings preserve hidden keys and send replacements only when entered', async ({ page }, testInfo) => {
   await bridge(page);
   await page.goto('/');
-  await page.getByRole('button', { name: '模型配置', exact: true }).click();
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
   await expect(page.getByLabel('Jev 接口地址', { exact: true })).toHaveValue('https://jev.example/v1');
   await expect(page.getByLabel('Jev API Key（可选）', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('Jev API Key（可选）', { exact: true })).toHaveAttribute('placeholder', '已设置，留空保留');
@@ -409,7 +409,7 @@ test('model settings preserve hidden keys and send replacements only when entere
   await page.screenshot({ path: testInfo.outputPath('model-settings.png'), fullPage: true });
   await page.getByRole('button', { name: '保存到手机', exact: true }).click();
   await expect(page.locator('#model-dialog')).not.toBeVisible();
-  await expect(page.locator('#notice')).toContainText('模型配置已保存到手机');
+  await expect(page.locator('#notice')).toContainText('模型与语音设置已保存到手机');
   expect(await page.evaluate(() => window.testCalls.find(call => call.args?.method === 'config.set').args.params)).toEqual({
     jevEndpoint: 'https://jev.example/v1', jevModel: 'new-jev', jevKey: null,
     chatEndpoint: 'https://new.example/v1', chatModel: 'chat', chatKey: 'replacement-secret', language: 'zh-CN', jevVision: false,
@@ -423,7 +423,7 @@ test('Jev vision switch loads from the phone and is saved both on and off', asyn
   await page.goto('/');
   for (const enabled of [false, true]) {
     await page.evaluate(value => { window.testConfig.jevVision = value; }, enabled);
-    await page.getByRole('button', { name: '模型配置', exact: true }).click();
+    await page.getByRole('button', { name: '模型与语音', exact: true }).click();
     const toggle = page.getByRole('checkbox', { name: 'Jev 多模态（实验）' });
     await expect(toggle).toBeChecked({ checked: enabled });
     expect((await toggle.boundingBox()).width).toBeLessThan(30);
@@ -434,10 +434,10 @@ test('Jev vision switch loads from the phone and is saved both on and off', asyn
   }
 });
 
-test('model save failure stays editable, busy tasks block saving, and disconnect clears secrets', async ({ page }) => {
+test('model save failure stays editable, busy tasks save voice only, and disconnect clears secrets', async ({ page }) => {
   await bridge(page);
   await page.goto('/');
-  await page.getByRole('button', { name: '模型配置', exact: true }).click();
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
   await expect(page.locator('#model-save')).toBeEnabled();
   await page.getByLabel('Jev API Key（可选）', { exact: true }).fill('draft-secret');
   await page.evaluate(() => { window.testConfigFailure = '手机保存失败'; });
@@ -445,7 +445,9 @@ test('model save failure stays editable, busy tasks block saving, and disconnect
   await expect(page.locator('#model-message')).toContainText('手机保存失败');
   await expect(page.locator('#model-save')).toBeEnabled();
   await page.evaluate(() => { window.testSnapshot.state = { status: 'PAUSED' }; });
-  await expect(page.locator('#model-save')).toBeDisabled();
+  await expect(page.locator('#model-save')).toHaveText('仅保存语音设置');
+  await expect(page.locator('#jev-key')).toBeDisabled();
+  await expect(page.locator('#tts-voice')).toBeEnabled();
   await page.evaluate(() => { window.testSnapshot.connected = false; });
   await expect(page.locator('#model-dialog')).not.toBeVisible();
   await expect(page.locator('#jev-key')).toHaveValue('');
@@ -456,13 +458,13 @@ test('a model response arriving after closing is ignored and Jev is optional', a
   await bridge(page);
   await page.goto('/');
   await page.evaluate(() => { window.testConfigPending = true; });
-  await page.getByRole('button', { name: '模型配置', exact: true }).click();
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
   await expect.poll(() => page.evaluate(() => typeof window.finishConfig)).toBe('function');
   await page.locator('#model-dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.evaluate(() => window.finishConfig());
   await expect(page.locator('#jev-endpoint')).toHaveValue('');
   await page.evaluate(() => { window.testConfigPending = false; window.testConfig.hasJevKey = false; });
-  await page.getByRole('button', { name: '模型配置', exact: true }).click();
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
   await expect(page.locator('#jev-key')).not.toHaveAttribute('required');
   await expect(page.locator('#jev-key')).toHaveAttribute('placeholder', '留空不启用 Jev');
 });
@@ -472,7 +474,7 @@ test('model settings can omit Jev or disable a saved Jev without forwarding its 
   await page.goto('/');
   for (const hasJevKey of [false, true]) {
     await page.evaluate(hasKey => { window.testConfig.hasJevKey = hasKey; }, hasJevKey);
-    await page.getByRole('button', { name: '模型配置', exact: true }).click();
+    await page.getByRole('button', { name: '模型与语音', exact: true }).click();
     if (hasJevKey) {
       await page.locator('#jev-endpoint').fill('https://changed.example/v1');
       await expect(page.locator('#jev-key')).toHaveAttribute('required', '');
@@ -545,7 +547,7 @@ test('app scope mirrors the phone picker and saves the selection', async ({ page
 test('voice settings keep the hidden token and require a new one for a new endpoint', async ({ page }, testInfo) => {
   await bridge(page);
   await page.goto('/');
-  await page.getByRole('button', { name: '语音播报', exact: true }).click();
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
   const endpoint = page.getByLabel('在线播报接口地址');
   const token = page.getByLabel('在线播报 Token');
   await expect(endpoint).toHaveValue('https://speech.example/v1/audio/speech');
@@ -558,7 +560,8 @@ test('voice settings keep the hidden token and require a new one for a new endpo
   await page.getByLabel('音色 ID').fill(' voice-2 ');
   await page.screenshot({ path: testInfo.outputPath('voice-settings.png'), fullPage: true });
   await page.getByRole('button', { name: '保存到手机', exact: true }).click();
-  await expect(page.locator('#tts-dialog')).not.toBeVisible();
+  await expect(page.locator('#model-dialog')).not.toBeVisible();
+  expect(await page.evaluate(() => window.testCalls.filter(c => c.args?.method === 'config.set').length)).toBe(1);
   await expect(page.locator('#notice')).toContainText('使用本地播报');
   expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'tts.set').args.params))
     .toEqual({ endpoint: '', token: null, model: 'eleven', voice: 'voice-2' });
@@ -569,15 +572,16 @@ test('voice settings save a new online token while a task runs', async ({ page }
   await page.goto('/');
   await page.evaluate(() => { window.testSnapshot.state = { taskId: 'task-1', status: 'RUNNING', goal: 'x', message: '', steps: 1, result: '', log: [] }; });
   await expect(page.locator('#task-badge')).toHaveText('正在执行');
-  await page.getByRole('button', { name: '语音播报', exact: true }).click();
-  await expect(page.locator('#tts-save')).toHaveText('保存到手机');
-  await expect(page.locator('#tts-save')).toBeEnabled();
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
+  await expect(page.locator('#model-save')).toHaveText('仅保存语音设置');
+  await expect(page.locator('#model-save')).toBeEnabled();
   await page.getByLabel('在线播报接口地址').fill(' https://other.example/v1/audio/speech ');
   await page.getByLabel('在线播报 Token').fill(' new-token ');
   await page.getByLabel('播报模型').fill('flash');
-  await page.getByRole('button', { name: '保存到手机', exact: true }).click();
-  await expect(page.locator('#tts-dialog')).not.toBeVisible();
-  await expect(page.locator('#notice')).toContainText('在线播报设置已保存到手机');
+  await page.getByRole('button', { name: '仅保存语音设置', exact: true }).click();
+  await expect(page.locator('#model-dialog')).not.toBeVisible();
+  await expect(page.locator('#notice')).toContainText('语音设置已保存到手机；使用在线播报');
+  expect(await page.evaluate(() => window.testCalls.some(c => c.args?.method === 'config.set'))).toBe(false);
   await expect(page.locator('#tts-token')).toHaveValue('');
   expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'tts.set').args.params))
     .toEqual({ endpoint: 'https://other.example/v1/audio/speech', token: 'new-token', model: 'flash', voice: 'voice-1' });
@@ -588,40 +592,40 @@ test('voice read and save failures stay visible, keep the draft, and disconnect 
   await bridge(page);
   await page.goto('/');
   await page.evaluate(() => { window.testFailure = '手机未响应'; });
-  await page.getByRole('button', { name: '语音播报', exact: true }).click();
-  await expect(page.locator('#tts-message')).toHaveClass(/error/);
-  await expect(page.locator('#tts-message')).toContainText('读取失败：手机未响应');
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
+  await expect(page.locator('#model-message')).toHaveClass(/error/);
+  await expect(page.locator('#model-message')).toContainText('读取失败：手机未响应');
   await expect(page.locator('#tts-endpoint')).toBeDisabled();
-  await expect(page.locator('#tts-save')).toBeDisabled();
-  await page.locator('#tts-dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(page.locator('#model-save')).toBeDisabled();
+  await page.locator('#model-dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.evaluate(() => { window.testFailure = null; window.testTtsFailure = '语音设置无效'; });
-  await page.getByRole('button', { name: '语音播报', exact: true }).click();
-  await expect(page.locator('#tts-message')).toHaveText('');
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
+  await expect(page.locator('#model-message')).toHaveText('');
   await page.getByLabel('在线播报 Token').fill('draft-token');
   await page.getByLabel('音色 ID').fill('voice-2');
   await page.getByRole('button', { name: '保存到手机', exact: true }).click();
-  await expect(page.locator('#tts-message')).toContainText('保存失败：语音设置无效');
-  await expect(page.locator('#tts-save')).toBeEnabled();
+  await expect(page.locator('#model-message')).toContainText('保存失败：语音设置无效');
+  await expect(page.locator('#model-save')).toBeEnabled();
   await expect(page.locator('#tts-token')).toHaveValue('draft-token');
   await expect(page.locator('#tts-voice')).toHaveValue('voice-2');
   await page.evaluate(() => { window.testSnapshot.connected = false; });
-  await expect(page.locator('#tts-dialog')).not.toBeVisible();
+  await expect(page.locator('#model-dialog')).not.toBeVisible();
   await expect(page.locator('#tts-token')).toHaveValue('');
-  await expect(page.getByRole('button', { name: '语音播报', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '模型与语音', exact: true })).toBeDisabled();
 });
 
 test('a voice response arriving after closing is ignored and an unset token stays optional', async ({ page }) => {
   await bridge(page);
   await page.goto('/');
   await page.evaluate(() => { window.testTtsPending = true; });
-  await page.getByRole('button', { name: '语音播报', exact: true }).click();
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
   await expect.poll(() => page.evaluate(() => typeof window.finishTts)).toBe('function');
-  await page.locator('#tts-dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  await page.locator('#model-dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.evaluate(() => { window.finishTts(); return new Promise(resolve => setTimeout(resolve)); });
   await expect(page.locator('#tts-endpoint')).toHaveValue('');
   await expect(page.locator('#tts-token')).not.toHaveAttribute('placeholder');
   await page.evaluate(() => { window.testTtsPending = false; window.testTts.hasToken = false; });
-  await page.getByRole('button', { name: '语音播报', exact: true }).click();
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
   await expect(page.locator('#tts-token')).toHaveAttribute('placeholder', '未设置，使用本地播报');
   await page.getByLabel('在线播报接口地址').fill('https://other.example/v1/audio/speech');
   await expect(page.locator('#tts-token')).not.toHaveAttribute('required');
@@ -644,7 +648,7 @@ test('app scope cannot change during a task and closes on disconnect', async ({ 
 test('connection test sends unsaved form values and never saves them', async ({ page }) => {
   await bridge(page);
   await page.goto('/');
-  await page.getByRole('button', { name: '模型配置', exact: true }).click();
+  await page.getByRole('button', { name: '模型与语音', exact: true }).click();
   await page.getByLabel('通用模型名称', { exact: true }).fill('draft-model');
   await page.getByRole('button', { name: '测试连接' }).click();
   await expect(page.locator('#model-message')).toContainText('连接正常');

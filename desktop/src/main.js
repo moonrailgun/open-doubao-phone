@@ -28,8 +28,6 @@ let appAccess = null;
 let appsSaving = false;
 let appsRequest = 0;
 let ttsConfig = null;
-let ttsSaving = false;
-let ttsRequest = 0;
 let shownRecord = null;
 let deleting = false;
 const recordHeight = 96;
@@ -165,18 +163,15 @@ function controls() {
   $('refresh').disabled = !snapshot.connected || refreshing;
   $('model-open').disabled = !snapshot.connected;
   $('model-fields').disabled = !snapshot.connected || !modelConfig || modelSaving || running || paused;
-  $('model-save').disabled = $('model-fields').disabled || modelTesting;
-  $('model-save').textContent = modelSaving ? '正在保存…' : running || paused ? '请先停止当前任务' : '保存到手机';
+  $('tts-fields').disabled = !snapshot.connected || !ttsConfig || modelSaving;
+  $('model-save').disabled = $('tts-fields').disabled || modelTesting;
+  $('model-save').textContent = modelSaving ? '正在保存…' : running || paused ? '仅保存语音设置' : '保存到手机';
   $('model-test').disabled = $('model-fields').disabled || modelTesting;
   $('model-test').textContent = modelTesting ? '正在测试…' : '测试连接';
   $('apps-open').disabled = !snapshot.connected;
   $('apps-fields').disabled = !snapshot.connected || !appAccess || appsSaving || running || paused;
   $('apps-save').disabled = $('apps-fields').disabled || !appAccess.selected.size;
   $('apps-save').textContent = appsSaving ? '正在保存…' : running || paused ? '请先停止当前任务' : '保存到手机';
-  $('tts-open').disabled = !snapshot.connected;
-  $('tts-fields').disabled = !snapshot.connected || !ttsConfig || ttsSaving;
-  $('tts-save').disabled = $('tts-fields').disabled;
-  $('tts-save').textContent = ttsSaving ? '正在保存…' : '保存到手机';
   $('record-delete').hidden = !shownRecord;
   $('record-delete').disabled = !snapshot.connected || deleting || running || paused;
   $('record-delete').title = running || paused ? '请先停止当前任务' : '';
@@ -204,8 +199,6 @@ function render(next) {
     clearModelConfig();
     $('apps-dialog').close();
     clearApps();
-    $('tts-dialog').close();
-    clearTts();
   }
   $('device-name').textContent = next.device?.name || '尚未绑定设备';
   $('connection-status').textContent = next.connected ? '已连接' : next.device ? '等待手机连接' : next.listening ? '可以绑定手机' : '连接服务未启动';
@@ -385,6 +378,7 @@ $('refresh').addEventListener('click', refreshRecords);
 function clearModelConfig() {
   modelRequest += 1;
   modelConfig = null;
+  ttsConfig = null;
   modelSaving = false;
   modelTesting = false;
   $('model-form').reset();
@@ -405,9 +399,10 @@ $('model-open').addEventListener('click', async () => {
   modelMessage('正在读取手机配置…');
   $('model-dialog').showModal();
   try {
-    const config = await invoke('request', { method: 'config.get', params: {} });
+    const [config, tts] = await Promise.all(['config.get', 'tts.get'].map(method => invoke('request', { method, params: {} })));
     if (current !== modelRequest || !$('model-dialog').open) return;
     modelConfig = config;
+    ttsConfig = tts;
     $('jev-endpoint').value = config.jevEndpoint;
     $('jev-model').value = config.jevModel;
     $('jev-vision').checked = config.jevVision === true;
@@ -424,6 +419,10 @@ $('model-open').addEventListener('click', async () => {
       $('model-language').append(option);
     }
     $('model-language').value = config.language;
+    $('tts-endpoint').value = tts.endpoint;
+    $('tts-token').placeholder = tts.hasToken ? '已设置，留空保留' : '未设置，使用本地播报';
+    $('tts-model').value = tts.model;
+    $('tts-voice').value = tts.voice;
     modelMessage('');
   } catch (error) { if (current === modelRequest) modelMessage(`读取失败：${message(error)}`, true); }
   finally { if (current === modelRequest) controls(); }
@@ -434,7 +433,7 @@ const modelParams = () => ({
   language: $('model-language').value, jevVision: $('jev-vision').checked,
 });
 $('model-test').addEventListener('click', async () => {
-  if ($('model-test').disabled || !$('model-form').reportValidity()) return;
+  if ($('model-test').disabled || ![...$('model-fields').elements].every(field => field.reportValidity())) return;
   const current = modelRequest;
   modelTesting = true;
   controls();
@@ -449,16 +448,20 @@ $('model-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   if ($('model-save').disabled) return;
   const current = modelRequest;
+  const saveModel = !$('model-fields').disabled;
   const params = modelParams();
+  const ttsParams = { endpoint: $('tts-endpoint').value.trim(), token: $('tts-token').value.trim() || null,
+    model: $('tts-model').value.trim(), voice: $('tts-voice').value.trim() };
   modelSaving = true;
   controls();
   modelMessage('');
   try {
-    await invoke('request', { method: 'config.set', params });
+    if (saveModel) await invoke('request', { method: 'config.set', params });
+    const tts = await invoke('request', { method: 'tts.set', params: ttsParams });
     if (current !== modelRequest) return;
     $('model-dialog').close();
     clearModelConfig();
-    notice('模型配置已保存到手机，下一次任务生效。');
+    notice(`${saveModel ? '模型与语音设置已保存到手机，下一次任务生效' : '语音设置已保存到手机'}；${tts.hasToken ? '使用在线播报' : '使用本地播报'}。`);
   } catch (error) { if (current === modelRequest) modelMessage(`保存失败：${message(error)}`, true); }
   finally { if (current === modelRequest) { modelSaving = false; controls(); } }
 });
@@ -541,51 +544,6 @@ $('apps-form').addEventListener('submit', async (event) => {
     notice('应用范围已保存到手机，下一次任务生效。');
   } catch (error) { if (current === appsRequest) appsMessage(`保存失败：${message(error)}`, true); }
   finally { if (current === appsRequest) { appsSaving = false; controls(); } }
-});
-function clearTts() {
-  ttsRequest += 1;
-  ttsConfig = null;
-  ttsSaving = false;
-  $('tts-form').reset();
-  controls();
-}
-const ttsMessage = (text, error) => dialogMessage('tts-message', text, error);
-$('tts-dialog').addEventListener('close', clearTts);
-$('tts-form').addEventListener('input', controls);
-$('tts-open').addEventListener('click', async () => {
-  clearTts();
-  const current = ttsRequest;
-  ttsMessage('正在读取手机语音设置…');
-  $('tts-dialog').showModal();
-  try {
-    const tts = await invoke('request', { method: 'tts.get', params: {} });
-    if (current !== ttsRequest || !$('tts-dialog').open) return;
-    ttsConfig = tts;
-    $('tts-endpoint').value = tts.endpoint;
-    $('tts-token').placeholder = tts.hasToken ? '已设置，留空保留' : '未设置，使用本地播报';
-    $('tts-model').value = tts.model;
-    $('tts-voice').value = tts.voice;
-    ttsMessage('');
-  } catch (error) { if (current === ttsRequest) ttsMessage(`读取失败：${message(error)}`, true); }
-  finally { if (current === ttsRequest) controls(); }
-});
-$('tts-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if ($('tts-save').disabled) return;
-  const current = ttsRequest;
-  const params = { endpoint: $('tts-endpoint').value.trim(), token: $('tts-token').value.trim() || null,
-    model: $('tts-model').value.trim(), voice: $('tts-voice').value.trim() };
-  ttsSaving = true;
-  controls();
-  ttsMessage('');
-  try {
-    const saved = await invoke('request', { method: 'tts.set', params });
-    if (current !== ttsRequest) return;
-    $('tts-dialog').close();
-    clearTts();
-    notice(saved.hasToken ? '在线播报设置已保存到手机。' : '语音设置已保存到手机，使用本地播报。');
-  } catch (error) { if (current === ttsRequest) ttsMessage(`保存失败：${message(error)}`, true); }
-  finally { if (current === ttsRequest) { ttsSaving = false; controls(); } }
 });
 $('pair-open').addEventListener('click', () => {
   $('address').replaceChildren(...snapshot.addresses.map((address) => {

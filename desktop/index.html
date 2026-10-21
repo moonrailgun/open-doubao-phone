@@ -14,9 +14,8 @@
           <div class="section-heading"><h2>我的手机</h2><span id="connection-dot" class="dot"></span></div>
           <div class="device"><i data-lucide="smartphone"></i><div><strong id="device-name">尚未绑定设备</strong><span id="connection-status" role="status">正在启动…</span></div></div>
           <button id="pair-open" class="button secondary wide"><i data-lucide="smartphone-nfc"></i>绑定手机</button>
-          <button id="model-open" class="button secondary wide" disabled>模型配置</button>
+          <button id="model-open" class="button secondary wide" disabled>模型与语音</button>
           <button id="apps-open" class="button secondary wide" disabled>应用范围</button>
-          <button id="tts-open" class="button secondary wide" disabled>语音播报</button>
           <button id="forget" class="icon-button danger" aria-label="解除绑定" title="解除绑定" hidden><i data-lucide="link-2-off"></i></button>
         </div>
         <div class="sidebar-note"><i data-lucide="network" class="network-icon"></i><strong>局域网直连</strong><p>电脑和手机连接同一网络。任务由手机执行，结果回到这里。</p><p id="server-address"></p></div>
@@ -55,7 +54,7 @@
       <div class="dialog-actions"><button id="update-download" class="button primary" hidden>下载安装包</button></div>
     </dialog>
     <dialog id="model-dialog" aria-labelledby="model-title">
-      <div class="dialog-heading"><div><h2 id="model-title">手机模型配置</h2><p>保存到当前手机，下一次任务使用新配置。已保存的 API Key 不会显示，留空即可保留；修改接口地址时需重新填写。</p></div><button class="close-dialog icon-button" aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div class="dialog-heading"><div><h2 id="model-title">模型与语音</h2><p>保存到当前手机，下一次任务使用新配置。已保存的 API Key 和 Token 不会显示，留空即可保留；修改接口地址时需重新填写。</p></div><button class="close-dialog icon-button" aria-label="关闭"><i data-lucide="x"></i></button></div>
       <form id="model-form" autocomplete="off">
         <fieldset id="model-fields" disabled>
           <fieldset><legend>通用规划模型</legend>
@@ -71,6 +70,13 @@
             <p class="muted">优先由 Jev 看截图并决定操作；置信度不足时，由通用视觉模型决定这一步，下一步再交回 Jev。需支持 Box 的 Jev 1.14。默认关闭。</p>
           </fieldset>
           <label for="model-language">总结语言</label><select id="model-language"><option value="">跟随系统</option><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option></select>
+        </fieldset>
+        <fieldset id="tts-fields" disabled><legend>语音播报</legend>
+          <p class="muted">填写 Token 启用在线播报，清空接口地址改用本地播报；在线请求出声前失败时会回退到本地。在线播报会将文本发送至所填接口，可能产生费用。任务执行中也可修改。</p>
+          <label for="tts-endpoint">在线播报接口地址</label><input id="tts-endpoint" type="url" maxlength="2048" spellcheck="false" placeholder="完整 HTTPS 地址，包含 /v1/audio/speech" />
+          <label for="tts-token">在线播报 Token</label><input id="tts-token" type="password" maxlength="8192" autocomplete="new-password" />
+          <label for="tts-model">播报模型</label><input id="tts-model" required maxlength="200" spellcheck="false" />
+          <label for="tts-voice">音色 ID</label><input id="tts-voice" required maxlength="200" spellcheck="false" />
         </fieldset>
         <p class="muted">Jev 可选，未配置时所有指令按任务执行；清空 Jev 接口地址可停用已保存的 Jev。测试连接会向已配置服务发请求，不会保存，可能产生少量费用。</p>
         <p id="model-message" role="status" class="muted"></p>
@@ -88,20 +94,6 @@
         </fieldset>
         <p id="apps-message" role="status" class="muted"></p>
         <div class="dialog-actions"><button type="button" class="close-dialog button secondary">取消</button><button id="apps-save" type="submit" class="button primary" disabled>保存到手机</button></div>
-      </form>
-    </dialog>
-    <dialog id="tts-dialog" aria-labelledby="tts-title">
-      <div class="dialog-heading"><div><h2 id="tts-title">手机语音播报</h2><p>保存到当前手机。填写 Token 启用在线播报，清空接口地址改用本地播报；在线请求出声前失败时会回退到本地。已保存的 Token 不会显示，留空即可保留；修改接口地址时需重新填写。</p></div><button class="close-dialog icon-button" aria-label="关闭"><i data-lucide="x"></i></button></div>
-      <form id="tts-form" autocomplete="off">
-        <fieldset id="tts-fields" disabled>
-          <label for="tts-endpoint">在线播报接口地址</label><input id="tts-endpoint" type="url" maxlength="2048" spellcheck="false" placeholder="完整 HTTPS 地址，包含 /v1/audio/speech" />
-          <label for="tts-token">在线播报 Token</label><input id="tts-token" type="password" maxlength="8192" autocomplete="new-password" />
-          <label for="tts-model">播报模型</label><input id="tts-model" required maxlength="200" spellcheck="false" />
-          <label for="tts-voice">音色 ID</label><input id="tts-voice" required maxlength="200" spellcheck="false" />
-        </fieldset>
-        <p class="muted">在线播报会将文本发送至所填接口，可能产生费用。</p>
-        <p id="tts-message" role="status" class="muted"></p>
-        <div class="dialog-actions"><button type="button" class="close-dialog button secondary">取消</button><button id="tts-save" type="submit" class="button primary" disabled>保存到手机</button></div>
       </form>
     </dialog>
     <dialog id="pair-dialog" aria-labelledby="pair-title">
