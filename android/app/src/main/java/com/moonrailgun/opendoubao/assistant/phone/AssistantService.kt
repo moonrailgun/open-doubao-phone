@@ -557,6 +557,8 @@ class AssistantService : AccessibilityService() {
             setTextColor(Color.WHITE); setHintTextColor(Color.argb(140, 255, 255, 255))
             background = rounded(Color.argb(40, 255, 255, 255), 12)
             setPadding(dp(10), dp(8), dp(10), dp(8))
+            // One line matches the buttons beside it.
+            minHeight = dp(44)
             // Single-line input type keeps the Go key; wrapping still shows long commands. It resets the field to one
             // line, so the line limit comes after it.
             inputType = EditorInfo.TYPE_CLASS_TEXT; setHorizontallyScrolling(false); maxLines = 4
@@ -607,7 +609,8 @@ class AssistantService : AccessibilityService() {
         inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(LinearLayout(this@AssistantService).apply {
-                gravity = Gravity.CENTER_VERTICAL
+                // The buttons stay by the last line as the field grows.
+                gravity = Gravity.BOTTOM
                 setOnTouchListener(drag)
                 addView(field, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
                 addView(iconButton(R.drawable.lucide_mic, "语音输入") { voice.start() },
