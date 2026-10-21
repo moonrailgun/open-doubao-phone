@@ -376,6 +376,11 @@ class MainActivity : ComponentActivity() {
                         }
                         when (settingsTab) {
                             0 -> {
+                                Section("规划与视觉模型", if (config.jevVision) "生成输入文字和最终回答，并在 Jev 置信度不足时看截图决定下一步。需要支持图片输入的 Chat Completions 接口。" else "拆解任务、看截图和总结结果。需要支持图片输入的 Chat Completions 接口。") {
+                                    SettingField("完整接口地址", config.chatEndpoint, "通常以 /v1/chat/completions 结尾") { config = config.copy(chatEndpoint = it.trim()) }
+                                    SettingField("模型", config.chatModel) { config = config.copy(chatModel = it.trim()) }
+                                    KeyField("API Key", config.chatKey) { config = config.copy(chatKey = it.trim()) }
+                                }
                                 Section("Jev 决策模型", "可选：先判断聊天还是任务，再挑选操作和判断效果。API Key 留空时停用，所有指令按任务执行。") {
                                     SettingField("接口地址", config.jevEndpoint) { config = config.copy(jevEndpoint = it.trim()) }
                                     SettingField("模型", config.jevModel) { config = config.copy(jevModel = it.trim()) }
@@ -388,11 +393,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                     Text("开启后优先由 Jev 看截图并决定操作；置信度不足时，由通用视觉模型决定这一步，下一步再交回 Jev。需支持 Box 的 Jev 1.14。默认关闭，保存后新任务生效。",
                                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Section("规划与视觉模型", if (config.jevVision) "生成输入文字和最终回答，并在 Jev 置信度不足时看截图决定下一步。需要支持图片输入的 Chat Completions 接口。" else "拆解任务、看截图和总结结果。需要支持图片输入的 Chat Completions 接口。") {
-                                    SettingField("完整接口地址", config.chatEndpoint, "通常以 /v1/chat/completions 结尾") { config = config.copy(chatEndpoint = it.trim()) }
-                                    SettingField("模型", config.chatModel) { config = config.copy(chatModel = it.trim()) }
-                                    KeyField("API Key", config.chatKey) { config = config.copy(chatKey = it.trim()) }
                                 }
                                 Section("语言", "任务结束时的总结使用这个语言。") {
                                     LanguageField(config.language) { config = config.copy(language = it) }

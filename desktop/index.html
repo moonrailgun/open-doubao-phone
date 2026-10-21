@@ -58,17 +58,17 @@
       <div class="dialog-heading"><div><h2 id="model-title">手机模型配置</h2><p>保存到当前手机，下一次任务使用新配置。已保存的 API Key 不会显示，留空即可保留；修改接口地址时需重新填写。</p></div><button class="close-dialog icon-button" aria-label="关闭"><i data-lucide="x"></i></button></div>
       <form id="model-form" autocomplete="off">
         <fieldset id="model-fields" disabled>
+          <fieldset><legend>通用规划模型</legend>
+            <label for="chat-endpoint">通用模型接口地址</label><input id="chat-endpoint" type="url" required maxlength="2048" spellcheck="false" />
+            <label for="chat-model">通用模型名称</label><input id="chat-model" required maxlength="200" spellcheck="false" />
+            <label for="chat-key">通用模型 API Key</label><input id="chat-key" type="password" maxlength="8192" autocomplete="new-password" />
+          </fieldset>
           <fieldset><legend>Jev 判断模型</legend>
             <label for="jev-endpoint">Jev 接口地址</label><input id="jev-endpoint" type="url" maxlength="2048" spellcheck="false" />
             <label for="jev-model">Jev 模型名称</label><input id="jev-model" maxlength="200" spellcheck="false" />
             <label for="jev-key">Jev API Key（可选）</label><input id="jev-key" type="password" maxlength="8192" autocomplete="new-password" />
             <label class="check"><input id="jev-vision" type="checkbox" /> Jev 多模态（实验）</label>
             <p class="muted">优先由 Jev 看截图并决定操作；置信度不足时，由通用视觉模型决定这一步，下一步再交回 Jev。需支持 Box 的 Jev 1.14。默认关闭。</p>
-          </fieldset>
-          <fieldset><legend>通用规划模型</legend>
-            <label for="chat-endpoint">通用模型接口地址</label><input id="chat-endpoint" type="url" required maxlength="2048" spellcheck="false" />
-            <label for="chat-model">通用模型名称</label><input id="chat-model" required maxlength="200" spellcheck="false" />
-            <label for="chat-key">通用模型 API Key</label><input id="chat-key" type="password" maxlength="8192" autocomplete="new-password" />
           </fieldset>
           <label for="model-language">总结语言</label><select id="model-language"><option value="">跟随系统</option><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option></select>
         </fieldset>
