@@ -355,7 +355,13 @@ fn validate_request(method: &str, params: &Value) -> Result<(), String> {
                 return Err("应用包名无效".into());
             }
         }
-        "config.set" | "config.test" if object.len() == 7 => {
+        "config.set" | "config.test" if object.len() == 7 || object.len() == 8 => {
+            if object.len() == 8 {
+                object
+                    .get("jevVision")
+                    .and_then(Value::as_bool)
+                    .ok_or("字段 jevVision 必须是布尔值")?;
+            }
             for (field, limit) in [
                 ("jevEndpoint", 2048),
                 ("chatEndpoint", 2048),
@@ -914,6 +920,32 @@ mod tests {
         config.as_object_mut().unwrap().remove("jevKey");
         config["extra"] = Value::Null;
         assert!(validate_request("config.set", &config).is_err());
+    }
+
+    #[test]
+    fn model_requests_validate_optional_jev_vision() {
+        for method in ["config.set", "config.test"] {
+            let mut config = json!({"jevEndpoint":"https://jev.example", "jevModel":"jev", "jevKey":null,
+                "chatEndpoint":"https://chat.example", "chatModel":"chat", "chatKey":null, "language":""});
+            assert_eq!(validate_request(method, &config), Ok(()));
+            for enabled in [false, true] {
+                config["jevVision"] = json!(enabled);
+                assert_eq!(validate_request(method, &config), Ok(()));
+            }
+            for invalid in [Value::Null, json!("false"), json!(0), json!([]), json!({})] {
+                config["jevVision"] = invalid;
+                assert!(validate_request(method, &config).is_err());
+            }
+            config["jevVision"] = json!(false);
+            config["extra"] = json!(true);
+            assert!(validate_request(method, &config).is_err());
+            config.as_object_mut().unwrap().remove("jevVision");
+            assert!(validate_request(method, &config).is_err());
+            config.as_object_mut().unwrap().remove("extra");
+            config["jevVision"] = json!(true);
+            config.as_object_mut().unwrap().remove("language");
+            assert!(validate_request(method, &config).is_err());
+        }
     }
 
     #[test]
