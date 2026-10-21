@@ -149,6 +149,20 @@ details p { padding: 0 30px 24px 0; font-size: 12px; line-height: 1.95; color: v
 .meme-page figure img { width: 100%; border-radius: 8px; }
 .meme-page figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin-top: 18px; color: var(--muted); font-size: 13px; }
 .meme-page figcaption a { color: var(--ink); }
+.troubleshooting-page { max-width: 800px; padding-block: 40px; }
+.troubleshooting-page h1 { font-size: clamp(36px, 6vw, 48px); }
+.troubleshooting-page article { border-top: 1px solid var(--line); margin-top: 40px; padding-top: 32px; }
+.troubleshooting-page h2 { font-size: clamp(25px, 4vw, 32px); }
+.troubleshooting-page h3 { font-size: 20px; margin-top: 32px; }
+.troubleshooting-page p, .troubleshooting-page li { font-size: 15px; line-height: 1.95; }
+.troubleshooting-page p { margin-top: 14px; }
+.troubleshooting-page .eyebrow { margin-top: 0; font-size: 11px; }
+.troubleshooting-page .scope-note { border: 0; padding: 0; margin-bottom: 0; font-size: 13px; }
+.troubleshooting-page ol, .troubleshooting-page ul { padding-left: 24px; margin-block: 18px 0; }
+.troubleshooting-page li + li { margin-top: 12px; }
+.troubleshooting-page li p { margin-top: 4px; }
+.troubleshooting-page article a { text-decoration: underline; }
+.troubleshooting-page .troubleshooting-note { padding: 16px 20px; background: #eeeee7; border-left: 3px solid var(--accent); }
 
 @media (max-width: 1050px) {
   .wrap { width: calc(100% - 64px); }

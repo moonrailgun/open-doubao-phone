@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f6f2" />
+    <meta name="description" content="Open Doubao 豆馅排障指南：华为手机无障碍服务自动关闭的原因，以及应用启动管理、后台锁定和电池优化的设置步骤。" />
+    <meta property="og:title" content="排障指南 · Open Doubao 豆馅" />
+    <meta property="og:description" content="华为手机无障碍服务自动关闭？按步骤检查后台管理设置，让豆馅恢复工作。" />
+    <meta property="og:type" content="website" />
+    <title>排障指南 · Open Doubao 豆馅</title>
+    <link rel="icon" href="../assets/logo.png" />
+    <link rel="stylesheet" href="../styles.css" />
+    <script async defer src="https://app.tianji.dev/tracker.js" data-website-id="cmvcpucznkko65xc70kht3oky"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="header wrap">
+      <a class="brand" href="../" aria-label="Open Doubao 首页">
+        <img src="../assets/logo.png" width="38" height="38" alt="" />
+        <span>Open Doubao<span class="brand-cn">豆馅</span></span>
+      </a>
+      <nav aria-label="主导航"><a href="../">返回首页 <span aria-hidden="true">↗</span></a></nav>
+    </header>
+
+    <main id="main" class="troubleshooting-page wrap">
+      <p class="eyebrow">TROUBLESHOOTING / 使用帮助</p>
+      <h1>排障指南</h1>
+      <p class="section-description">遇到问题，从这里逐步检查。</p>
+
+      <article id="huawei-accessibility" aria-labelledby="huawei-title">
+        <h2 id="huawei-title">华为手机的无障碍服务自动关闭</h2>
+        <p class="scope-note">适用于 HarmonyOS 4.x 及以下的相关机型。不同系统版本的菜单名称可能略有差异，可在设置中搜索对应名称。</p>
+
+        <h3>为什么会发生？</h3>
+        <p>开启 Open Doubao 的无障碍服务后，过一段时间又提示未开启，可能与手机管家的后台清理有关。华为官方说明：清理后台或重启后，第三方应用可能被清理，导致无障碍服务无法启动，开关被系统识别为关闭。详见<a href="https://consumer.huawei.com/cn/support/content/zh-cn00410039/">华为无障碍服务说明</a>。</p>
+        <p>遇到这种情况，可以先调整后台管理设置，再重新开启服务。</p>
+
+        <h3>按顺序检查这四项</h3>
+        <ol>
+          <li>
+            <strong>将应用启动改为手动管理</strong>
+            <p>在设置中搜索「应用启动管理」，找到 Open Doubao，关闭「自动管理」，打开「允许自启动」「允许关联启动」「允许后台活动」。</p>
+          </li>
+          <li>
+            <strong>在最近任务中锁定应用</strong>
+            <p>打开 Open Doubao 后进入最近任务界面，下拉应用卡片加锁。确认卡片出现锁定标记，避免使用一键清理时将它结束。</p>
+          </li>
+          <li>
+            <strong>关闭对 Open Doubao 的电池优化</strong>
+            <p>在设置中搜索「电池优化」，切换到「所有应用」，找到 Open Doubao，选择「不允许」。这里的「不允许」指不允许系统对该应用进行电池优化。详见<a href="https://consumer.huawei.com/cn/support/content/zh-cn00428704/">华为后台运行设置说明</a>。</p>
+          </li>
+          <li>
+            <strong>重新开启无障碍服务</strong>
+            <p>进入「设置 → 辅助功能 → 无障碍」，在「已安装的服务」或「下载的服务」中找到 Open Doubao，重新开启。返回应用，确认无障碍状态已恢复。</p>
+          </li>
+        </ol>
+
+        <h3>设置后怎么确认？</h3>
+        <p>先执行一个简单任务，确认助手可以正常操作。随后按平时的方式使用和锁屏，观察无障碍开关是否仍然开启。如果在清理后台或重启后再次失效，检查上述设置并重新开启服务。</p>
+        <p class="troubleshooting-note">这些设置可以减少后台清理带来的影响。系统版本、其他省电策略和重启仍可能影响服务，需要结合实际使用观察。</p>
+
+        <h3>仍然会关闭？</h3>
+        <p>请在 <a href="https://github.com/moonrailgun/open-doubao-phone/issues">GitHub Issues</a> 反馈，并附上这些信息：</p>
+        <ul>
+          <li>手机型号、HarmonyOS 版本和 Open Doubao 版本。</li>
+          <li>问题发生的大致时间，以及当时是否锁屏、清理后台或重启。</li>
+          <li>上述四项的设置情况，以及无障碍开关是已关闭，还是仍开启但助手无法操作。</li>
+        </ul>
+        <p class="scope-note">如需附上截图或日志，请先遮盖 API Key、账号和聊天内容等私人信息。</p>
+      </article>
+    </main>
+
+    <footer class="footer wrap">
+      <a class="brand" href="../"><img src="../assets/logo.png" width="28" height="28" alt="" /><span>Open Doubao<span class="brand-cn">豆馅</span></span></a>
+      <p>让目标，变成行动。</p>
+      <nav aria-label="页脚导航"><a href="./" aria-current="page">排障指南</a><a href="../memes/">梗图</a><a href="https://github.com/moonrailgun/open-doubao-phone/blob/main/LICENSE">MIT License</a><a href="https://github.com/moonrailgun/open-doubao-phone/issues">反馈</a></nav>
+    </footer>
+  </body>
+</html>
