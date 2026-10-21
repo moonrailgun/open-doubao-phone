@@ -553,12 +553,13 @@ class AssistantService : AccessibilityService() {
             addView(iconButton(R.drawable.lucide_minimize_2, "收起") { collapse() }, LinearLayout.LayoutParams(dp(40), dp(40)))
         })
         val field = EditText(this).apply {
-            hint = "下一条命令"; textSize = 14f; maxLines = 4
+            hint = "下一条命令"; textSize = 14f
             setTextColor(Color.WHITE); setHintTextColor(Color.argb(140, 255, 255, 255))
             background = rounded(Color.argb(40, 255, 255, 255), 12)
             setPadding(dp(10), dp(8), dp(10), dp(8))
-            // Single-line input type keeps the Go key; wrapping still shows long commands.
-            inputType = EditorInfo.TYPE_CLASS_TEXT; setHorizontallyScrolling(false)
+            // Single-line input type keeps the Go key; wrapping still shows long commands. It resets the field to one
+            // line, so the line limit comes after it.
+            inputType = EditorInfo.TYPE_CLASS_TEXT; setHorizontallyScrolling(false); maxLines = 4
             imeOptions = EditorInfo.IME_ACTION_GO
             setOnEditorActionListener { _, _, _ -> submit(); true }
             // The window only takes focus while typing, so an auto-opened summary never steals the keyboard.
