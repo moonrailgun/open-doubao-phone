@@ -20,7 +20,7 @@
           <button id="forget" class="icon-button danger" aria-label="解除绑定" title="解除绑定" hidden><i data-lucide="link-2-off"></i></button>
         </div>
         <div class="sidebar-note"><i data-lucide="network" class="network-icon"></i><strong>局域网直连</strong><p>电脑和手机连接同一网络。任务由手机执行，结果回到这里。</p><p id="server-address"></p></div>
-        <footer>手机上的助手，电脑上的工作台。</footer>
+        <footer><span id="app-version"></span><button id="update-check" class="button secondary wide" disabled>检查更新</button>手机上的助手，电脑上的工作台。</footer>
       </aside>
       <main>
         <header class="topbar"><div><span class="eyebrow">工作台</span><h1>让手机接着做。</h1></div><span id="task-badge" class="badge">等待任务</span></header>
@@ -48,6 +48,12 @@
         </div>
       </main>
     </div>
+    <dialog id="update-dialog" aria-labelledby="update-title">
+      <div class="dialog-heading"><h2 id="update-title">应用更新</h2><button class="close-dialog icon-button" aria-label="关闭">×</button></div>
+      <p id="update-status" role="status"></p>
+      <pre id="update-notes"></pre>
+      <div class="dialog-actions"><button id="update-download" class="button primary" hidden>下载安装包</button></div>
+    </dialog>
     <dialog id="model-dialog" aria-labelledby="model-title">
       <div class="dialog-heading"><div><h2 id="model-title">手机模型配置</h2><p>保存到当前手机，下一次任务使用新配置。已保存的 API Key 不会显示，留空即可保留；修改接口地址时需重新填写。</p></div><button class="close-dialog icon-button" aria-label="关闭"><i data-lucide="x"></i></button></div>
       <form id="model-form" autocomplete="off">

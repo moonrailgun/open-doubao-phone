@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { initUpdates } from './updates.js';
 import QRCode from 'qrcode';
 import { createElement, createIcons, Check, CircleAlert, Copy, Link2, Link2Off, ListTodo, Network, Play, RefreshCw, Send, Smartphone, SmartphoneNfc, Square, Trash2, X } from 'lucide';
 import './style.css';
@@ -651,6 +652,7 @@ $('confirm-forget').addEventListener('click', async () => {
   finally { $('confirm-forget').disabled = false; }
 });
 document.querySelectorAll('.close-dialog').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
+initUpdates();
 if (isTauri()) poll();
 else {
   $('pair-open').disabled = true;
