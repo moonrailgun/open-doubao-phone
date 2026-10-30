@@ -175,8 +175,10 @@ function controls() {
   $('apps-save').disabled = $('apps-fields').disabled || !appAccess.selected.size;
   $('apps-save').textContent = appsSaving ? '正在保存…' : running || paused ? '请先停止当前任务' : '保存到手机';
   $('record-delete').hidden = !shownRecord;
-  $('record-delete').disabled = !snapshot.connected || deleting || running || paused;
+  $('record-delete').disabled = !snapshot.connected || deleting || sending || running || paused;
   $('record-delete').title = running || paused ? '请先停止当前任务' : '';
+  $('record-retry').hidden = shownRecord?.status !== 'FAILED';
+  $('record-retry').disabled = !snapshot.connected || sending || commanding || deleting || running || paused || !shownRecord?.goal?.trim();
   if (modelConfig) {
     $('jev-key').required = modelConfig.hasJevKey && Boolean($('jev-endpoint').value.trim()) && $('jev-endpoint').value.trim() !== modelConfig.jevEndpoint;
     $('chat-key').required = !modelConfig.hasChatKey || $('chat-endpoint').value.trim() !== modelConfig.chatEndpoint;
@@ -268,6 +270,10 @@ async function refreshRecords() {
     controls();
   }
 }
+function recordError(text) {
+  $('record-message').textContent = text;
+  $('record-message').scrollIntoView({ block: 'nearest' });
+}
 async function showRecord(taskId) {
   const current = ++detailRequest;
   const currentSession = session;
@@ -280,7 +286,7 @@ async function showRecord(taskId) {
   try {
     const record = await invoke('request', { method: 'records.get', params: { taskId } });
     if (current !== detailRequest || currentSession !== session) return;
-    shownRecord = taskId;
+    shownRecord = record;
     controls();
     const result = element('div', null, 'prose');
     result.append(record.result ? markdown(record.result) : '暂无结果');
@@ -308,7 +314,7 @@ async function showRecord(taskId) {
         hint.textContent = `已保存：${await invoke('download_calls', { taskId })}`;
       } catch (error) {
         hint.textContent = '';
-        $('record-message').textContent = `下载失败：${message(error)}`;
+        recordError(`下载失败：${message(error)}`);
       } finally { download.disabled = false; }
     });
     $('record-content').append(element('h2', '模型调用记录'), download, hint);
@@ -333,7 +339,7 @@ $('record-dialog').addEventListener('click', (event) => {
 });
 $('record-dialog').addEventListener('close', () => { detailRequest += 1; shownRecord = null; unmountTimeline(); controls(); });
 $('record-delete').addEventListener('click', async () => {
-  const taskId = shownRecord;
+  const taskId = shownRecord?.id;
   const currentSession = session;
   if (!taskId || $('record-delete').disabled) return;
   deleting = true;
@@ -346,23 +352,27 @@ $('record-delete').addEventListener('click', async () => {
     notice('记录已从手机删除。');
     recordKey = '';
     refreshRecords();
-  } catch (error) { if (shownRecord === taskId) $('record-message').textContent = `删除失败：${message(error)}`; }
+  } catch (error) { if (shownRecord?.id === taskId) recordError(`删除失败：${message(error)}`); }
   finally { deleting = false; controls(); }
 });
 async function startTask(goal) {
   if (!snapshot.connected || sending || ['RUNNING', 'PAUSED'].includes(snapshot.state?.status) || !goal.trim()) return;
   const currentSession = session;
+  const record = shownRecord;
   sending = true;
   controls();
   notice('');
+  $('record-message').textContent = '';
   try {
     await invoke('request', { method: 'task.start', params: { goal: goal.trim() } });
     if (currentSession !== session) return;
+    if (record && shownRecord === record) $('record-dialog').close();
     notice('任务已由手机接收。');
     render(await invoke('get_snapshot'));
   } catch (error) {
     if (currentSession !== session) return;
     notice(message(error), true);
+    if (record && shownRecord === record) recordError(message(error));
   }
   finally { sending = false; controls(); }
 }
@@ -372,6 +382,9 @@ $('task-form').addEventListener('submit', (event) => {
 });
 $('retry').addEventListener('click', () => {
   if (!$('retry').hidden && !$('retry').disabled) startTask(snapshot.state.goal);
+});
+$('record-retry').addEventListener('click', () => {
+  if (!$('record-retry').hidden && !$('record-retry').disabled) startTask(shownRecord.goal);
 });
 async function command(method, success) {
   const taskId = snapshot.state?.taskId;

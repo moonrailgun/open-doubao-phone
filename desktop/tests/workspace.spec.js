@@ -32,6 +32,7 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
           return { code: `open-doubao://pair?v=1&host=192.168.1.20&port=38687&fingerprint=${'a'.repeat(64)}&token=${'b'.repeat(64)}`, expiresAt: Date.now() + 300000 };
         }
         if (command === 'forget_device') { window.testSnapshot.device = null; window.testSnapshot.connected = false; window.testSnapshot.state = null; return; }
+        if (command === 'download_calls' && window.testDownloadFailure) throw window.testDownloadFailure;
         if (command === 'request') {
           if (window.testFailure) throw window.testFailure;
           if (args.method === 'config.get') {
@@ -42,16 +43,21 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
             if (window.testConfigFailure) throw window.testConfigFailure;
             return structuredClone(window.testConfig);
           }
-          if (args.method === 'records.list') return structuredClone(window.testRecords);
+          if (args.method === 'records.list') return window.testRecords.map(record => ({ ...record, goal: record.goal.slice(0, 240) }));
           if (args.method === 'records.get') return { ...window.testRecords.find(record => record.id === args.params.taskId), result: '<img src=x onerror=alert(1)>', log: ['12:00 读取 com.example.notes', '12:01 完成'] };
           if (args.method === 'task.start') {
             if (window.testStartPending) await new Promise(resolve => { window.finishStart = resolve; });
+            if (window.testStartFailure) throw window.testStartFailure;
             window.testSnapshot.state = { taskId: 'task-1', status: 'RUNNING', goal: args.params.goal, message: '正在读取', steps: 1, result: '', log: ['读取应用'] };
             return { taskId: 'task-1' };
           }
           if (args.method === 'task.stop') { window.testSnapshot.state.status = 'STOPPED'; return { taskId: args.params.taskId }; }
           if (args.method === 'task.resume') { window.testSnapshot.state.status = 'RUNNING'; return { taskId: args.params.taskId }; }
-          if (args.method === 'records.delete') { window.testRecords = window.testRecords.filter(record => record.id !== args.params.taskId); return { taskId: args.params.taskId }; }
+          if (args.method === 'records.delete') {
+            if (window.testDeleteFailure) throw window.testDeleteFailure;
+            window.testRecords = window.testRecords.filter(record => record.id !== args.params.taskId);
+            return { taskId: args.params.taskId };
+          }
           if (args.method === 'config.test') { if (window.testConnectionFailure) throw window.testConnectionFailure; return {}; }
           if (args.method === 'apps.get') return structuredClone(window.testApps);
           if (args.method === 'apps.set') { window.testApps.selected = args.params.apps; return { selected: args.params.apps.length }; }
@@ -164,6 +170,66 @@ test('failed task retries the full original input once and preserves the compose
   await expect(page.locator('#task-badge')).toHaveText('正在执行');
   await expect(retry).toBeHidden();
   await expect(page.getByLabel('这次需要做什么？')).toHaveValue('另外一条尚未发送的草稿');
+});
+
+test('reopening a failed record allows retry after an error without losing its input', async ({ page }, testInfo) => {
+  const goal = `从历史记录重试：\n${'任务要求和换行都需要保留。\n'.repeat(100)}`.trim();
+  const records = [{ id: 'failed-record', goal, status: 'FAILED', time: Date.now() }];
+  await bridge(page, true, records);
+  await page.goto('/');
+  await page.getByLabel('这次需要做什么？').fill('保留这条草稿');
+  await page.locator('.record-row').click();
+  const dialog = page.locator('#record-dialog');
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.locator('.record-row').click();
+  const retry = dialog.getByRole('button', { name: '重试任务', exact: true });
+  await expect(retry).toBeEnabled();
+  await page.evaluate(() => { window.testStartFailure = '手机尚未解锁'; });
+  await retry.click();
+  await expect(page.locator('#record-message')).toHaveText('手机尚未解锁');
+  await expect(page.locator('#record-message')).toBeInViewport();
+  await expect(retry).toBeEnabled();
+  await page.screenshot({ path: testInfo.outputPath('record-retry-error.png'), fullPage: true });
+  await page.evaluate(() => { window.testStartFailure = null; });
+  await retry.click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#current-goal')).toHaveText(goal);
+  await expect(page.getByLabel('这次需要做什么？')).toHaveValue('保留这条草稿');
+  const starts = await page.evaluate(() => window.testCalls.filter(call => call.args?.method === 'task.start'));
+  expect(starts.map(call => call.args.params)).toEqual([{ goal }, { goal }]);
+  expect(await page.evaluate(() => window.testRecords)).toEqual(records);
+});
+
+test('retry is limited to failed tasks and waits for the current task to finish', async ({ page }) => {
+  await bridge(page, true, [
+    { id: 'failed-record', goal: '失败的历史任务', status: 'FAILED', time: Date.now() },
+    { id: 'completed-record', goal: '完成的历史任务', status: 'COMPLETED', time: Date.now() },
+  ]);
+  await page.goto('/');
+  const dialog = page.locator('#record-dialog');
+  await page.getByRole('button', { name: /完成的历史任务/ }).click();
+  await expect(dialog.getByRole('button', { name: '重试任务', exact: true })).toBeHidden();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: /失败的历史任务/ }).click();
+  const retry = dialog.getByRole('button', { name: '重试任务', exact: true });
+  for (const status of ['RUNNING', 'PAUSED']) {
+    await page.evaluate(status => {
+      window.testSnapshot.state = { taskId: 'active-task', status, goal: '正在执行的任务', message: '', steps: 1, result: '', log: [] };
+    }, status);
+    await expect(retry).toBeDisabled();
+    await expect(page.locator('#retry')).toBeHidden();
+    await retry.dispatchEvent('click');
+  }
+  expect(await page.evaluate(() => window.testCalls.filter(call => call.args?.method === 'task.start'))).toHaveLength(0);
+  await page.evaluate(() => { window.testSnapshot.state.status = 'COMPLETED'; });
+  await expect(retry).toBeEnabled();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.evaluate(() => {
+    window.testSnapshot.state.status = 'FAILED';
+    window.testSnapshot.connected = false;
+  });
+  await expect(page.locator('#retry')).toBeVisible();
+  await expect(page.locator('#retry')).toBeDisabled();
 });
 
 test('device code and unbinding have explicit controls and clear credentials', async ({ page }) => {
@@ -723,3 +789,22 @@ test('a record can be deleted from its details and the history refreshes', async
   await expect(page.locator('#records')).toContainText('还没有记录');
   expect(await page.evaluate(() => window.testCalls.find(c => c.args?.method === 'records.delete').args.params)).toEqual({ taskId: 'record-1' });
 });
+
+for (const [action, button, failure] of [
+  ['delete', '删除记录', 'testDeleteFailure'],
+  ['download', '下载模型调用记录（zip）', 'testDownloadFailure'],
+]) {
+  test(`a long record keeps ${action} failures in view`, async ({ page }) => {
+    await bridge(page, true, [{ id: 'long-record', goal: '完整任务内容。\n'.repeat(220), status: 'FAILED', time: Date.now() }]);
+    await page.goto('/');
+    await page.locator('.record-row').click();
+    await page.evaluate(failure => { window[failure] = '手机 10 秒内未回复'; }, failure);
+    const actionButton = page.getByRole('button', { name: button, exact: true });
+    await actionButton.scrollIntoViewIfNeeded();
+    expect(await page.locator('#record-dialog').evaluate(dialog => dialog.scrollTop)).toBeGreaterThan(0);
+    await actionButton.click();
+    await expect(page.locator('#record-message')).toContainText('手机 10 秒内未回复');
+    await expect(page.locator('#record-message')).toBeInViewport();
+    await expect(actionButton).toBeEnabled();
+  });
+}

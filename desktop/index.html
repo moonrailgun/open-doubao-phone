@@ -106,7 +106,7 @@
       </div>
       <p id="pair-error" class="error" role="alert"></p>
     </dialog>
-    <dialog id="record-dialog" class="record-dialog" aria-labelledby="record-title"><div class="dialog-heading"><h2 id="record-title">任务详情</h2><button class="icon-button close-dialog" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></div><div id="record-content"></div><div class="dialog-actions"><p id="record-message" class="error" role="alert"></p><button id="record-delete" class="button destructive" hidden><i data-lucide="trash-2"></i>删除记录</button></div></dialog>
+    <dialog id="record-dialog" class="record-dialog" aria-labelledby="record-title"><div class="dialog-heading"><h2 id="record-title">任务详情</h2><span class="task-actions"><button id="record-retry" class="icon-button" aria-label="重试任务" title="重试任务" hidden><i data-lucide="refresh-cw"></i></button><button class="icon-button close-dialog" aria-label="关闭" title="关闭"><i data-lucide="x"></i></button></span></div><p id="record-message" class="error" role="alert"></p><div id="record-content"></div><div class="dialog-actions"><button id="record-delete" class="button destructive" hidden><i data-lucide="trash-2"></i>删除记录</button></div></dialog>
     <dialog id="forget-dialog" aria-labelledby="forget-title"><h2 id="forget-title">解除手机绑定？</h2><p>此设备码和连接凭据将失效。手机上的任务和记录会保留，正在执行的任务不会被停止。</p><div class="dialog-actions"><button class="button secondary close-dialog">取消</button><button id="confirm-forget" class="button destructive">解除绑定</button></div></dialog>
     <script type="module" src="/src/main.js"></script>
   </body>
