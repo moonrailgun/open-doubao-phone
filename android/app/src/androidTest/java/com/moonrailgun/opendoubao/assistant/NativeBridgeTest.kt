@@ -157,6 +157,37 @@ class NativeBridgeTest {
         }
     }
 
+    @Test fun nativeSubmitRejectsFieldsThatAreNoLongerSearchTargets() = runBlocking {
+        val service = fixture()
+        withContext(Dispatchers.Main) {
+            val activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).single() as FixtureActivity
+            val field = activity.findViewById<android.widget.EditText>(R.id.fixture_note)
+            var submissions = 0
+            field.inputType = android.text.InputType.TYPE_CLASS_TEXT
+            field.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            field.contentDescription = "搜索"
+            field.setText("帮我搜索一下")
+            field.setOnEditorActionListener { _, _, _ -> submissions++; true }
+            field.requestFocus()
+            val phone = service.phone
+            val search = phone.observe()
+            val node = search.elements.single { it.resourceId.endsWith("/fixture_note") }
+            val submit = Action.Submit(node.id)
+            assertEquals(Permission.ALLOW, ActionPolicy.assess(submit, search, setOf(context.packageName)))
+            assertTrue(phone.execute(submit, null))
+            assertEquals(1, submissions)
+
+            field.contentDescription = "聊天输入框"
+            field.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEND
+            delay(100)
+            val chat = phone.observe()
+            assertEquals(node.id, chat.elements.single { it.resourceId.endsWith("/fixture_note") }.id)
+            assertEquals(Permission.REJECT, ActionPolicy.assess(submit, chat, setOf(context.packageName)))
+            assertFalse(phone.execute(submit, null))
+            assertEquals(1, submissions)
+        }
+    }
+
     @Test fun controllerAndCloudProtocolsDriveNativeDraftAndVerifySavedResult() = runBlocking {
         val service = fixture()
         val draft = "Controller integration draft"

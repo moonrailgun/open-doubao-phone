@@ -293,6 +293,8 @@ internal fun performOnNode(root: AccessibilityNodeInfo, action: Action): Boolean
             val child = node.getChild(index) ?: return false
             node.recycle(); node = child
         }
+        if (action is Action.Submit && !ActionPolicy.canSubmit(node.isEditable, node.viewIdResourceName.orEmpty(),
+                node.contentDescription?.toString().orEmpty())) return false
         return node.isEnabled && !node.isPassword && node.performAction(code, bundle)
     } finally { node.recycle() }
 }
