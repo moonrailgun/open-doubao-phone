@@ -475,6 +475,7 @@ class AssistantService : AccessibilityService() {
     fun setBubbleActive(active: Boolean) {
         check(overlay != null) { "无障碍服务未连接" }
         mutableBubbleActive.value = active
+        getSharedPreferences("overlay", MODE_PRIVATE).edit().putBoolean("enabled", active).apply()
         if (!active) {
             expanded = false; typing = false
             voiceInput?.cancel()
@@ -749,7 +750,7 @@ class AssistantService : AccessibilityService() {
 
         windows.addView(root, params)
         overlay = root; bubble = chip; panel = card; layout = params
-        mutableBubbleActive.value = true
+        mutableBubbleActive.value = getSharedPreferences("overlay", MODE_PRIVATE).getBoolean("enabled", true)
         renderOverlay(state.value)
     }
 

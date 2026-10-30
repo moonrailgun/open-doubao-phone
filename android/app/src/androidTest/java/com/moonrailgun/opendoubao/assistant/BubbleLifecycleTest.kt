@@ -3,6 +3,7 @@ package com.moonrailgun.opendoubao.assistant
 import android.Manifest
 import android.app.Activity
 import android.app.UiAutomation
+import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
 import android.provider.Settings
@@ -18,7 +19,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class BubbleLifecycleTest {
-    @Test fun manualExitSurvivesCaptureAndActivityRestarts() {
+    @Test fun manualExitSurvivesCaptureActivityAndServiceRestarts() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("bubbleUiCheck") == "true")
         val instrument = InstrumentationRegistry.getInstrumentation()
         val context = instrument.targetContext
@@ -31,6 +32,8 @@ class BubbleLifecycleTest {
         val enabled = Settings.Secure.getString(resolver, Settings.Secure.ACCESSIBILITY_ENABLED)
         val component = "${context.packageName}/${AssistantService::class.java.name}"
         val others = services.orEmpty().split(':').filter { it.isNotBlank() && it != component }.joinToString(":")
+        val preferences = context.getSharedPreferences("overlay", Context.MODE_PRIVATE)
+        val previous = if (preferences.contains("enabled")) preferences.getBoolean("enabled", true) else null
         val device = UiDevice.getInstance(instrument)
         val bubble = By.desc("Open Doubao，点按查看结果或下达命令")
         var activity: Activity? = null
@@ -62,6 +65,7 @@ class BubbleLifecycleTest {
         }
         try {
             connect(false)
+            preferences.edit().remove("enabled").commit()
             device.wakeUp()
             device.executeShellCommand("wm dismiss-keyguard")
             openApp()
@@ -85,6 +89,9 @@ class BubbleLifecycleTest {
             hidden()
             openApp()
             hidden()
+            connect(false)
+            connect(true)
+            hidden()
 
             toggle("启动悬浮球")
             assertTrue(device.wait(Until.hasObject(bubble), 5000))
@@ -107,12 +114,18 @@ class BubbleLifecycleTest {
 
             toggle("启动悬浮球")
             assertTrue(device.wait(Until.hasObject(bubble), 5000))
+            connect(false)
+            connect(true)
+            assertTrue("Explicit start should also persist", device.wait(Until.hasObject(bubble), 5000))
             assertTrue(device.wait(Until.hasObject(By.text("退出悬浮球")), 5000))
         } finally {
             try {
                 connect(false)
                 instrument.runOnMainSync { activity?.finishAndRemoveTask() }
             } finally {
+                preferences.edit().apply {
+                    if (previous == null) remove("enabled") else putBoolean("enabled", previous)
+                }.commit()
                 Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, services)
                 Settings.Secure.putString(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, enabled)
                 automation.dropShellPermissionIdentity()
