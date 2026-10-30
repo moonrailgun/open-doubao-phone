@@ -160,6 +160,8 @@ function controls() {
   $('stop').disabled = !snapshot.connected || commanding;
   $('resume').hidden = !paused;
   $('resume').disabled = !snapshot.connected || commanding;
+  $('retry').hidden = snapshot.state?.status !== 'FAILED';
+  $('retry').disabled = !snapshot.connected || sending || commanding || !snapshot.state?.goal?.trim();
   $('refresh').disabled = !snapshot.connected || refreshing;
   $('model-open').disabled = !snapshot.connected;
   $('model-fields').disabled = !snapshot.connected || !modelConfig || modelSaving || running || paused;
@@ -347,18 +349,29 @@ $('record-delete').addEventListener('click', async () => {
   } catch (error) { if (shownRecord === taskId) $('record-message').textContent = `删除失败：${message(error)}`; }
   finally { deleting = false; controls(); }
 });
-$('task-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if ($('send').disabled) return;
+async function startTask(goal) {
+  if (!snapshot.connected || sending || ['RUNNING', 'PAUSED'].includes(snapshot.state?.status) || !goal.trim()) return;
+  const currentSession = session;
   sending = true;
   controls();
   notice('');
   try {
-    await invoke('request', { method: 'task.start', params: { goal: $('goal').value.trim() } });
+    await invoke('request', { method: 'task.start', params: { goal: goal.trim() } });
+    if (currentSession !== session) return;
     notice('任务已由手机接收。');
     render(await invoke('get_snapshot'));
-  } catch (error) { notice(message(error), true); }
+  } catch (error) {
+    if (currentSession !== session) return;
+    notice(message(error), true);
+  }
   finally { sending = false; controls(); }
+}
+$('task-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!$('send').disabled) startTask($('goal').value);
+});
+$('retry').addEventListener('click', () => {
+  if (!$('retry').hidden && !$('retry').disabled) startTask(snapshot.state.goal);
 });
 async function command(method, success) {
   const taskId = snapshot.state?.taskId;

@@ -45,6 +45,7 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
           if (args.method === 'records.list') return structuredClone(window.testRecords);
           if (args.method === 'records.get') return { ...window.testRecords.find(record => record.id === args.params.taskId), result: '<img src=x onerror=alert(1)>', log: ['12:00 读取 com.example.notes', '12:01 完成'] };
           if (args.method === 'task.start') {
+            if (window.testStartPending) await new Promise(resolve => { window.finishStart = resolve; });
             window.testSnapshot.state = { taskId: 'task-1', status: 'RUNNING', goal: args.params.goal, message: '正在读取', steps: 1, result: '', log: ['读取应用'] };
             return { taskId: 'task-1' };
           }
@@ -136,6 +137,33 @@ test('paused tasks keep stop available and block a new dispatch until released',
   expect(stops).toHaveLength(1);
   expect(stops[0].args.params).toEqual({ taskId: 'paused-1' });
   expect(await page.evaluate(() => window.testCalls.filter(c => c.args?.method === 'task.start'))).toHaveLength(0);
+});
+
+test('failed task retries the full original input once and preserves the composer draft', async ({ page }, testInfo) => {
+  const goal = `整理以下事项：\n${'完整保留这段很长的任务内容。'.repeat(100)}\n最后给出总结。`;
+  await bridge(page);
+  await page.addInitScript(goal => {
+    window.testSnapshot.state = { taskId: 'failed-task', status: 'FAILED', goal, message: '模型连接失败', steps: 2, result: '', log: [] };
+    window.testStartPending = true;
+  }, goal);
+  await page.goto('/');
+  await page.getByLabel('这次需要做什么？').fill('另外一条尚未发送的草稿');
+  const retry = page.getByRole('button', { name: '重试任务', exact: true });
+  await expect(retry).toBeEnabled();
+  await expect(retry.locator('svg')).toBeVisible();
+  await expect(retry).toHaveText('');
+  await page.screenshot({ path: testInfo.outputPath('failed-task-retry.png'), fullPage: true });
+  await retry.click();
+  await expect(retry).toBeDisabled();
+  await expect(page.locator('#send')).toBeDisabled();
+  await retry.dispatchEvent('click');
+  const starts = await page.evaluate(() => window.testCalls.filter(call => call.args?.method === 'task.start'));
+  expect(starts).toHaveLength(1);
+  expect(starts[0].args.params).toEqual({ goal });
+  await page.evaluate(() => window.finishStart());
+  await expect(page.locator('#task-badge')).toHaveText('正在执行');
+  await expect(retry).toBeHidden();
+  await expect(page.getByLabel('这次需要做什么？')).toHaveValue('另外一条尚未发送的草稿');
 });
 
 test('device code and unbinding have explicit controls and clear credentials', async ({ page }) => {
