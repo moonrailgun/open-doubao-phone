@@ -24,7 +24,7 @@ class JevVisionTest {
     private val candidates = listOf(Candidate("c0", Action.Click("0.1"), "Search"))
     private val approved = """{"answers":{"approved":{"type":"noul","noul":0.95}}}"""
 
-    private fun models(settings: ModelConfig = config, respond: (Request, JSONObject) -> String): CloudModels {
+    private fun models(settings: ModelConfig = config, conversation: JSONArray = JSONArray(), respond: (Request, JSONObject) -> String): CloudModels {
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val buffer = Buffer()
             chain.request().body!!.writeTo(buffer)
@@ -32,7 +32,7 @@ class JevVisionTest {
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
                 .body(raw.toResponseBody("application/json".toMediaType())).build()
         }.build()
-        return CloudModels(settings, HttpTransport(client))
+        return CloudModels(settings, HttpTransport(client), conversation = conversation)
     }
 
     private fun chat(content: String) = JSONObject().put("choices", JSONArray().put(JSONObject()
@@ -60,8 +60,10 @@ class JevVisionTest {
 
     @Test fun planningActionsAndCompletionUseOnlyJevWithImages() = runBlocking {
         var calls = 0
-        val models = models { request, body ->
+        val conversation = JSONArray().put(JSONObject().put("goal", "查今天去杭州的车票"))
+        val models = models(conversation = conversation) { request, body ->
             calls++
+            assertEquals(conversation.toString(), body.getJSONObject("state").getJSONArray("conversation").toString())
             assertFalse(body.has("messages"))
             assertFalse(body.getJSONObject("questions").has("read_only"))
             assertEquals("true", request.header("TypeSafe-Danger-Zone-Images"))
@@ -263,8 +265,10 @@ class JevVisionTest {
 
     @Test fun repliesUsePointSixForBothReadOnlyAndStateChangingGoals() = runBlocking {
         var score = .6
-        val models = models { _, body ->
+        val conversation = JSONArray().put(JSONObject().put("goal", "查明天天气"))
+        val models = models(conversation = conversation) { _, body ->
             if (body.has("messages")) chat("""{"reply":"Search"}""") else {
+                assertEquals(conversation.toString(), body.getJSONObject("state").getJSONArray("conversation").toString())
                 assertEquals(setOf("approved"), body.getJSONObject("questions").keys().asSequence().toSet())
                 JSONObject().put("answers", JSONObject().put("approved", noul(score))).toString()
             }

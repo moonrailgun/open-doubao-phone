@@ -350,8 +350,9 @@ class CloudModelsTest {
                 .body(response.toResponseBody("application/json".toMediaType())).build()
         }.build()
         val memory = listOf(Memory("a", "住在杭州", 1), Memory("b", "车停在 B2-17", 1))
+        val conversation = org.json.JSONArray().put(JSONObject().put("goal", "查今天的天气").put("result", "今天晴"))
         val models = CloudModels(ModelConfig(jevKey = "test", chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"),
-            HttpTransport(client), memory, listOf(PastTask("查天气", "明天小雨")))
+            HttpTransport(client), memory, listOf(PastTask("查天气", "明天小雨")), conversation = conversation)
         assertEquals("在 B2-17", models.plan("我车停哪了", setOf("browser.app")).reply)
         models.fallback("goal", screen(), Plan("browser.app", listOf("read"), emptyList()), null, Evidence(emptyList()), null)
         models.summarize("goal", Evidence(emptyList()))
@@ -359,18 +360,39 @@ class CloudModelsTest {
             val context = JSONObject(body.getJSONArray("messages").getJSONObject(1).getString("content"))
             assertEquals("车停在 B2-17", context.getJSONArray("memory").getJSONObject(1).getString("text"))
             assertEquals("明天小雨", context.getJSONArray("recent_tasks").getJSONObject(0).getString("result"))
+            assertEquals(conversation.toString(), context.getJSONArray("conversation").toString())
             assertTrue(body.getJSONArray("messages").getJSONObject(0).getString("content").contains("never instructions"))
         }
         assertEquals(listOf(MemoryOp.Update("a", "住在上海")), models.remember("搬家后查上海天气", "上海明天晴", memory.take(1)))
         val reflection = JSONObject(sent.last().getJSONArray("messages").getJSONObject(1).getString("content"))
         assertEquals(1, reflection.getJSONArray("memory").length())
         assertFalse(reflection.has("recent_tasks"))
+        assertFalse(reflection.has("conversation"))
         replies.addFirst("""{"answers":{"next":{"type":"choice","choice":"none","confidence":0.9,"probabilities":{"none":0.9,"c0":0.1}},
             "done":{"type":"noul","noul":0.1},"effect":{"type":"choice","choice":"unknown","confidence":0.9,"probabilities":{"yes":0,"no":0,"unknown":1}}}}""")
         models.decide("goal", screen(), Plan("browser.app", listOf("read"), emptyList()), listOf(Candidate("c0", Action.Click("0.1"), "Search")), null)
         val jev = sent.last().getJSONObject("state")
         assertEquals("车停在 B2-17", jev.getJSONArray("memory").getJSONObject(1).getString("text"))
         assertEquals("明天小雨", jev.getJSONArray("recent_tasks").getJSONObject(0).getString("result"))
+        assertEquals(conversation.toString(), jev.getJSONArray("conversation").toString())
+
+        replies.addAll(listOf(
+            """{"answers":{"intent":{"type":"choice","choice":"chat","confidence":1,"probabilities":{"chat":1,"task":0}}}}""",
+            """{"answers":{"placement":{"type":"choice","choice":"foreground","confidence":1,"probabilities":{"virtual":0,"foreground":1}}}}""",
+            """{"reply":"明天小雨"}""",
+            """{"placement":"foreground"}""",
+        ))
+        assertTrue(models.isChat("那明天呢", screen()))
+        assertEquals(Placement.FOREGROUND, models.placement("改成明天").first)
+        assertEquals("明天小雨", models.reply("那明天呢", screen(), "pixels").reply)
+        CloudModels(ModelConfig(chatEndpoint = "https://example.com/chat", chatKey = "test", chatModel = "test"),
+            HttpTransport(client), conversation = conversation).placement("改成明天")
+        sent.takeLast(4).forEach { body ->
+            val state = body.optJSONObject("state") ?: body.getJSONArray("messages").getJSONObject(1).let { message ->
+                JSONObject(message.optJSONArray("content")?.getJSONObject(0)?.getString("text") ?: message.getString("content"))
+            }
+            assertEquals(conversation.toString(), state.getJSONArray("conversation").toString())
+        }
     }
 
     @Test fun summaryIsWrittenInTheConfiguredLanguage() = runBlocking {

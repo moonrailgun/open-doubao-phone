@@ -14,6 +14,8 @@ data class TaskState(
     val log: List<String> = emptyList(), val plan: List<String> = emptyList(),
     /** Timestamped diagnostics kept with the task record: calls, timings, decisions and errors. */
     val trace: List<String> = emptyList(),
+    /** Executed steps for follow-ups, kept independently of diagnostic and status messages. */
+    val progress: List<String> = emptyList(),
 )
 
 private val clock = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
@@ -488,7 +490,9 @@ class TaskController(
         checkCurrent(token)
         previous = Previous(screen, action, success)
         mutable.value = state.value.copy(steps = state.value.steps + 1)
-        update("第 ${state.value.steps} 步：${action.description(screen)}${if (success) "" else "（未生效，正在调整）"}")
+        val message = "第 ${state.value.steps} 步${if (success) "" else "（未生效，正在调整）"}：${action.description(screen)}"
+        mutable.value = state.value.copy(progress = state.value.progress + message)
+        update(message)
     }
 
     /**
