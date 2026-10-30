@@ -340,6 +340,128 @@ class TaskControllerTest {
         assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
     }
 
+    @Test fun forcedResumeIgnoresContentChangesForOnlyOneSuccessfulOperation() = runTest {
+        for ((pixelsOnly, failFirst) in listOf(false to false, true to false, false to true)) {
+            val phone = FakePhone()
+            var frames = 0
+            val models = object : Models by FakeModels() {
+                override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
+                    Decision(null, false, Effect.UNKNOWN)
+                override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {
+                    phone.pixels = "frame ${++frames}"
+                    if (!pixelsOnly) phone.current = screen(text = "timer $frames")
+                    phone.result = !failFirst || phone.actions.isNotEmpty()
+                    return ModelStep(Action.Tap(300, 300))
+                }
+            }
+            val controller = TaskController(this, phone, models)
+            controller.start("点开动态页面中的按钮", setOf("browser.app"))
+            advanceUntilIdle()
+            assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+            assertTrue(phone.actions.isEmpty())
+            controller.resume()
+            advanceUntilIdle()
+            assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+            assertTrue(phone.actions.isEmpty())
+            controller.resume(ignoreScreenChanges = true)
+            advanceUntilIdle()
+            val attempts = if (failFirst) 2 else 1
+            assertEquals(List(attempts) { Action.Tap(300, 300) }, phone.actions)
+            assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+            controller.resume()
+            advanceUntilIdle()
+            assertEquals(attempts, phone.actions.size)
+            controller.start("另一个任务", setOf("browser.app"))
+            advanceUntilIdle()
+            assertEquals(attempts, phone.actions.size)
+        }
+    }
+
+    @Test fun ignoreResumeWaitsForAnInteractionBeforeRestoringScreenChecks() = runTest {
+        val phone = FakePhone()
+        var waitOnce = false
+        var frames = 0
+        val models = object : Models by FakeModels() {
+            override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
+                Decision(null, false, Effect.UNKNOWN)
+            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {
+                phone.current = screen(text = "timer ${++frames}")
+                phone.pixels = "frame $frames"
+                if (waitOnce) { waitOnce = false; return ModelStep(Action.Wait) }
+                return ModelStep(Action.Tap(300, 300))
+            }
+        }
+        val controller = TaskController(this, phone, models)
+        controller.start("点开动态页面中的按钮", setOf("browser.app"))
+        advanceUntilIdle()
+        assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+        assertTrue(phone.actions.isEmpty())
+        waitOnce = true
+        controller.resume(ignoreScreenChanges = true)
+        advanceUntilIdle()
+        assertEquals(listOf(Action.Wait, Action.Tap(300, 300)), phone.actions)
+        assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+    }
+
+    @Test fun forcedResumeKeepsAccessAndBoundsChecksAndExpiresWhenPausedAgain() = runTest {
+        val protected = screen().copy(elements = listOf(screen().elements.single().copy(password = true)))
+        for ((blocked, rejectedAction) in listOf(screen("other.app") to Action.Tap(300, 300),
+            protected to Action.Tap(300, 300), screen() to Action.Tap(2000, 300))) {
+            val phone = FakePhone()
+            var block = false
+            var frames = 0
+            val models = object : Models by FakeModels() {
+                override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
+                    Decision(null, false, Effect.UNKNOWN)
+                override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {
+                    phone.pixels = "frame ${++frames}"
+                    if (block) phone.current = blocked
+                    return ModelStep(if (block) rejectedAction else Action.Tap(300, 300))
+                }
+            }
+            val controller = TaskController(this, phone, models)
+            controller.start("点开按钮", setOf("browser.app"))
+            advanceUntilIdle()
+            block = true
+            controller.resume(ignoreScreenChanges = true)
+            advanceUntilIdle()
+            assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+            assertTrue(phone.actions.isEmpty())
+            block = false
+            phone.current = screen()
+            controller.resume()
+            advanceUntilIdle()
+            assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+            assertTrue(phone.actions.isEmpty())
+        }
+    }
+
+    @Test fun stoppingAForcedResumeDiscardsThePendingDecision() = runTest {
+        val phone = FakePhone()
+        var slow = false
+        var frames = 0
+        val models = object : Models by FakeModels() {
+            override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?) =
+                Decision(null, false, Effect.UNKNOWN)
+            override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep {
+                if (slow) withContext(NonCancellable) { delay(1_000) }
+                phone.pixels = "frame ${++frames}"
+                return ModelStep(Action.Tap(300, 300))
+            }
+        }
+        val controller = TaskController(this, phone, models)
+        controller.start("点开按钮", setOf("browser.app"))
+        advanceUntilIdle()
+        assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+        slow = true
+        controller.resume(ignoreScreenChanges = true)
+        runCurrent()
+        controller.stop()
+        advanceUntilIdle()
+        assertEquals(TaskStatus.STOPPED, controller.state.value.status)
+        assertTrue(phone.actions.isEmpty())
+    }
+
     @Test fun sourceSurvivesMoreThanEightIntermediatePages() = runTest {
         val phone = FakePhone().apply { current = screen(text = "Source fact 42"); changeAfterAction = true }
         var turns = 0

@@ -72,7 +72,7 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
     private fun windows() = service.windowsOnAllDisplays[displayId] ?: emptyList()
 
     private suspend fun capture(screen: Screen, restoreOverlay: Boolean): String = captures.withLock {
-        if (observe().fingerprint != screen.fingerprint) throw ScreenChangedException()
+        if (!screen.matchesForAction(observe())) throw ScreenChangedException()
         if (screen.protected) throw PhoneUnavailableException("密码页面不可截图")
         if (shell == null) service.setOverlayVisible(false)
         try {
@@ -115,7 +115,7 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
                 }
             }
             try {
-                if (observe().fingerprint != screen.fingerprint) throw ScreenChangedException()
+                if (!screen.matchesForAction(observe())) throw ScreenChangedException()
                 return encodeScreenshot(bitmap, if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else bounds, bounds, screen)
             } finally { bitmap.recycle() }
         } finally { if (restoreOverlay && shell == null) service.setOverlayVisible(true) }
@@ -125,7 +125,7 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
         currentCoroutineContext().ensureActive()
         unlocked()
         action.validate()
-        if (expected != null && observe().fingerprint != expected.fingerprint) return false
+        if (expected != null && !expected.matchesForAction(observe())) return false
         if (action is Action.Tap || action is Action.Swipe) {
             if (expected == null || expectedImage == null || ActionPolicy.assess(action, expected, setOf(expected.packageName)) == Permission.REJECT) return false
         }
@@ -181,9 +181,10 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
     private suspend fun gesture(path: Path, duration: Long, expected: Screen, expectedImage: String, region: Bounds): Boolean {
         if (shell == null) service.setOverlayVisible(false)
         try {
-            // Animated canvases near the gesture still need human control; a cursor elsewhere does not (ImageMatch).
-            if (!screenshotsMatch(expectedImage, capture(expected, restoreOverlay = false), expected, region)) return false
-            if (observe().fingerprint != expected.fingerprint) return false
+            val image = capture(expected, restoreOverlay = false)
+            val current = observe()
+            if (!expected.matchesForAction(current)) return false
+            if (!expected.canIgnoreChanges(current) && !screenshotsMatch(expectedImage, image, expected, region)) return false
             val target = window()
             if (windows().any { other ->
                 val bounds = Rect().also(other::getBoundsInScreen)

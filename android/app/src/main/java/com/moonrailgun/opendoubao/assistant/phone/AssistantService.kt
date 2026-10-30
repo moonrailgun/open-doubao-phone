@@ -125,7 +125,7 @@ class AssistantService : AccessibilityService() {
     private var statusIcon: ImageView? = null
     private var statusText: TextView? = null
     private var stopButton: View? = null
-    private var resumeButton: View? = null
+    private var resumeControls: View? = null
     private var handOverButton: View? = null
     private var peek: View? = null
     private var mirror: AutoCloseable? = null
@@ -436,12 +436,12 @@ class AssistantService : AccessibilityService() {
 
     fun stop() = controller?.stop()
 
-    fun resume() {
+    fun resume(ignoreScreenChanges: Boolean = false) {
         requireUnlockedScreen()
         if (controller?.state?.value?.status != TaskStatus.PAUSED) return
         collapse()
         virtual?.resume()
-        controller?.resume()
+        controller?.resume(ignoreScreenChanges)
     }
 
     private fun requireUnlockedScreen() {
@@ -685,14 +685,25 @@ class AssistantService : AccessibilityService() {
             }
         }
         card.addView(handOverButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { bottomMargin = dp(8) })
-        resumeButton = Button(this).apply {
-            text = "继续"; contentDescription = "继续任务"; textSize = 15f; isAllCaps = false
-            setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
-            background = rounded(Color.rgb(47, 166, 114), 14)
-            stateListAnimator = null
-            setOnClickListener { runCatching { resume() }.onFailure { statusText?.text = it.message } }
+        resumeControls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(Button(this@AssistantService).apply {
+                text = "继续"; contentDescription = "继续任务"; textSize = 15f; isAllCaps = false
+                setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+                background = rounded(Color.rgb(47, 166, 114), 14)
+                stateListAnimator = null
+                setOnClickListener { runCatching { resume() }.onFailure { statusText?.text = it.message } }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            addView(Button(this@AssistantService).apply {
+                text = "忽略并继续"; contentDescription = "忽略并继续，忽略下一步的页面内容变化"; tooltipText = contentDescription
+                textSize = 14f; isAllCaps = false; setPadding(0, 0, 0, 0)
+                setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD
+                background = rounded(Color.argb(50, 255, 255, 255), 14)
+                stateListAnimator = null
+                setOnClickListener { runCatching { resume(ignoreScreenChanges = true) }.onFailure { statusText?.text = it.message } }
+            }, LinearLayout.LayoutParams(dp(112), dp(48)).apply { marginStart = dp(8) })
         }
-        card.addView(resumeButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { bottomMargin = dp(8) })
+        card.addView(resumeControls, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
         stopButton = Button(this).apply {
             // Emergency stop keeps its words next to the glyph; it is the one control that must never be guessed.
             val glyph = getDrawable(R.drawable.lucide_octagon_x)!!.mutate().apply { setTint(Color.WHITE); setBounds(0, 0, dp(18), dp(18)) }
@@ -837,7 +848,7 @@ class AssistantService : AccessibilityService() {
         panel?.visibility = if (expanded && !voice) View.VISIBLE else View.GONE
         voiceCard?.visibility = if (voice) View.VISIBLE else View.GONE
         stopButton?.visibility = if (running || paused) View.VISIBLE else View.GONE
-        resumeButton?.visibility = if (paused) View.VISIBLE else View.GONE
+        resumeControls?.visibility = if (paused) View.VISIBLE else View.GONE
         val offscreen = virtual?.hasSession == true
         peek?.visibility = if (expanded && offscreen) View.VISIBLE else View.GONE
         handOverButton?.visibility = if (paused && offscreen) View.VISIBLE else View.GONE

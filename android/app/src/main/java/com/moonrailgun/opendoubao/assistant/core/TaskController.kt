@@ -104,7 +104,7 @@ class TaskController(
     }
 
     /** Continuing after a handover grants what it asked for, so the vision model may then do it instead of asking again. */
-    fun resume() {
+    fun resume(ignoreScreenChanges: Boolean = false) {
         if (state.value.status != TaskStatus.PAUSED) return
         previous = null
         unchanged = 0
@@ -112,8 +112,9 @@ class TaskController(
         attempts.clear()
         asking?.let { approvals += it }
         trace(asking?.let { "继续任务：已同意「$it」，重新观察当前页面" } ?: "继续任务：重新观察当前页面")
+        if (ignoreScreenChanges) trace("忽略并继续：忽略页面内容变化，成功执行一步后恢复检查")
         asking = null
-        launchRun()
+        launchRun(ignoreScreenChanges)
     }
 
     private fun pause(reason: String, ask: Boolean = false) {
@@ -137,13 +138,13 @@ class TaskController(
         job = null
     }
 
-    private fun launchRun() {
+    private fun launchRun(ignoreScreenChanges: Boolean = false) {
         generation++
         val token = generation
         val started = monotonicMillis()
         runStartedAtMillis = started
         mutable.value = state.value.copy(status = TaskStatus.RUNNING, message = "准备开始")
-        job = scope.launch {
+        job = scope.launch(ScreenChangeOverride(ignoreScreenChanges)) {
             try {
                 withTimeout(remainingActiveMillis) {
                     if (plan == null) {
@@ -231,7 +232,7 @@ class TaskController(
                         } else if (guessed == planned.app) {
                             trace("规划同为 ${planned.app}，已提前打开")
                         } else if (planned.app in launchableApps) {
-                            val opened = phone.execute(Action.OpenApp(planned.app), null)
+                            val opened = execute(Action.OpenApp(planned.app), null, token)
                             checkCurrent(token)
                             trace("打开 ${planned.app}：${if (opened) "成功" else "失败"}")
                             if (!opened) {
@@ -315,7 +316,7 @@ class TaskController(
                                 // Vision is looking at the page Jev was given. If that page had nothing to read or press and has
                                 // changed since (an app still loading), read it again now rather than wait seconds for an answer
                                 // about a blank page. On pages with content its answer can still stand (stillThere, targetKept).
-                                if (!look.isCompleted && screen.elements.none { it.useful } && phone.observe().fingerprint != screen.fingerprint) {
+                                if (!look.isCompleted && screen.elements.none { it.useful } && !screen.matchesForAction(phone.observe())) {
                                     look.cancelAndJoin()
                                     throw ScreenChangedException()
                                 }
@@ -347,7 +348,7 @@ class TaskController(
                             // Likewise an element action goes ahead while unrelated parts of the page change, if its own node is untouched.
                             val targetKept = !done && sameTarget(action, screen, fresh)
                             val region = action?.gestureBounds()
-                            if (!stillThere && !targetKept && (fresh.fingerprint != screen.fingerprint ||
+                            if (!stillThere && !targetKept && !screen.canIgnoreChanges(fresh) && (fresh.fingerprint != screen.fingerprint ||
                                 region != null && (image == null || !phone.sameImage(image, phone.screenshot(fresh), fresh, region)))) {
                                 throw ScreenChangedException()
                             }
@@ -491,14 +492,25 @@ class TaskController(
     }
 
     private suspend fun perform(action: Action, screen: Screen, token: Long, image: String? = null, on: Phone = phone) {
-        checkCurrent(token)
-        val success = on.execute(action, screen, image)
-        checkCurrent(token)
+        val success = execute(action, screen, token, image, on)
         previous = Previous(screen, action, success)
         mutable.value = state.value.copy(steps = state.value.steps + 1)
         val message = "第 ${state.value.steps} 步${if (success) "" else "（未生效，正在调整）"}：${action.description(screen)}"
         mutable.value = state.value.copy(progress = state.value.progress + message)
         update(message)
+    }
+
+    private suspend fun execute(action: Action, screen: Screen?, token: Long, image: String? = null, on: Phone = phone): Boolean {
+        checkCurrent(token)
+        val success = on.execute(action, screen, image)
+        checkCurrent(token)
+        currentCoroutineContext()[ScreenChangeOverride]?.let {
+            if (success && action != Action.Wait && it.active) {
+                it.active = false
+                trace("忽略并继续已执行一步，恢复页面变化检查")
+            }
+        }
+        return success
     }
 
     /**
@@ -517,7 +529,7 @@ class TaskController(
             trace("虚拟屏上等规划返回再打开 $app")
             return null
         }
-        val opened = try { target.execute(Action.OpenApp(app), null) } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
+        val opened = try { execute(Action.OpenApp(app), null, token, on = target) } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
         trace("打开 $app：${if (opened) "成功" else "失败"}（Jev 预判，规划同时进行）")
         if (!opened) return null
         val provisional = Plan(app, listOf(state.value.goal), emptyList())

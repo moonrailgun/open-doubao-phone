@@ -285,7 +285,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(if (paused) "任务已暂停，等你处理" else if (busy) "正在替你操作手机" else "想让手机帮你做什么？", fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
-                            Text(if (paused) "点继续表示同意它接着执行；也可以先自己处理再继续，或停止任务。"
+                            Text(if (paused) "点继续表示同意它接着执行；页面反复变化时，可点「忽略并继续」忽略下一步的变化。也可以先自己处理，或停止任务。"
                                 else if (busy) "可以切到别的界面看它工作，点开悬浮球随时能停止。"
                                 else "说一句话，它会自己打开应用、点按和输入，做完把结果告诉你。",
                                 fontSize = 15.sp, lineHeight = 22.sp, color = colors.onSurfaceVariant)
@@ -294,9 +294,9 @@ class MainActivity : ComponentActivity() {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }
                         if (!configReady && !busy) Banner("还没有设置模型", "填好规划与视觉模型的地址和密钥后才能开始，Jev 可选。") { tab = SETTINGS; settingsTab = 0 }
-                        if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = {
+                        if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = { force ->
                             moveTaskToBack(true)
-                            scope.launch { delay(300); attempt { service?.resume() } }
+                            scope.launch { delay(300); attempt { service?.resume(ignoreScreenChanges = force) } }
                         }, onStop = { service?.stop() })
                         val virtualActive = service?.virtualActive?.collectAsState()?.value == true
                         if (virtualActive) service?.let { VirtualPeek(it) }
@@ -662,7 +662,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /** The live view of the current task: dark so it reads as the one thing happening on the phone right now. */
-@Composable private fun RunPanel(task: TaskState, onResume: () -> Unit, onStop: () -> Unit) {
+@Composable private fun RunPanel(task: TaskState, onResume: (Boolean) -> Unit, onStop: () -> Unit) {
     val running = task.status == TaskStatus.RUNNING
     val paused = task.status == TaskStatus.PAUSED
     val label = statusStyle(task.status.name).first
@@ -693,10 +693,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            if (paused) Button(onResume, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2FA672), contentColor = Color.White)) {
-                Icon(painterResource(R.drawable.lucide_play), null, Modifier.size(20.dp))
-                Text("继续任务", Modifier.padding(start = 8.dp), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            if (paused) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button({ onResume(false) }, Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2FA672), contentColor = Color.White)) {
+                    Icon(painterResource(R.drawable.lucide_play), null, Modifier.size(20.dp))
+                    Text("继续任务", Modifier.padding(start = 8.dp), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Button({ onResume(true) }, Modifier.width(112.dp).height(52.dp)
+                    .semantics { contentDescription = "忽略并继续，忽略下一步的页面内容变化" },
+                    shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(horizontal = 8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.16f), contentColor = Color.White)) {
+                    Text("忽略并继续", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
             if (running || paused) Button(onStop, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = StopRed, contentColor = Color.White)) {

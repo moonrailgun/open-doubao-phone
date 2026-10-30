@@ -30,6 +30,7 @@ import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.core.Phone
 import com.moonrailgun.opendoubao.assistant.core.PhoneUnavailableException
 import com.moonrailgun.opendoubao.assistant.core.Screen
+import com.moonrailgun.opendoubao.assistant.core.ScreenChangeOverride
 import com.moonrailgun.opendoubao.assistant.core.TaskController
 import com.moonrailgun.opendoubao.assistant.data.Record
 import com.moonrailgun.opendoubao.assistant.data.Saved
@@ -157,9 +158,9 @@ class NativeBridgeTest {
         }
     }
 
-    @Test fun nativeSubmitRejectsFieldsThatAreNoLongerSearchTargets() = runBlocking {
+    @Test fun ignoreResumeRejectsSubmitWhenTheSearchFieldBecomesAChatField() = runBlocking {
         val service = fixture()
-        withContext(Dispatchers.Main) {
+        withContext(Dispatchers.Main + ScreenChangeOverride(true)) {
             val activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).single() as FixtureActivity
             val field = activity.findViewById<android.widget.EditText>(R.id.fixture_note)
             var submissions = 0
@@ -174,7 +175,7 @@ class NativeBridgeTest {
             val node = search.elements.single { it.resourceId.endsWith("/fixture_note") }
             val submit = Action.Submit(node.id)
             assertEquals(Permission.ALLOW, ActionPolicy.assess(submit, search, setOf(context.packageName)))
-            assertTrue(phone.execute(submit, null))
+            assertTrue(phone.execute(submit, search))
             assertEquals(1, submissions)
 
             field.contentDescription = "聊天输入框"
@@ -183,7 +184,7 @@ class NativeBridgeTest {
             val chat = phone.observe()
             assertEquals(node.id, chat.elements.single { it.resourceId.endsWith("/fixture_note") }.id)
             assertEquals(Permission.REJECT, ActionPolicy.assess(submit, chat, setOf(context.packageName)))
-            assertFalse(phone.execute(submit, null))
+            assertFalse(phone.execute(submit, search))
             assertEquals(1, submissions)
         }
     }

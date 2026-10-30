@@ -109,7 +109,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
 
     override suspend fun screenshot(screen: Screen): String {
         if (handedOver) return foreground.screenshot(screen)
-        if (observe().fingerprint != screen.fingerprint) throw ScreenChangedException()
+        if (!screen.matchesForAction(observe())) throw ScreenChangedException()
         if (screen.protected) throw PhoneUnavailableException("密码页面不可截图")
         val bitmap = try { capture() } catch (e: ComputerControlSession.ScreenshotException) {
             // The display has not redrawn since this page was last captured, so that image still holds.
@@ -118,7 +118,7 @@ class VirtualPhone(private val service: AssistantService, private val foreground
             throw PhoneUnavailableException("虚拟屏截图失败（${e.errorCode}）")
         }
         try {
-            if (observe().fingerprint != screen.fingerprint) throw ScreenChangedException()
+            if (!screen.matchesForAction(observe())) throw ScreenChangedException()
             val bounds = screen.windowBounds.let { Rect(it.left, it.top, it.right, it.bottom) }
             return encodeScreenshot(bitmap, bounds, bounds, screen).also { lastImage = screen.fingerprint to it }
         } finally { bitmap.recycle() }
@@ -130,12 +130,14 @@ class VirtualPhone(private val service: AssistantService, private val foreground
         if (handedOver) return foreground.execute(action, expected, expectedImage)
         currentCoroutineContext().ensureActive()
         action.validate()
-        if (expected != null && observe().fingerprint != expected.fingerprint) return false
+        if (expected != null && !expected.matchesForAction(observe())) return false
         if (action is Action.Tap || action is Action.Swipe) {
             if (expected == null || expectedImage == null ||
                 ActionPolicy.assess(action, expected, setOf(expected.packageName)) == Permission.REJECT) return false
-            // As in the foreground: only small changes away from the gesture, such as a cursor, may differ (ImageMatch).
-            if (!screenshotsMatch(expectedImage, screenshot(expected), expected, action.gestureBounds()!!)) return false
+            val image = screenshot(expected)
+            val current = observe()
+            if (!expected.matchesForAction(current)) return false
+            if (!expected.canIgnoreChanges(current) && !screenshotsMatch(expectedImage, image, expected, action.gestureBounds()!!)) return false
         }
         val launched = when (action) { is Action.OpenApp -> action.packageName; is Action.OpenUrl -> action.packageName; else -> null }
         val live = launched?.let { forApp(it) } ?: live()
