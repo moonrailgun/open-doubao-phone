@@ -515,6 +515,18 @@ class AssistantService : AccessibilityService() {
             foreground = BubbleRing(resources.displayMetrics.density).also { bubbleRing = it }
             clipToOutline = true
         }
+        scope.launch {
+            BubbleAvatar.version.collect {
+                val avatar = withContext(Dispatchers.IO) { BubbleAvatar.load(this@AssistantService) }
+                if (avatar == null) {
+                    ball.scaleType = ImageView.ScaleType.FIT_CENTER
+                    ball.setImageResource(R.drawable.app_logo)
+                } else {
+                    ball.scaleType = ImageView.ScaleType.CENTER_CROP
+                    ball.setImageBitmap(avatar)
+                }
+            }
+        }
         fun line(size: Float, alpha: Int) = TextView(this).apply {
             setTextColor(Color.argb(alpha, 255, 255, 255)); textSize = size
             isSingleLine = true; ellipsize = TextUtils.TruncateAt.END; maxWidth = dp(200)

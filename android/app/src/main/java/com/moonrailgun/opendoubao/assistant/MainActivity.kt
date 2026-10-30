@@ -5,6 +5,8 @@ import com.moonrailgun.opendoubao.assistant.update.AppUpdates
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.SurfaceHolder
@@ -44,7 +46,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -77,6 +81,7 @@ import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.CloudModels
 import com.moonrailgun.opendoubao.assistant.model.warmModels
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
+import com.moonrailgun.opendoubao.assistant.phone.BubbleAvatar
 import com.moonrailgun.opendoubao.assistant.phone.InstalledApp
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_AUTO
 import com.moonrailgun.opendoubao.assistant.phone.EXECUTION_FOREGROUND
@@ -376,6 +381,7 @@ class MainActivity : ComponentActivity() {
                     2 -> MemoryControls(vault, refresh) { message = it }
                     SETTINGS -> {
                         PageTitle("设置", "配置模型服务、执行方式、语音播报和远程连接。")
+                        BubbleAvatarControls()
                         PrimaryTabRow(settingsTab) {
                             listOf("模型", "语音", "桌面远程", "执行").forEachIndexed { index, title ->
                                 Tab(settingsTab == index, { settingsTab = index }, text = { Text(title) })
@@ -518,6 +524,49 @@ class MainActivity : ComponentActivity() {
             Icon(painterResource(R.drawable.lucide_chevron_right), null, Modifier.padding(start = 8.dp))
         }
     }
+
+@Composable private fun BubbleAvatarControls() {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    val version by BubbleAvatar.version.collectAsState()
+    var avatar by remember { mutableStateOf<Bitmap?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(version) { avatar = withContext(Dispatchers.IO) { BubbleAvatar.load(context) } }
+    fun update(uri: Uri?) {
+        busy = true
+        error = null
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    if (uri == null) BubbleAvatar.reset(context) else BubbleAvatar.save(context, uri)
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { error = "无法更新头像，请选择有效图片或重试。" }
+            finally { busy = false }
+        }
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) update(uri)
+    }
+    Section("悬浮球头像", "选择喜欢的图片，居中裁成圆形。仅保存在本机，选择后立即生效。") {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            val preview = Modifier.size(64.dp).clip(CircleShape).background(Color.White)
+            val current = avatar
+            if (current == null) Image(painterResource(R.drawable.app_logo), "默认悬浮球头像", preview)
+            else Image(current.asImageBitmap(), "自定义悬浮球头像", preview, contentScale = ContentScale.Crop)
+            Column {
+                OutlinedButton({
+                    error = null
+                    try { picker.launch("image/*") }
+                    catch (_: Exception) { error = "无法打开图片选择器，请安装文件管理或相册应用。" }
+                }, enabled = !busy) { Text(if (busy) "正在保存…" else "选择图片") }
+                TextButton({ update(null) }, enabled = !busy && current != null) { Text("恢复默认") }
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+    }
+}
 
 @Composable private fun Section(title: String, description: String, content: @Composable ColumnScope.() -> Unit) =
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = RoundedCornerShape(24.dp)) {
