@@ -291,7 +291,7 @@ class AssistantService : AccessibilityService() {
             else ShellPhone(this, phone, mutableVirtualActive) { controller?.fail(it) }).also { virtual = it }
         val choice = executionChoice(this)
         val labels = catalog.associate { it.packageName to it.label }
-        val quick: suspend (String) -> String? = { quick(it, apps, labels) }
+        val quick: (String) -> String? = { quick(it, apps, labels) }
         val next = when {
             choice == EXECUTION_FOREGROUND || (!virtualDisplayAvailable(this) && !ShellBridge.ready(this) && choice != EXECUTION_VIRTUAL) ->
                 TaskController(scope, phone, models, remember = ::remember, quick = quick)
@@ -346,12 +346,12 @@ class AssistantService : AccessibilityService() {
     }
 
     /** Carries out a plain command on the user's own screen (see QuickCommand); null hands the goal to the full flow. */
-    private suspend fun quick(goal: String, apps: Set<String>, labels: Map<String, String>): String? =
+    private fun quick(goal: String, apps: Set<String>, labels: Map<String, String>): String? =
         when (val command = QuickCommand.parse(goal, labels.filterKeys { it in apps && phone.canLaunch(it) })) {
             null -> null
-            is Quick.OpenApp -> if (phone.execute(Action.OpenApp(command.packageName), null)) "已打开${command.label}" else null
-            Quick.Home -> if (phone.execute(Action.Home, null)) "已回到桌面" else null
-            Quick.Back -> if (phone.execute(Action.Back, null)) "已返回上一页" else null
+            is Quick.OpenApp -> if (phone.navigate(Action.OpenApp(command.packageName))) "已打开${command.label}" else null
+            Quick.Home -> if (phone.navigate(Action.Home)) "已回到桌面" else null
+            Quick.Back -> if (phone.navigate(Action.Back)) "已返回上一页" else null
             // Settings' pages are its own; outside the task's apps the full flow says why it cannot go there.
             is Quick.SettingsPage -> if ("com.android.settings" !in apps) null
                 else if (runCatching { startActivity(Intent(command.action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess)

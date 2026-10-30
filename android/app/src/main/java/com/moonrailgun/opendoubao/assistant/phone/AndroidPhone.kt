@@ -130,20 +130,30 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
             if (expected == null || expectedImage == null || ActionPolicy.assess(action, expected, setOf(expected.packageName)) == Permission.REJECT) return false
         }
         val accepted = when (action) {
-            is Action.OpenApp -> launch(service.packageManager.getLaunchIntentForPackage(action.packageName)
-                ?: throw PhoneUnavailableException("该应用没有可直接打开的入口，请手动进入需要操作的页面"))
-            is Action.OpenUrl -> launch(Intent(Intent.ACTION_VIEW, Uri.parse(action.url)).setPackage(action.packageName))
+            is Action.OpenApp, is Action.OpenUrl, Action.Back, Action.Home -> navigate(action)
             is Action.Click, is Action.Type, is Action.Scroll, is Action.Submit ->
                 performOnNode(window().root ?: throw PhoneUnavailableException("当前页面没有可访问节点"), action)
             is Action.Tap -> gesture(Path().apply { moveTo(action.x.toFloat(), action.y.toFloat()) }, 80, expected!!, expectedImage!!, action.gestureBounds()!!)
             is Action.Swipe -> gesture(Path().apply { moveTo(action.x1.toFloat(), action.y1.toFloat()); lineTo(action.x2.toFloat(), action.y2.toFloat()) }, 400, expected!!, expectedImage!!, action.gestureBounds()!!)
-            Action.Back -> if (shell != null) { shell.key(android.view.KeyEvent.KEYCODE_BACK); true } else service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-            Action.Home -> if (shell != null) { shell.key(android.view.KeyEvent.KEYCODE_HOME); true } else service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
             Action.Wait -> true
         }
         val launched = when (action) { is Action.OpenApp -> action.packageName; is Action.OpenUrl -> action.packageName; else -> null }
         if (accepted) { launched?.let { awaitForeground(it) }; settle() }
         return accepted
+    }
+
+    /** Quick commands finish at dispatch; the model flow still waits for the resulting page in execute. */
+    fun navigate(action: Action): Boolean {
+        unlocked()
+        action.validate()
+        return when (action) {
+            is Action.OpenApp -> launch(service.packageManager.getLaunchIntentForPackage(action.packageName)
+                ?: throw PhoneUnavailableException("该应用没有可直接打开的入口，请手动进入需要操作的页面"))
+            is Action.OpenUrl -> launch(Intent(Intent.ACTION_VIEW, Uri.parse(action.url)).setPackage(action.packageName))
+            Action.Back -> if (shell != null) { shell.key(android.view.KeyEvent.KEYCODE_BACK); true } else service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            Action.Home -> if (shell != null) { shell.key(android.view.KeyEvent.KEYCODE_HOME); true } else service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+            else -> error("此操作不是导航命令")
+        }
     }
 
     private fun launch(intent: Intent): Boolean {

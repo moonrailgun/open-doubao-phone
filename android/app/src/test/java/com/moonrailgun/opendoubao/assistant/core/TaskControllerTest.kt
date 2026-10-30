@@ -7,6 +7,35 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TaskControllerTest {
+    @Test fun followUpKeepsExecutedStepsWhileTheNextDecisionIsPending() = runTest {
+        for (dispatched in listOf(true, false)) {
+            val phone = FakePhone().apply {
+                current = screen(text = "发送" + "长按钮文字".repeat(40))
+                result = dispatched
+            }
+            var decisions = 0
+            val models = object : Models by FakeModels() {
+                override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
+                    if (++decisions == 1) return Decision(Action.Click("0.1"), false, Effect.UNKNOWN)
+                    awaitCancellation()
+                }
+                override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep =
+                    awaitCancellation()
+            }
+            val controller = TaskController(this, phone, models)
+            val conversation = TaskConversation()
+            conversation.begin("first", "发送后再查天气")
+            controller.start("发送后再查天气", setOf("browser.app"))
+            runCurrent()
+            assertEquals(listOf(Action.Click("0.1")), phone.actions)
+            controller.pauseForInput()
+            conversation.update("first", controller.state.value)
+            val progress = conversation.json().getJSONObject(0).getJSONArray("progress").toString()
+            assertTrue("Follow-up must retain the attempted click", "第 1 步" in progress && "点击" in progress)
+            assertEquals("Truncation must preserve the dispatch outcome", !dispatched, "未生效" in progress)
+        }
+    }
+
     @Test fun chatRespectsScreenAccessAndResumesWithoutClassifyingAgain() = runTest {
         for (blocked in listOf(screen("unselected.app"), screen().copy(elements = listOf(screen().elements[0].copy(password = true))))) {
             val phone = FakePhone().apply { current = blocked }
@@ -373,6 +402,23 @@ class TaskControllerTest {
         advanceUntilIdle()
         assertEquals(TaskStatus.STOPPED, controller.state.value.status)
         assertFalse(phone.actions.any { it is Action.Wait })
+    }
+
+    @Test fun inputPausesLateActionsAndCanResumeTheOriginalTask() = runTest {
+        val phone = FakePhone()
+        val models = FakeModels().apply { slow = true }
+        val controller = TaskController(this, phone, models)
+        controller.start("search", setOf("browser.app"))
+        runCurrent()
+        controller.pauseForInput()
+        advanceUntilIdle()
+        assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+        assertFalse(phone.actions.any { it is Action.Wait })
+        models.slow = false
+        models.finish = true
+        controller.resume()
+        advanceUntilIdle()
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
     }
 
     @Test fun pageChangesAreReobservedWithoutUserInteraction() = runTest {
@@ -915,6 +961,8 @@ class TaskControllerTest {
         controller.start("给张三发你好", setOf("browser.app"))
         advanceUntilIdle()
         assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+        assertEquals(ask, controller.state.value.message)
+        controller.pauseForInput()
         assertEquals(ask, controller.state.value.message)
         controller.resume()
         advanceUntilIdle()

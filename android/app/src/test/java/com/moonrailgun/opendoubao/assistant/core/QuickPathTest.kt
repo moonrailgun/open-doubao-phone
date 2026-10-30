@@ -1,7 +1,9 @@
 package com.moonrailgun.opendoubao.assistant.core
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -9,6 +11,39 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class QuickPathTest {
+    @Test fun pausingAfterBackDispatchCannotRepeatItOnResume() = runTest {
+        var backs = 0
+        val models = Calls()
+        lateinit var controller: TaskController
+        controller = TaskController(this, phone, models, quick = {
+            backs++
+            // Pause is queued as soon as Back is dispatched, before the UI has settled.
+            launch { controller.pauseForInput(); controller.resume() }
+            "已返回上一页"
+        })
+        controller.start("返回上一页", setOf("lark.app"))
+        runCurrent()
+        advanceUntilIdle()
+        assertEquals("One command must dispatch Back only once", 1, backs)
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals("已返回上一页", controller.state.value.result)
+        assertEquals(0, models.planned)
+    }
+
+    @Test fun pausingBeforeQuickDispatchDefersItUntilResume() = runTest {
+        var backs = 0
+        val controller = TaskController(this, phone, Calls(), quick = { backs++; "已返回上一页" })
+        controller.start("返回上一页", setOf("lark.app"))
+        controller.pauseForInput()
+        runCurrent()
+        assertEquals(0, backs)
+        assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+        controller.resume()
+        advanceUntilIdle()
+        assertEquals(1, backs)
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+    }
+
     private val phone = object : Phone {
         override fun canLaunch(packageName: String) = true
         override suspend fun observe() = Screen("lark.app", 1, 1440, 3120, 0, emptyList())
@@ -40,7 +75,7 @@ class QuickPathTest {
     }
 
     @Test fun anythingElseOrAFailureTakesTheFullWay() = runTest {
-        for (quick in listOf<suspend (String) -> String?>({ null }, { error("打不开") })) {
+        for (quick in listOf<(String) -> String?>({ null }, { error("打不开") })) {
             val models = object : Models by Calls() {
                 override suspend fun isChat(goal: String, screen: Screen?) = false
             }

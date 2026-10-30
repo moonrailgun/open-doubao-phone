@@ -30,8 +30,8 @@ class TaskController(
     private val remember: (List<MemoryOp>) -> String = { "无变化" },
     /** Picks where the task runs once per task, alongside planning: the phone to use and how it was chosen, for the trace. */
     private val place: (suspend () -> Pair<Phone, String>)? = null,
-    /** Carries out a plain command at once (see QuickCommand) and returns its fixed result, or null for the full flow. */
-    private val quick: (suspend (String) -> String?)? = null,
+    /** Dispatch and result are synchronous so pausing cannot replay a command while its screen is settling. */
+    private val quick: ((String) -> String?)? = null,
 ) {
     private var phone = phone
     private val mutable = MutableStateFlow(TaskState())
@@ -95,6 +95,12 @@ class TaskController(
         if (state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) return
         stopJob()
         finish(TaskStatus.STOPPED, "已停止，不会再有新的操作")
+    }
+
+    fun pauseForInput() {
+        if (state.value.status != TaskStatus.RUNNING) return
+        stopJob()
+        pause("正在补充要求；可发送新要求或继续原任务")
     }
 
     /** Continuing after a handover grants what it asked for, so the vision model may then do it instead of asking again. */
