@@ -44,6 +44,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.compose.ui.graphics.toArgb
 import com.moonrailgun.opendoubao.assistant.R
 import com.moonrailgun.opendoubao.assistant.core.*
@@ -112,6 +113,7 @@ class AssistantService : AccessibilityService() {
         private set
     private var controller: TaskController? = null
     private var active: Record? = null
+    private val conversation = TaskConversation()
     private var watcher: Job? = null
     private var overlay: FrameLayout? = null
     private var bubble: View? = null
@@ -254,11 +256,14 @@ class AssistantService : AccessibilityService() {
 
     val taskId: String? get() = active?.id
 
-    fun startTask(goal: String, taskId: String = UUID.randomUUID().toString()): String {
+    fun startTask(goal: String, taskId: String = UUID.randomUUID().toString()): String = startTask(goal, taskId, fromBubble = false)
+
+    private fun startTask(goal: String, taskId: String, fromBubble: Boolean): String {
         requireUnlockedScreen()
         require(goal.isNotBlank() && goal.length <= 4000) { "请填写 1–4000 字的任务" }
         RemoteProtocol.uuid(taskId)
-        check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务" }
+        check(fromBubble || state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务" }
+        active?.id?.let { id -> controller?.state?.value?.let { conversation.update(id, it) } }
         val vault = Vault(this)
         val saved = vault.read()
         check(saved.records.none { it.id == taskId }) { "任务 ID 已存在" }
@@ -269,8 +274,9 @@ class AssistantService : AccessibilityService() {
             check(apps.isNotEmpty()) { "所有应用都被排除了，请至少留一个给助手操作" }
             CloudModels(saved.config, HttpTransport(secrets = saved.config.secrets, log = { vault.modelCalls.append(taskId, it) }),
                 memory = saved.memory,
-                recent = saved.records.filter { it.status == "COMPLETED" }.take(3).map { PastTask(it.goal, it.result.take(600)) },
-                compactScreens = compactScreens(this), appLabels = catalog.associate { it.packageName to it.label })
+                recent = if (fromBubble) emptyList() else saved.records.filter { it.status == "COMPLETED" }.take(3).map { PastTask(it.goal, it.result.take(600)) },
+                compactScreens = compactScreens(this), appLabels = catalog.associate { it.packageName to it.label },
+                conversation = if (fromBubble) conversation.json() else org.json.JSONArray())
         } catch (e: Exception) {
             // A task rejected before it starts still leaves a record saying why.
             runCatching { vault.record(record.copy(status = "FAILED", result = e.message ?: "无法开始任务",
@@ -282,10 +288,10 @@ class AssistantService : AccessibilityService() {
             vault.record(record.copy(status = "FAILED", result = "无法创建模型调试记录"))
             throw e
         }
+        retireTask()
         active = record
-        watcher?.cancel()
-        virtual?.close()
-        virtual = null
+        if (!fromBubble) conversation.clear()
+        conversation.begin(record.id, record.goal)
         fun offscreen(): OffscreenPhone = (if (virtualDisplayAvailable(this))
             VirtualPhone(this, phone, mutableVirtualActive, onNotice = { controller?.notice(it) }) { controller?.fail(it) }
             else ShellPhone(this, phone, mutableVirtualActive) { controller?.fail(it) }).also { virtual = it }
@@ -308,6 +314,7 @@ class AssistantService : AccessibilityService() {
             var persisted: String? = null
             var reflected = false
             next.state.collect { value ->
+                conversation.update(record.id, value)
                 if (value.status in setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)) virtual?.close()
                 mutable.value = value
                 remoteSnapshot.value = RemoteSnapshot(record.id, value)
@@ -343,6 +350,45 @@ class AssistantService : AccessibilityService() {
             }
         }
         return record.id
+    }
+
+    private fun retireTask() {
+        val previous = controller
+        val record = active
+        val unfinished = previous?.state?.value?.status in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)
+        previous?.stop()
+        if (record != null && previous != null) {
+            val value = previous.state.value
+            conversation.update(record.id, value)
+            if (unfinished) {
+                // The watcher may not see STOPPED before cancellation; queue it after its earlier saves.
+                val stopped = record.copy(status = value.status.name, result = value.message, log = value.trace)
+                scope.launch(saves) {
+                    try { Vault(this@AssistantService).record(stopped); recordSaves.value += 1 }
+                    catch (_: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@AssistantService, "上一轮任务记录保存失败", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+        }
+        watcher?.cancel()
+        virtual?.close()
+        virtual = null
+    }
+
+    private fun newConversation() {
+        voiceInput?.cancel()
+        retireTask()
+        conversation.clear()
+        controller = null
+        active = null
+        input?.text?.clear()
+        mutable.value = TaskState()
+        remoteSnapshot.value = RemoteSnapshot(null, mutable.value)
+        renderOverlay(mutable.value)
+        statusText?.text = "新对话，请说出你的要求"
     }
 
     /** Carries out a plain command on the user's own screen (see QuickCommand); null hands the goal to the full flow. */
@@ -550,10 +596,11 @@ class AssistantService : AccessibilityService() {
                 packageManager.getLaunchIntentForPackage(packageName)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
             addView(openButton, LinearLayout.LayoutParams(dp(40), dp(40)))
+            addView(iconButton(R.drawable.lucide_plus, "新对话") { newConversation() }, LinearLayout.LayoutParams(dp(40), dp(40)))
             addView(iconButton(R.drawable.lucide_minimize_2, "收起") { collapse() }, LinearLayout.LayoutParams(dp(40), dp(40)))
         })
         val field = EditText(this).apply {
-            hint = "下一条命令"; textSize = 14f
+            hint = "输入要求，可接着补充"; textSize = 14f
             setTextColor(Color.WHITE); setHintTextColor(Color.argb(140, 255, 255, 255))
             background = rounded(Color.argb(40, 255, 255, 255), 12)
             setPadding(dp(10), dp(8), dp(10), dp(8))
@@ -566,7 +613,11 @@ class AssistantService : AccessibilityService() {
             setOnEditorActionListener { _, _, _ -> submit(); true }
             // The window only takes focus while typing, so an auto-opened summary never steals the keyboard.
             // A first tap only focuses the field, so touch starts typing on down; the click covers TalkBack.
-            fun startTyping() { if (!typing) { typing = true; applyOverlay(); warmModels(this@AssistantService) } }
+            fun startTyping() { if (!typing) {
+                controller?.pauseForInput()
+                controller?.state?.value?.let(::renderOverlay)
+                typing = true; applyOverlay(); warmModels(this@AssistantService)
+            } }
             setOnClickListener { startTyping() }
             setOnTouchListener { _, event ->
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) startTyping()
@@ -613,7 +664,10 @@ class AssistantService : AccessibilityService() {
                 gravity = Gravity.BOTTOM
                 setOnTouchListener(drag)
                 addView(field, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                addView(iconButton(R.drawable.lucide_mic, "语音输入") { voice.start() },
+                addView(iconButton(R.drawable.lucide_mic, "语音输入") {
+                    controller?.pauseForInput()
+                    voice.start()
+                },
                     LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
                 addView(iconButton(R.drawable.lucide_play, "执行") { submit() },
                     LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
@@ -674,7 +728,7 @@ class AssistantService : AccessibilityService() {
     private fun submit() {
         val goal = input?.text?.toString()?.trim().orEmpty()
         if (goal.isEmpty()) return
-        runCatching { startTask(goal) }
+        runCatching { startTask(goal, UUID.randomUUID().toString(), fromBubble = true) }
             .onSuccess { input?.text?.clear() }
             .onFailure { statusText?.text = it.message ?: "无法开始任务" }
     }
@@ -691,7 +745,7 @@ class AssistantService : AccessibilityService() {
         paused = value.status == TaskStatus.PAUSED
         if (paused && !wasPaused) { pausedAt = SystemClock.uptimeMillis(); overlay?.postDelayed(::applyOverlay, PAUSE_LIT_MILLIS) }
         // Fold away while working; open for manual intervention or the final result.
-        if (running != wasRunning || paused) { expanded = !running; typing = false }
+        if (running != wasRunning || paused && !wasPaused) { expanded = !running; typing = false }
         if (running) voiceStatus?.visibility = View.GONE
         val (label, color, glyph) = statusStyle(value.status.name)
         statusIcon?.apply {
@@ -755,7 +809,7 @@ class AssistantService : AccessibilityService() {
             }
         }
         ball.contentDescription = when {
-            running -> "Open Doubao 正在操作手机，点按展开可停止"
+            running -> "Open Doubao 正在操作手机，点按展开可补充要求或停止"
             paused -> "Open Doubao 已暂停，点按展开继续任务"
             conversing -> "Open Doubao 正在语音对话，点按展开"
             else -> "Open Doubao，点按查看结果或下达命令"
@@ -789,8 +843,8 @@ class AssistantService : AccessibilityService() {
         handOverButton?.visibility = if (paused && offscreen) View.VISIBLE else View.GONE
         // Keep the current app visible while automatic actions are running.
         openButton?.visibility = if (running) View.GONE else View.VISIBLE
-        inputRow?.visibility = if (running || paused) View.GONE else View.VISIBLE
-        val focusable = typing && expanded && !voice && !running && !paused && !captureHidden && !locked
+        inputRow?.visibility = View.VISIBLE
+        val focusable = typing && expanded && !voice && !running && !captureHidden && !locked
         val focusFlags = if (focusable) params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
             else params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         // Screen off fails a running task, so this always-present window keeps it lit. A pause stays lit for a minute so the

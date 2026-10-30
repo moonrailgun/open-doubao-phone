@@ -46,6 +46,7 @@ class LocalVoiceInput(context: Context, onResult: (String) -> Unit, private val 
         recognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM))
     }
+    fun cancel() { recognizer.cancel(); onMessage("") }
     fun destroy() { recognizer.cancel(); recognizer.destroy() }
 }
 
