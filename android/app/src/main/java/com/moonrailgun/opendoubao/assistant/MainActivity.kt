@@ -208,6 +208,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(message) { if (message.isNotEmpty() && tab != SETTINGS) scroll.animateScrollTo(0) }
         LaunchedEffect(tab, settingsTab) { scroll.scrollTo(0) }
         val service by AssistantService.connected.collectAsState()
+        val bubbleActive = service?.bubbleActive?.collectAsState()?.value == true
         val task = service?.state?.collectAsState()?.value ?: TaskState()
         val paused = task.status == TaskStatus.PAUSED
         val busy = task.status == TaskStatus.RUNNING || paused
@@ -286,12 +287,18 @@ class MainActivity : ComponentActivity() {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(if (paused) "任务已暂停，等你处理" else if (busy) "正在替你操作手机" else "想让手机帮你做什么？", fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
                             Text(if (paused) "点继续表示同意它接着执行；页面反复变化时，可点「忽略并继续」忽略下一步的变化。也可以先自己处理，或停止任务。"
-                                else if (busy) "可以切到别的界面看它工作，点开悬浮球随时能停止。"
+                                else if (busy && bubbleActive) "可以切到别的界面看它工作，点开悬浮球随时能停止。"
+                                else if (busy) "可以切到别的界面看它工作，回到此页可随时停止。"
                                 else "说一句话，它会自己打开应用、点按和输入，做完把结果告诉你。",
                                 fontSize = 15.sp, lineHeight = 22.sp, color = colors.onSurfaceVariant)
                         }
                         if (service == null) Banner("还差一步：开启无障碍服务", "手机需要它读取屏幕、替你点按和输入。只在你开始任务后工作。") {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        }
+                        OutlinedButton({ attempt { service?.setBubbleActive(!bubbleActive) } },
+                            Modifier.fillMaxWidth().height(52.dp), enabled = service != null, shape = RoundedCornerShape(16.dp)) {
+                            Icon(painterResource(if (bubbleActive) R.drawable.lucide_x else R.drawable.lucide_play), null, Modifier.size(18.dp))
+                            Text(if (bubbleActive) "退出悬浮球" else "启动悬浮球", Modifier.padding(start = 8.dp))
                         }
                         if (!configReady && !busy) Banner("还没有设置模型", "填好规划与视觉模型的地址和密钥后才能开始，Jev 可选。") { tab = SETTINGS; settingsTab = 0 }
                         if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = { force ->
@@ -335,7 +342,7 @@ class MainActivity : ComponentActivity() {
                                         icon = { Icon(painterResource(glyph), null, Modifier.size(18.dp)) })
                                 }
                             }
-                            Text("开始后自动执行，可随时点开悬浮球停止。遇到发送、付款、删除等操作会先暂停征求同意，点继续即授权它执行；输入密码或凭据仍需你手动处理。无法保证识别所有敏感操作。",
+                            Text("开始后自动执行，可随时回到此页或点开已启动的悬浮球停止。遇到发送、付款、删除等操作会先暂停征求同意，点继续即授权它执行；输入密码或凭据仍需你手动处理。无法保证识别所有敏感操作。",
                                 Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                         }
                     }

@@ -116,6 +116,9 @@ class AssistantService : AccessibilityService() {
     private val conversation = TaskConversation()
     private var watcher: Job? = null
     private var overlay: FrameLayout? = null
+    private val mutableBubbleActive = MutableStateFlow(false)
+    /** User activation, independent of temporary hiding for screenshots or the lock screen. */
+    val bubbleActive = mutableBubbleActive.asStateFlow()
     private var bubble: View? = null
     private var bubbleRing: BubbleRing? = null
     private var taskPill: View? = null
@@ -466,6 +469,17 @@ class AssistantService : AccessibilityService() {
         voiceInput?.destroy(); voiceInput = null
         overlay?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
         overlay = null
+        mutableBubbleActive.value = false
+    }
+
+    fun setBubbleActive(active: Boolean) {
+        check(overlay != null) { "无障碍服务未连接" }
+        mutableBubbleActive.value = active
+        if (!active) {
+            expanded = false; typing = false
+            voiceInput?.cancel()
+        }
+        applyOverlay()
     }
 
     fun setOverlayVisible(visible: Boolean) {
@@ -493,7 +507,7 @@ class AssistantService : AccessibilityService() {
                 if (event.action == KeyEvent.ACTION_UP) collapse()
                 return true
             }
-        }.apply { setPadding(dp(8), dp(8), dp(8), dp(8)) }
+        }.apply { setPadding(dp(8), dp(8), dp(8), dp(8)); visibility = View.GONE }
         val ball = ImageView(this).apply {
             setImageResource(R.drawable.app_logo)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
@@ -579,7 +593,7 @@ class AssistantService : AccessibilityService() {
             setPadding(dp(10), dp(10), dp(10), dp(10))
             setOnClickListener { click() }
         }
-        // Status glyph, then the message or summary, then collapse: the header carries no label of its own.
+        // Status and summary, followed by app and collapse controls.
         statusIcon = ImageView(this).apply { setOnTouchListener(drag) }
         statusText = TextView(this).apply {
             setTextColor(Color.argb(210, 255, 255, 255)); textSize = 13f
@@ -653,7 +667,9 @@ class AssistantService : AccessibilityService() {
         }
         voiceStatus = status
         // Each dictation continues the command; it is sent right away only when auto-send is on.
-        val voice = LocalVoiceInput(this, { field.append(it); if (voiceAutoSend(this)) submit() }, {
+        val voice = LocalVoiceInput(this, {
+            if (bubbleActive.value) { field.append(it); if (voiceAutoSend(this)) submit() }
+        }, {
             status.text = it; status.visibility = if (it.isEmpty()) View.GONE else View.VISIBLE
         })
         voiceInput = voice
@@ -733,6 +749,7 @@ class AssistantService : AccessibilityService() {
 
         windows.addView(root, params)
         overlay = root; bubble = chip; panel = card; layout = params
+        mutableBubbleActive.value = true
         renderOverlay(state.value)
     }
 
@@ -841,12 +858,15 @@ class AssistantService : AccessibilityService() {
     private fun applyOverlay() {
         val root = overlay ?: return
         val params = layout ?: return
-        root.visibility = if (captureHidden || locked) View.GONE else View.VISIBLE
+        val active = bubbleActive.value
+        val lit = running || paused && SystemClock.uptimeMillis() - pausedAt < PAUSE_LIT_MILLIS
+        // An empty, untouchable window still keeps running tasks lit after the user exits the bubble.
+        root.visibility = if (captureHidden || locked || !active && !lit) View.GONE else View.VISIBLE
         val voice = listening != null
-        bubble?.visibility = if (expanded || voice) View.GONE else View.VISIBLE
+        bubble?.visibility = if (!active || expanded || voice) View.GONE else View.VISIBLE
         taskPill?.visibility = if (running) View.VISIBLE else View.GONE
-        panel?.visibility = if (expanded && !voice) View.VISIBLE else View.GONE
-        voiceCard?.visibility = if (voice) View.VISIBLE else View.GONE
+        panel?.visibility = if (active && expanded && !voice) View.VISIBLE else View.GONE
+        voiceCard?.visibility = if (active && voice) View.VISIBLE else View.GONE
         stopButton?.visibility = if (running || paused) View.VISIBLE else View.GONE
         resumeControls?.visibility = if (paused) View.VISIBLE else View.GONE
         val offscreen = virtual?.hasSession == true
@@ -855,12 +875,13 @@ class AssistantService : AccessibilityService() {
         // Keep the current app visible while automatic actions are running.
         openButton?.visibility = if (running) View.GONE else View.VISIBLE
         inputRow?.visibility = View.VISIBLE
-        val focusable = typing && expanded && !voice && !running && !captureHidden && !locked
-        val focusFlags = if (focusable) params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-            else params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        val focusable = active && typing && expanded && !voice && !running && !captureHidden && !locked
+        val touchFlags = if (active) (params.flags or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH) and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            else (params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) and WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH.inv()
+        val focusFlags = if (focusable) touchFlags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            else touchFlags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         // Screen off fails a running task, so this always-present window keeps it lit. A pause stays lit for a minute so the
         // prompt is seen (the screen slept 11 s into one on 2026-10-16), then may sleep: a paused task survives screen off.
-        val lit = running || paused && SystemClock.uptimeMillis() - pausedAt < PAUSE_LIT_MILLIS
         val flags = if (lit) focusFlags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             else focusFlags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
         if (flags != params.flags) {
