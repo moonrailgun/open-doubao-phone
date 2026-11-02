@@ -6,3 +6,5 @@
 - [English](docs/changelog/en.md)
 
 `Unreleased` 表示正在开发、尚未发布的更新；下面按版本列出已发布内容。
+
+参与项目开发请阅读[维护与发布流程](docs/changelog.md)。

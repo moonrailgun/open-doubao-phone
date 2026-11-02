@@ -60,7 +60,7 @@ Pixel 6 Pro 真机实录，中途一次暂停后人工点击「继续」。上�
 当前为开发版，可从源码构建体验。
 
 - [安装、配置与开发指南](docs/guide.md)
-- [更新日志](CHANGELOG.md)
+- [更新日志](CHANGELOG.md) · [维护与发布](docs/changelog.md)
 - [豆馅 OS 构建与刷机](os/custom/README.md)
 - [Android 真机验收记录](android/acceptance.md)
 - [产品落地页源码与预览方式](website/)

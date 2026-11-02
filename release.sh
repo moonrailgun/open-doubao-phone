@@ -33,13 +33,18 @@ case "$choice" in
 esac
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Invalid version: $version"
 ! git rev-parse -q --verify "refs/tags/v$version" > /dev/null || die "Tag v$version already exists"
+python3 scripts/changelog.py check "$version"
 
 read -r -p "Release $current -> $version (versionCode $((code - 1)) -> $code) on $(git branch --show-current)? [y/N] " answer
 [[ $answer == [yY] ]] || die "Aborted"
 
+notes=$(mktemp)
+trap 'rm -f "$notes"' EXIT
+python3 scripts/changelog.py archive "$version"
+python3 scripts/changelog.py notes "$version" > "$notes"
 perl -pi -e "s/^(\s*versionName = )\".*\"\$/\${1}\"$version\"/; s/^(\s*versionCode = )\d+\$/\${1}$code/" "$gradle"
 perl -pi -e "s/^(\s*\"version\": )\".*\"/\${1}\"$version\"/" "$tauri"
-git commit -q -m "chore(release): v$version" "$gradle" "$tauri"
+git commit -q -m "chore(release): v$version" "$gradle" "$tauri" docs/changelog/en.md docs/changelog/zh-CN.md
 git tag "v$version"
 git push --atomic origin HEAD "v$version"
-gh release create "v$version" --title "v$version" --generate-notes
+gh release create "v$version" --title "v$version" --notes-file "$notes"
