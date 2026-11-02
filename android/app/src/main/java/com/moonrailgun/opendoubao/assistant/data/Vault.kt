@@ -7,6 +7,7 @@ import android.util.AtomicFile
 import com.moonrailgun.opendoubao.assistant.core.DefaultMemory
 import com.moonrailgun.opendoubao.assistant.core.Memory
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
+import com.moonrailgun.opendoubao.assistant.model.CompanionConfig
 import com.moonrailgun.opendoubao.assistant.remote.Pairing
 import com.moonrailgun.opendoubao.assistant.remote.RemoteConfig
 import org.json.JSONArray
@@ -25,7 +26,8 @@ data class Saved(val config: ModelConfig = ModelConfig(), val excludedApps: Set<
     val records: List<Record> = emptyList(),
     val remote: RemoteConfig = RemoteConfig(), val onlineTtsToken: String = "", val onlineTtsEndpoint: String = "",
     val onlineTtsModel: String = DEFAULT_TTS_MODEL, val onlineTtsVoice: String = DEFAULT_TTS_VOICE,
-    val memory: List<Memory> = emptyList(), val memorySeeded: Set<String> = emptySet()) {
+    val memory: List<Memory> = emptyList(), val memorySeeded: Set<String> = emptySet(),
+    val companion: CompanionConfig = CompanionConfig()) {
     companion object {
         const val DEFAULT_TTS_MODEL = "elevenlabs/eleven_v3"
         const val DEFAULT_TTS_VOICE = "bhJUNIXWQQ94l8eI2VUf"
@@ -110,7 +112,8 @@ class Vault(context: Context) {
                     remote?.optBoolean("enabled") ?: false), json.optString("onlineTtsToken"), json.optString("onlineTtsEndpoint"),
                 json.optString("onlineTtsModel", Saved.DEFAULT_TTS_MODEL), json.optString("onlineTtsVoice", Saved.DEFAULT_TTS_VOICE),
                 (0 until memory.length()).map { memory.getJSONObject(it).let { m -> Memory(m.getString("id"), m.getString("text"), m.getLong("updated")) } },
-                json.optJSONArray("memorySeeded")?.let { seeded -> (0 until seeded.length()).map { seeded.getString(it) }.toSet() }.orEmpty())
+                json.optJSONArray("memorySeeded")?.let { seeded -> (0 until seeded.length()).map { seeded.getString(it) }.toSet() }.orEmpty(),
+                CompanionConfig.fromJson(json.optJSONObject("companion")))
         } catch (e: Exception) { throw IllegalStateException("本地加密记录无法读取，原文件已保留", e) }
     }
 
@@ -122,6 +125,7 @@ class Vault(context: Context) {
             .put("jevKey", cfg.jevKey).put("chatEndpoint", cfg.chatEndpoint).put("chatModel", cfg.chatModel).put("chatKey", cfg.chatKey)
             .put("language", cfg.language).put("jevVision", cfg.jevVision))
             .put("excludedApps", JSONArray(saved.excludedApps.toList()))
+            .put("companion", saved.companion.json())
             // Older images require "apps"; an empty, unconfigured one lets a rollback start with all launchable apps.
             .put("apps", JSONArray()).put("appsConfigured", false)
             .put("onlineTtsToken", saved.onlineTtsToken)

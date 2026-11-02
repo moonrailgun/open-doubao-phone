@@ -303,6 +303,12 @@ object VoiceRuntime {
     }
 
     fun speak(context: Context, text: String) = speak(context, text, false)
+    /** A caller can stop its own playback without cancelling a newer voice command. */
+    fun speakCancellable(context: Context, text: String): (() -> Unit)? {
+        if (!speak(context, text)) return null
+        val id = active ?: return null
+        return { cancel(id) }
+    }
     /** Plays one bundled prompt through the normal playback path, for the debug page. */
     fun playPrompt(context: Context, clip: String) = speak(context, "", false, clip)
     private fun speakUnlock(context: Context) = speak(context, "请先点亮并解锁手机，然后重新下达指令。", true)

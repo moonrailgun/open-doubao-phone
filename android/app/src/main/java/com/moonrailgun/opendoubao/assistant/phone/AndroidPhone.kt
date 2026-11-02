@@ -300,6 +300,17 @@ internal fun performOnNode(root: AccessibilityNodeInfo, action: Action): Boolean
     } finally { node.recycle() }
 }
 
+internal fun companionPixels(image: String): IntArray {
+    val bytes = Base64.decode(image, Base64.NO_WRAP)
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 8 })
+        ?: throw PhoneUnavailableException("无法读取陪伴截图")
+    try {
+        val small = Bitmap.createScaledBitmap(bitmap, 32, 32, true)
+        try { return IntArray(1024).also { small.getPixels(it, 0, 32, 0, 0, 32, 32) } }
+        finally { if (small !== bitmap) small.recycle() }
+    } finally { bitmap.recycle() }
+}
+
 /** [ImageMatch] on two [encodeScreenshot] images of [screen], read at a quarter size; [region] is in display coordinates. */
 internal fun screenshotsMatch(before: String, after: String, screen: Screen, region: Bounds): Boolean {
     if (before == after) return true

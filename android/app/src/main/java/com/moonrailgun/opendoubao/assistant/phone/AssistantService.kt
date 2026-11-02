@@ -104,6 +104,15 @@ class AssistantService : AccessibilityService() {
     private val saves = Dispatchers.IO.limitedParallelism(1)
     private val mutable = MutableStateFlow(TaskState())
     val state = mutable.asStateFlow()
+    private var cancelCompanionSpeech: (() -> Unit)? = null
+    private val companion = CompanionController(scope, capture = {
+        requireUnlockedScreen()
+        if (conversing || typing || listening != null) null
+        else captureCompanion(phone, packageName, Vault(this).read().excludedApps) { image ->
+            withContext(Dispatchers.Default) { companionPixels(image) }
+        }
+    }, speak = { cancelCompanionSpeech = VoiceRuntime.speakCancellable(this, it) })
+    val companionState = companion.state
     private val remoteSnapshot = MutableStateFlow(RemoteSnapshot())
     var remote: RemoteReceiver? = null
         private set
@@ -128,6 +137,7 @@ class AssistantService : AccessibilityService() {
     private var statusIcon: ImageView? = null
     private var statusText: TextView? = null
     private var stopButton: View? = null
+    private var companionButton: View? = null
     private var resumeControls: View? = null
     private var handOverButton: View? = null
     private var peek: View? = null
@@ -168,6 +178,7 @@ class AssistantService : AccessibilityService() {
                 if (controller?.state?.value?.status == TaskStatus.RUNNING) controller?.fail("手机已息屏")
             }
             else locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
+            if (locked) stopCompanion()
             applyOverlay()
         }
     }
@@ -180,6 +191,7 @@ class AssistantService : AccessibilityService() {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
         })
         createOverlay()
+        scope.launch { companionState.collect { renderOverlay(state.value) } }
         scope.launch { VoiceRuntime.conversing.collect { conversing = it; ringBubble() } }
         scope.launch { VoiceRuntime.listening.collect { showListening(it) } }
         // Tasks never outlive the service, including those waiting for manual intervention.
@@ -201,6 +213,7 @@ class AssistantService : AccessibilityService() {
                     override fun saveConfig(config: ModelConfig) {
                         check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改模型配置" }
                         vault.write(vault.read().copy(config = config))
+                        stopCompanion()
                         remoteEdits.value++
                     }
                     override suspend fun testConfig(config: ModelConfig) = CloudModels(config).checkConnection()
@@ -291,6 +304,7 @@ class AssistantService : AccessibilityService() {
             vault.record(record.copy(status = "FAILED", result = "无法创建模型调试记录"))
             throw e
         }
+        stopCompanion()
         retireTask()
         active = record
         if (!fromBubble) conversation.clear()
@@ -382,6 +396,7 @@ class AssistantService : AccessibilityService() {
     }
 
     private fun newConversation() {
+        stopCompanion()
         voiceInput?.cancel()
         retireTask()
         conversation.clear()
@@ -437,7 +452,36 @@ class AssistantService : AccessibilityService() {
         }
     }
 
-    fun stop() = controller?.stop()
+    fun startCompanion() {
+        requireUnlockedScreen()
+        check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务" }
+        if (companionState.value.active) return
+        val saved = Vault(this).read()
+        val config = saved.companion.modelConfig(saved.config)
+        val models = CloudModels(config)
+        setBubbleActive(true)
+        collapse()
+        companion.start(saved.companion.intervalSeconds * 1000L) { frame, recent ->
+            if (!companionFrameAvailable(frame)) return@start null
+            val reply = models.companionComment(frame, recent)
+            if (companionFrameAvailable(frame)) reply else null
+        }
+    }
+
+    private suspend fun companionFrameAvailable(frame: CompanionFrame): Boolean {
+        requireUnlockedScreen()
+        val current = phone.observe()
+        return current.packageName == frame.packageName && !conversing && !typing && listening == null &&
+            companionScreenAllowed(current, packageName, Vault(this).read().excludedApps)
+    }
+
+    fun stopCompanion() {
+        companion.stop()
+        cancelCompanionSpeech?.invoke()
+        cancelCompanionSpeech = null
+    }
+
+    fun stop() { stopCompanion(); controller?.stop() }
 
     fun resume(ignoreScreenChanges: Boolean = false) {
         requireUnlockedScreen()
@@ -455,11 +499,12 @@ class AssistantService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.packageName?.toString() != packageName && ::phone.isInitialized) phone.lastEvent = SystemClock.uptimeMillis()
     }
-    override fun onInterrupt() { controller?.fail("无障碍服务被系统中断") }
+    override fun onInterrupt() { stopCompanion(); controller?.fail("无障碍服务被系统中断") }
     override fun onUnbind(intent: Intent?): Boolean { disconnected(); return super.onUnbind(intent) }
     override fun onDestroy() { disconnected(); super.onDestroy() }
 
     private fun disconnected() {
+        stopCompanion()
         controller?.fail("无障碍连接已断开")
         virtual?.close()
         remote?.close()
@@ -477,6 +522,7 @@ class AssistantService : AccessibilityService() {
         mutableBubbleActive.value = active
         getSharedPreferences("overlay", MODE_PRIVATE).edit().putBoolean("enabled", active).apply()
         if (!active) {
+            stopCompanion()
             expanded = false; typing = false
             voiceInput?.cancel()
         }
@@ -733,6 +779,14 @@ class AssistantService : AccessibilityService() {
             }, LinearLayout.LayoutParams(dp(112), dp(48)).apply { marginStart = dp(8) })
         }
         card.addView(resumeControls, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
+        companionButton = Button(this).apply {
+            text = "开启陪伴模式"; textSize = 15f; isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = rounded(Color.argb(50, 255, 255, 255), 14)
+            stateListAnimator = null
+            setOnClickListener { runCatching { startCompanion() }.onFailure { statusText?.text = it.message } }
+        }
+        card.addView(companionButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) })
         stopButton = Button(this).apply {
             // Emergency stop keeps its words next to the glyph; it is the one control that must never be guessed.
             val glyph = getDrawable(R.drawable.lucide_octagon_x)!!.mutate().apply { setTint(Color.WHITE); setBounds(0, 0, dp(18), dp(18)) }
@@ -804,6 +858,13 @@ class AssistantService : AccessibilityService() {
         }
         taskGoal?.text = value.goal
         taskStep?.text = value.message
+        if (companionState.value.active) {
+            val companion = companionState.value
+            statusIcon?.apply { setImageResource(R.drawable.app_logo); imageTintList = null; contentDescription = "陪伴模式" }
+            statusText?.text = listOf(companion.message, companion.comment).filter { it.isNotBlank() }.joinToString("\n\n")
+            taskGoal?.text = "陪伴模式"
+            taskStep?.text = companion.comment.ifBlank { companion.message }
+        }
         ringBubble()
         applyOverlay()
     }
@@ -845,13 +906,14 @@ class AssistantService : AccessibilityService() {
             when {
                 running -> show(BubbleRing.Mode.RUNNING, statusStyle(TaskStatus.RUNNING.name).second.toArgb())
                 paused -> show(BubbleRing.Mode.PAUSED, statusStyle(TaskStatus.PAUSED.name).second.toArgb())
-                conversing -> show(BubbleRing.Mode.VOICE, VoiceRing.toArgb())
+                conversing || companionState.value.active -> show(BubbleRing.Mode.VOICE, VoiceRing.toArgb())
                 else -> show(BubbleRing.Mode.IDLE, Color.TRANSPARENT)
             }
         }
         ball.contentDescription = when {
             running -> "Open Doubao 正在操作手机，点按展开可补充要求或停止"
             paused -> "Open Doubao 已暂停，点按展开继续任务"
+            companionState.value.active -> "Open Doubao 陪伴中，点按查看评论或停止"
             conversing -> "Open Doubao 正在语音对话，点按展开"
             else -> "Open Doubao，点按查看结果或下达命令"
         }
@@ -877,10 +939,11 @@ class AssistantService : AccessibilityService() {
         root.visibility = if (captureHidden || locked || !active && !lit) View.GONE else View.VISIBLE
         val voice = listening != null
         bubble?.visibility = if (!active || expanded || voice) View.GONE else View.VISIBLE
-        taskPill?.visibility = if (running) View.VISIBLE else View.GONE
+        taskPill?.visibility = if (running || companionState.value.active) View.VISIBLE else View.GONE
         panel?.visibility = if (active && expanded && !voice) View.VISIBLE else View.GONE
         voiceCard?.visibility = if (active && voice) View.VISIBLE else View.GONE
-        stopButton?.visibility = if (running || paused) View.VISIBLE else View.GONE
+        stopButton?.visibility = if (running || paused || companionState.value.active) View.VISIBLE else View.GONE
+        companionButton?.visibility = if (!running && !paused && !companionState.value.active) View.VISIBLE else View.GONE
         resumeControls?.visibility = if (paused) View.VISIBLE else View.GONE
         val offscreen = virtual?.hasSession == true
         peek?.visibility = if (expanded && offscreen) View.VISIBLE else View.GONE

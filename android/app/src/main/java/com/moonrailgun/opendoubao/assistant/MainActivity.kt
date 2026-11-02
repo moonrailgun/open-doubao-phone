@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.moonrailgun.opendoubao.assistant.core.Markdown
+import com.moonrailgun.opendoubao.assistant.core.CompanionState
 import com.moonrailgun.opendoubao.assistant.core.Memory
 import com.moonrailgun.opendoubao.assistant.core.MemoryOp
 import com.moonrailgun.opendoubao.assistant.core.MemoryOps
@@ -215,6 +216,7 @@ class MainActivity : ComponentActivity() {
         val service by AssistantService.connected.collectAsState()
         val bubbleActive = service?.bubbleActive?.collectAsState()?.value == true
         val task = service?.state?.collectAsState()?.value ?: TaskState()
+        val companion = service?.companionState?.collectAsState()?.value ?: CompanionState()
         val paused = task.status == TaskStatus.PAUSED
         val busy = task.status == TaskStatus.RUNNING || paused
         val configReady = remember(config) { runCatching { config.validate() }.isSuccess }
@@ -226,6 +228,7 @@ class MainActivity : ComponentActivity() {
         fun save() {
             config.validate()
             vault.write(vault.read().copy(config = config, excludedApps = excluded))
+            service?.stopCompanion()
         }
         fun attempt(action: () -> Unit) {
             try { action() } catch (e: Exception) { message = e.message ?: "操作失败" }
@@ -297,13 +300,31 @@ class MainActivity : ComponentActivity() {
                                 else "说一句话，它会自己打开应用、点按和输入，做完把结果告诉你。",
                                 fontSize = 15.sp, lineHeight = 22.sp, color = colors.onSurfaceVariant)
                         }
-                        if (service == null) Banner("还差一步：开启无障碍服务", "手机需要它读取屏幕、替你点按和输入。只在你开始任务后工作。") {
+                        if (service == null) Banner("还差一步：开启无障碍服务", "手机需要它读取屏幕、替你点按和输入。开始任务或陪伴后工作。") {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                         }
                         OutlinedButton({ attempt { service?.setBubbleActive(!bubbleActive) } },
                             Modifier.fillMaxWidth().height(52.dp), enabled = service != null, shape = RoundedCornerShape(16.dp)) {
                             Icon(painterResource(if (bubbleActive) R.drawable.lucide_x else R.drawable.lucide_play), null, Modifier.size(18.dp))
                             Text(if (bubbleActive) "退出悬浮球" else "启动悬浮球", Modifier.padding(start = 8.dp))
+                        }
+                        Section("陪伴模式", "陪你玩游戏、看视频。定时看看画面，简短聊两句；变化不大时保持安静。") {
+                            if (companion.active) {
+                                Text(companion.message, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                                if (companion.comment.isNotBlank()) Text(companion.comment)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Button({ attempt {
+                                    if (companion.active) service?.stopCompanion()
+                                    else {
+                                        checkNotNull(service) { "请先开启无障碍服务" }.startCompanion()
+                                        moveTaskToBack(true)
+                                    }
+                                } }, enabled = service != null && !busy) {
+                                    Text(if (companion.active) "停止陪伴" else "开始陪伴")
+                                }
+                                TextButton({ tab = SETTINGS; settingsTab = 4 }) { Text("陪伴设置") }
+                            }
                         }
                         if (!configReady && !busy) Banner("还没有设置模型", "填好规划与视觉模型的地址和密钥后才能开始，Jev 可选。") { tab = SETTINGS; settingsTab = 0 }
                         if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = { force ->
@@ -382,8 +403,8 @@ class MainActivity : ComponentActivity() {
                     SETTINGS -> {
                         PageTitle("设置", "配置模型服务、执行方式、语音播报和远程连接。")
                         BubbleAvatarControls()
-                        PrimaryTabRow(settingsTab) {
-                            listOf("模型", "语音", "桌面远程", "执行").forEachIndexed { index, title ->
+                        PrimaryScrollableTabRow(settingsTab, edgePadding = 0.dp) {
+                            listOf("模型", "语音", "桌面远程", "执行", "陪伴").forEachIndexed { index, title ->
                                 Tab(settingsTab == index, { settingsTab = index }, text = { Text(title) })
                             }
                         }
@@ -404,7 +425,7 @@ class MainActivity : ComponentActivity() {
                                         Text("Jev 多模态（实验）", Modifier.weight(1f))
                                         Switch(config.jevVision, null)
                                     }
-                                    Text("开启后优先由 Jev 看截图并决定操作；置信度不足时，由通用视觉模型决定这一步，下一步再交回 Jev。需支持 Box 的 Jev 1.14。默认关闭，保存后新任务生效。",
+                                    Text("开启后优先由 Jev 看截图并决定操作；置信度不足时，由通用视觉模型决定这一步，下一步再交回 Jev。需支持 Box 的 Jev 1.14。默认关闭，保存后新任务生效，并停止当前陪伴；重新开启陪伴后使用新设置。",
                                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Section("语言", "任务结束时的总结使用这个语言。") {
@@ -443,7 +464,8 @@ class MainActivity : ComponentActivity() {
                                 VoiceControls()
                             }
                             2 -> RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-                            else -> ExecutionControls()
+                            3 -> ExecutionControls()
+                            4 -> CompanionControls(vault, service) { message = it }
                         }
                         OutlinedButton({ startActivity(Intent(this@MainActivity, DebugActivity::class.java)) }, Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp)) { Text("调试") }
@@ -578,6 +600,45 @@ class MainActivity : ComponentActivity() {
             content()
         }
     }
+
+@Composable private fun CompanionControls(vault: Vault, service: AssistantService?, report: (String) -> Unit) {
+    var config by remember { mutableStateOf(vault.read().companion) }
+    var interval by remember { mutableStateOf(config.intervalSeconds.toString()) }
+    Section("陪伴节奏", "上一轮请求结束后，再等待这个间隔观察画面。画面没有明显变化时跳过评论，不重复打扰。") {
+        OutlinedTextField(interval, { interval = it }, Modifier.fillMaxWidth(), label = { Text("请求间隔（秒）") },
+            singleLine = true, shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            supportingText = { Text("默认 20 秒，可设为 5–300 秒。间隔越短，用量越大。") })
+        Text("评论会显示在悬浮球旁，并沿用语音页的播报设置。锁屏、息屏、开始任务或退出悬浮球时停止陪伴。",
+            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Section("陪伴模型", "默认复用已保存的规划与视觉模型。陪伴会持续使用图片输入，可单独选择成本更低的模型。") {
+        Row(Modifier.fillMaxWidth().toggleable(config.useDedicatedModel, role = Role.Switch) {
+            config = config.copy(useDedicatedModel = it)
+        }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("使用独立模型", Modifier.weight(1f))
+            Switch(config.useDedicatedModel, null)
+        }
+        if (config.useDedicatedModel) {
+            SettingField("完整接口地址", config.endpoint, "支持图片输入的 Chat Completions 接口，通常以 /v1/chat/completions 结尾") {
+                config = config.copy(endpoint = it.trim())
+            }
+            SettingField("模型", config.model) { config = config.copy(model = it.trim()) }
+            KeyField("API Key", config.key) { config = config.copy(key = it.trim()) }
+        }
+        Text("截图会发送给所选模型。截图和陪伴评论不保存到任务记录。被排除的应用、密码页面和本应用不参与陪伴。",
+            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Button({
+        try {
+            val next = config.copy(intervalSeconds = interval.trim().toIntOrNull() ?: error("请输入 5–300 秒的整数间隔"))
+            next.modelConfig(vault.read().config)
+            vault.update { it.copy(companion = next) }
+            service?.stopCompanion()
+            config = next
+            report("陪伴设置已保存，下次开始陪伴时生效")
+        } catch (e: Exception) { report(e.message ?: "保存失败") }
+    }, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) { Text("保存陪伴设置") }
+}
 
 /** Facts the assistant reads before every task. The model edits them too, so each change re-reads the vault first. */
 @Composable private fun MemoryControls(vault: Vault, refresh: Int, report: (String) -> Unit) {
