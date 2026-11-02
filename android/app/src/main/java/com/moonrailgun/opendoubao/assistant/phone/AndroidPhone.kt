@@ -101,8 +101,17 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
             if (!bounds.intersect(0, 0, screen.width, screen.height)) throw ScreenChangedException()
             if (Build.VERSION.SDK_INT < 34) {
                 val blockers = windows().filter { other ->
-                    other.id != target.id && other.layer > target.layer &&
-                        Rect.intersects(bounds, Rect().also(other::getBoundsInScreen))
+                    val otherBounds = Rect().also(other::getBoundsInScreen)
+                    if (other.id == target.id || other.layer <= target.layer || !Rect.intersects(bounds, otherBounds)) false
+                    else {
+                        val pkg = runCatching { other.root?.let { root ->
+                            try { root.packageName?.toString() } finally { root.recycle() }
+                        } }.getOrDefault("")
+                        !isHuaweiGestureNavigation(Build.MANUFACTURER, other.type, other.title?.toString(), pkg,
+                            other.isActive, other.isFocused,
+                            Bounds(otherBounds.left, otherBounds.top, otherBounds.right, otherBounds.bottom),
+                            screen.width, screen.height)
+                    }
                 }
                 if (blockers.isNotEmpty()) throw PhoneUnavailableException("键盘或其他浮层遮挡，无法可靠截图",
                     "blockers=${blockers.size} " + blockers.take(8).joinToString("; ") { "blocker={${windowDetails(it)}}" })
@@ -252,6 +261,22 @@ internal suspend fun awaitPackage(pkg: String, timeoutMillis: Long, ready: () ->
         delay(100)
     }
     return false
+}
+
+internal fun isHuaweiGestureNavigation(manufacturer: String, type: Int, title: String?, packageName: String?,
+    active: Boolean, focused: Boolean, bounds: Bounds, width: Int, height: Int): Boolean {
+    if (!manufacturer.equals("HUAWEI", ignoreCase = true) || type != AccessibilityWindowInfo.TYPE_SYSTEM ||
+        (packageName != null && packageName != "android") || active || focused || width <= 0 || height <= 0) return false
+    val w = bounds.right - bounds.left
+    val h = bounds.bottom - bounds.top
+    if (w <= 0 || h <= 0 || bounds.left < 0 || bounds.top < 0 || bounds.right > width || bounds.bottom > height) return false
+    // Huawei exposes these transparent gesture input regions as overlapping accessibility windows.
+    return when (title) {
+        "GestureNavLeft" -> bounds.left == 0 && w <= width / 10 && h >= height / 2
+        "GestureNavRight" -> bounds.right == width && w <= width / 10 && h >= height / 2
+        "GestureNavBottom" -> bounds.bottom == height && h <= height / 10 && w >= width / 2
+        else -> false
+    }
 }
 
 /** The readable foreground app window, or null while a transition hides it; active system UI is refused. */
