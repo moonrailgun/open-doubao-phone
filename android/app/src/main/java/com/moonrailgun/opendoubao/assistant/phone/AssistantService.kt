@@ -45,6 +45,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.compose.ui.graphics.toArgb
@@ -155,7 +156,7 @@ class AssistantService : AccessibilityService() {
     /** Mirrors the virtual display under [parent] for the app's live view; null when no session is open. */
     fun peekVirtual(parent: SurfaceControl, width: Int, height: Int, surface: android.view.Surface? = null): AutoCloseable? = virtual?.peek(parent, width, height, surface)
     private var statusLabel: TextView? = null
-    private var openButton: View? = null
+    private var moreMenu: PopupMenu? = null
     private var inputRow: View? = null
     private var input: EditText? = null
     private var voiceInput: LocalVoiceInput? = null
@@ -548,6 +549,7 @@ class AssistantService : AccessibilityService() {
         if (connection.value === this) connection.value = null
         runCatching { unregisterReceiver(lockReceiver) }
         voiceInput?.destroy(); voiceInput = null
+        moreMenu?.dismiss()
         overlay?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
         overlay = null
         mutableBubbleActive.value = false
@@ -717,12 +719,20 @@ class AssistantService : AccessibilityService() {
                 setOnTouchListener(drag)
             }
             addView(statusLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            openButton = iconButton(R.drawable.lucide_external_link, "打开 Open Doubao") {
-                collapse()
-                packageManager.getLaunchIntentForPackage(packageName)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            val more = iconButton(R.drawable.lucide_ellipsis, "更多操作") {}
+            more.setOnClickListener {
+                moreMenu?.dismiss()
+                moreMenu = PopupMenu(this@AssistantService, more).apply {
+                    if (!running) menu.add("打开 Open Doubao").setOnMenuItemClickListener {
+                        collapse()
+                        packageManager.getLaunchIntentForPackage(packageName)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                        true
+                    }
+                    menu.add("新对话").setOnMenuItemClickListener { newConversation(); true }
+                    show()
+                }
             }
-            addView(openButton, LinearLayout.LayoutParams(dp(40), dp(40)))
-            addView(iconButton(R.drawable.lucide_plus, "新对话") { newConversation() }, LinearLayout.LayoutParams(dp(40), dp(40)))
+            addView(more, LinearLayout.LayoutParams(dp(40), dp(40)))
             addView(iconButton(R.drawable.lucide_minimize_2, "收起") { collapse() }, LinearLayout.LayoutParams(dp(40), dp(40)))
         })
         card.addView(statusText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -995,8 +1005,7 @@ class AssistantService : AccessibilityService() {
         val offscreen = virtual?.hasSession == true
         peek?.visibility = if (expanded && offscreen) View.VISIBLE else View.GONE
         handOverButton?.visibility = if (paused && offscreen) View.VISIBLE else View.GONE
-        // Keep the current app visible while automatic actions are running.
-        openButton?.visibility = if (running) View.GONE else View.VISIBLE
+        if (!active || !expanded || voice || captureHidden || locked || running) moreMenu?.dismiss()
         inputRow?.visibility = View.VISIBLE
         val focusable = active && typing && expanded && !voice && !running && !captureHidden && !locked
         val touchFlags = if (active) (params.flags or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH) and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()

@@ -580,6 +580,12 @@ class NativeBridgeTest {
                 assertSame("Body sits directly in the card", panel, summary.parent)
                 assertEquals("Body uses all available width", panel.width - panel.paddingLeft - panel.paddingRight, summary.width)
                 assertTrue("Body starts below the toolbar", summary.top >= header.bottom)
+                val more = header.getChildAt(header.childCount - 2)
+                assertEquals("更多操作", more.contentDescription)
+                more.performClick()
+                val menu = AssistantService::class.java.getDeclaredField("moreMenu").apply { isAccessible = true }.get(service) as android.widget.PopupMenu
+                assertEquals(listOf("打开 Open Doubao", "新对话"), (0 until menu.menu.size()).map { menu.menu.getItem(it).title.toString() })
+                menu.dismiss()
                 gesture(point(summary), 0f, -dp(60))
                 assertTrue("Summary keeps its scrolling gesture", summary.scrollY > 0)
                 assertEquals(x, params.x)
