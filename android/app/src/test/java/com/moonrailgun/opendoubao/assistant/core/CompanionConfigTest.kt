@@ -14,14 +14,24 @@ class CompanionConfigTest {
         val defaults = CompanionConfig.fromJson(null)
         assertEquals(20, defaults.intervalSeconds)
         assertEquals("vision", defaults.modelConfig(general).chatModel)
-        assertFalse(defaults.modelConfig(general).hasJev)
-        assertFalse(defaults.modelConfig(general).jevVision)
+        assertTrue(defaults.modelConfig(general).hasJev)
+        assertTrue(defaults.modelConfig(general).jevVision)
         val dedicated = CompanionConfig(45, true, "https://dedicated.test/chat", "small-vision", "dedicated")
         assertEquals(dedicated, CompanionConfig.fromJson(JSONObject(dedicated.json().toString())))
         val chosen = dedicated.modelConfig(ModelConfig())
         assertEquals("https://dedicated.test/chat", chosen.chatEndpoint)
         assertEquals("small-vision", chosen.chatModel)
         assertEquals("dedicated", chosen.chatKey)
+        val withJev = dedicated.modelConfig(general)
+        assertEquals(general.jevEndpoint, withJev.jevEndpoint)
+        assertEquals(general.jevModel, withJev.jevModel)
+        assertEquals(general.jevKey, withJev.jevKey)
+        assertTrue(withJev.jevVision)
+        assertEquals("small-vision", withJev.chatModel)
+        assertFalse(dedicated.modelConfig(general.copy(jevVision = false)).hasJev)
+        assertThrows(IllegalArgumentException::class.java) {
+            dedicated.modelConfig(general.copy(jevKey = ""))
+        }
     }
 
     @Test fun rejectsInvalidIntervalsAndIncompleteOrInsecureDedicatedModel() {

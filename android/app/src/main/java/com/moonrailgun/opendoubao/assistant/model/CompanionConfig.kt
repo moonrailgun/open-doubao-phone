@@ -6,7 +6,7 @@ data class CompanionConfig(val intervalSeconds: Int = 20, val useDedicatedModel:
     val endpoint: String = "", val model: String = "", val key: String = "") {
     fun modelConfig(general: ModelConfig): ModelConfig {
         require(intervalSeconds in 5..300) { "陪伴请求间隔请填写 5–300 秒" }
-        return general.copy(jevKey = "", jevVision = false,
+        return general.copy(jevKey = if (general.jevVision) general.jevKey else "",
             chatEndpoint = if (useDedicatedModel) endpoint else general.chatEndpoint,
             chatModel = if (useDedicatedModel) model else general.chatModel,
             chatKey = if (useDedicatedModel) key else general.chatKey).also { it.validate() }

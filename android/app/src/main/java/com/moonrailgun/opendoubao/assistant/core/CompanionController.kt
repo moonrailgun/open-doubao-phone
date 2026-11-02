@@ -44,7 +44,8 @@ class CompanionController(private val scope: CoroutineScope, private val capture
     private var job: Job? = null
     private val sessions = Mutex()
 
-    fun start(intervalMillis: Long, comment: suspend (CompanionFrame, List<String>) -> String?) {
+    fun start(intervalMillis: Long, unchanged: (suspend (CompanionFrame, CompanionFrame) -> Boolean)? = null,
+        comment: suspend (CompanionFrame, List<String>) -> String?) {
         require(intervalMillis > 0)
         if (mutable.value.active) return
         mutable.value = CompanionState(active = true, message = "切到游戏或视频，开始陪伴")
@@ -56,7 +57,13 @@ class CompanionController(private val scope: CoroutineScope, private val capture
                     val frame = capture()
                     ensureActive()
                     val baseline = previous
-                    val similar = frame != null && baseline != null && baseline.similarTo(frame)
+                    val similar = frame != null && baseline != null &&
+                        if (unchanged == null) baseline.similarTo(frame) else {
+                            // Let the model judge localized changes that the coarse color grid can miss.
+                            (baseline.image == frame.image && baseline.packageName == frame.packageName &&
+                                baseline.width == frame.width && baseline.height == frame.height && baseline.rotation == frame.rotation) ||
+                                unchanged(baseline, frame)
+                        }
                     ensureActive()
                     when {
                         frame == null -> mutable.value = mutable.value.copy(message = "当前页面暂不评论，安静陪伴中")
@@ -66,7 +73,7 @@ class CompanionController(private val scope: CoroutineScope, private val capture
                             val reply = comment(frame, recent.toList())
                             ensureActive()
                             // Null discards a stale observation; an empty reply is the model choosing silence.
-                            if (reply != null) previous = frame.copy(image = "")
+                            if (reply != null) previous = if (unchanged != null) frame else frame.copy(image = "")
                             mutable.value = mutable.value.copy(message = "陪伴中，等待下一次观察")
                             if (!reply.isNullOrBlank() && reply !in recent) {
                                 recent.addLast(reply)

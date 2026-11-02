@@ -425,7 +425,7 @@ class MainActivity : ComponentActivity() {
                                         Text("Jev 多模态（实验）", Modifier.weight(1f))
                                         Switch(config.jevVision, null)
                                     }
-                                    Text("开启后优先由 Jev 看截图并决定操作；置信度不足时，由通用视觉模型决定这一步，下一步再交回 Jev。需支持 Box 的 Jev 1.14。默认关闭，保存后新任务生效，并停止当前陪伴；重新开启陪伴后使用新设置。",
+                                    Text("开启后优先由 Jev 看截图并决定操作；置信度不足时，由通用视觉模型决定这一步，下一步再交回 Jev。陪伴模式也会先由 Jev 对比前后截图，变化不大时跳过评论模型。需支持 Box 的 Jev 1.14。默认关闭，保存后新任务生效，并停止当前陪伴；重新开启陪伴后使用新设置。",
                                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Section("语言", "任务结束时的总结使用这个语言。") {
@@ -625,7 +625,7 @@ class MainActivity : ComponentActivity() {
             SettingField("模型", config.model) { config = config.copy(model = it.trim()) }
             KeyField("API Key", config.key) { config = config.copy(key = it.trim()) }
         }
-        Text("截图会发送给所选模型。截图和陪伴评论不保存到任务记录。被排除的应用、密码页面和本应用不参与陪伴。",
+        Text("截图会发送给所选模型。开启「Jev 多模态（实验）」时，还会先将前后两张截图交给 Jev 判断；变化不大时跳过评论模型，判断失败时继续评论。截图和陪伴评论不保存到任务记录。被排除的应用、密码页面和本应用不参与陪伴。",
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Button({

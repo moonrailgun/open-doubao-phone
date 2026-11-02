@@ -15,8 +15,93 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class CompanionModelsTest {
+    private val general = ModelConfig(jevKey = "jev-key", jevVision = true,
+        chatEndpoint = "https://general.test/chat", chatKey = "general-key", chatModel = "large")
+    private val previous = CompanionFrame("game.app", 1080, 2400, 0, "previous-pixels", intArrayOf(1))
+    private val current = previous.copy(image = "current-pixels")
+
+    @Test fun jevComparisonSupportsBothProtocolsAndOnlySkipsOnAValidConfidentAnswer() = runBlocking {
+        for (native in listOf(true, false)) {
+            val config = general.copy(jevEndpoint = if (native) general.jevEndpoint else "https://gateway.test/decisions")
+            var reply = ""
+            var failed = false
+            var calls = 0
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                calls++
+                assertEquals(config.jevEndpoint, chain.request().url.toString())
+                assertEquals("Bearer jev-key", chain.request().header("Authorization"))
+                assertEquals(if (native) "true" else null, chain.request().header("TypeSafe-Danger-Zone-Images"))
+                val buffer = Buffer()
+                chain.request().body!!.writeTo(buffer)
+                val body = JSONObject(buffer.readUtf8())
+                assertEquals(config.jevModel, body.getString("model"))
+                assertFalse(body.has("messages"))
+                assertEquals("noul", body.getJSONObject("questions").getJSONObject("unchanged").getString("type"))
+                val state = body.getJSONObject("state")
+                for ((name, pixels) in listOf("screenshot" to current.image, "previous_screenshot" to previous.image)) {
+                    if (native) {
+                        val asset = body.getJSONObject("assets").getJSONObject(state.getString(name))
+                        assertEquals("image", asset.getString("type"))
+                        assertEquals("jpg", asset.getString("format"))
+                        assertEquals(pixels, asset.getString("data_base64"))
+                    } else {
+                        assertFalse(body.has("assets"))
+                        assertEquals("image_url", state.getJSONObject(name).getString("type"))
+                        assertEquals("data:image/jpeg;base64,$pixels", state.getJSONObject(name).getJSONObject("image_url").getString("url"))
+                    }
+                }
+                if (native) assertEquals(2, body.getJSONObject("assets").length())
+                if (failed) throw IOException("unavailable")
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                    .body(reply.toResponseBody("application/json".toMediaType())).build()
+            }.build()
+            val models = CloudModels(config, HttpTransport(client))
+            for ((answer, expected) in listOf("0.95" to true, "0.1" to false, "0.55" to false,
+                "1.2" to false, "\"0.95\"" to false)) {
+                reply = """{"answers":{"unchanged":{"type":"noul","noul":$answer}}}"""
+                assertEquals(expected, models.companionUnchanged(previous, current))
+            }
+            for (invalid in listOf("invalid-json", """{"answers":{"unchanged":{"type":"choice","noul":0.99}}}""")) {
+                reply = invalid
+                assertFalse(models.companionUnchanged(previous, current))
+            }
+            failed = true
+            assertFalse(models.companionUnchanged(previous, current))
+            val beforeDisabled = calls
+            assertFalse(CloudModels(config.copy(jevVision = false), HttpTransport(client)).companionUnchanged(previous, current))
+            assertEquals(beforeDisabled, calls)
+        }
+    }
+
+    @Test fun comparisonTimeoutFallsBackButExternalCancellationPropagates() = runBlocking {
+        for (cancel in listOf(false, true)) {
+            val started = CompletableDeferred<okhttp3.Call>()
+            val release = CountDownLatch(1)
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                started.complete(chain.call())
+                release.await(10, TimeUnit.SECONDS)
+                throw IOException("released")
+            }.build()
+            val models = CloudModels(general, HttpTransport(client))
+            var returned = false
+            try {
+                val result = async { models.companionUnchanged(previous, current).also { returned = true } }
+                val call = withTimeout(5000) { started.await() }
+                if (cancel) {
+                    result.cancelAndJoin()
+                    assertTrue(result.isCancelled)
+                    assertFalse(returned)
+                } else assertFalse(withTimeout(5000) { result.await() })
+                assertTrue(call.isCanceled())
+            } finally { release.countDown() }
+        }
+    }
+
     @Test fun dedicatedVisionRequestUsesBoundedContextAndRepliesWithoutExtraModelCalls() = runBlocking {
         val requests = mutableListOf<JSONObject>()
         var reply = "这波配合真漂亮！"

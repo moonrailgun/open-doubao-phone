@@ -32,17 +32,26 @@ object JevVisionProtocol {
         return body.takeIf { it.toString().toByteArray().size <= JevProtocol.BUDGET }
     }
 
-    fun request(model: String, state: JSONObject, questions: JSONObject, image: String, native: Boolean): JSONObject {
-        require(image.isNotBlank()) { "Jev 多模态需要截图" }
+    fun request(model: String, state: JSONObject, questions: JSONObject, image: String, native: Boolean,
+        previousImage: String? = null): JSONObject {
+        val images = linkedMapOf("screenshot" to image)
+        if (previousImage != null) images["previous_screenshot"] = previousImage
+        require(images.values.all { it.isNotBlank() }) { "Jev 多模态需要截图" }
         val body = JSONObject().put("model", model).put("state", JSONObject(state.toString())).put("questions", questions)
         val input = body.getJSONObject("state")
         if (native) {
-            val id = UUID.randomUUID().toString()
-            input.put("screenshot", id)
-            body.put("assets", JSONObject().put(id, JSONObject().put("type", "image").put("format", "jpg").put("data_base64", image)))
+            val assets = JSONObject()
+            images.forEach { (name, data) ->
+                val id = UUID.randomUUID().toString()
+                input.put(name, id)
+                assets.put(id, JSONObject().put("type", "image").put("format", "jpg").put("data_base64", data))
+            }
+            body.put("assets", assets)
         } else {
-            input.put("screenshot", JSONObject().put("type", "image_url")
-                .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$image")))
+            images.forEach { (name, data) ->
+                input.put(name, JSONObject().put("type", "image_url")
+                    .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$data")))
+            }
         }
         return body
     }

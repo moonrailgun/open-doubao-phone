@@ -461,7 +461,11 @@ class AssistantService : AccessibilityService() {
         val models = CloudModels(config)
         setBubbleActive(true)
         collapse()
-        companion.start(saved.companion.intervalSeconds * 1000L) { frame, recent ->
+        companion.start(saved.companion.intervalSeconds * 1000L, unchanged = if (config.jevVision) { previous, current ->
+            if (!companionFrameAvailable(current)) true
+            else if (previous.packageName in Vault(this).read().excludedApps) false
+            else models.companionUnchanged(previous, current)
+        } else null) { frame, recent ->
             if (!companionFrameAvailable(frame)) return@start null
             val reply = models.companionComment(frame, recent)
             if (companionFrameAvailable(frame)) reply else null

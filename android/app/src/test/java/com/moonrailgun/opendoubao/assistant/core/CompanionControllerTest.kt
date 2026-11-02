@@ -43,6 +43,95 @@ class CompanionControllerTest {
         controller.stop()
     }
 
+    @Test fun unchangedGateSkipsCommentsAndRetainsTheLastCommentedImage() = runTest {
+        var current = frame().copy(image = "first")
+        val compared = mutableListOf<Pair<String, String>>()
+        val commented = mutableListOf<String>()
+        val controller = CompanionController(backgroundScope, capture = { current })
+        controller.start(1000, unchanged = { previous, next ->
+            compared += previous.image to next.image
+            next.image in setOf("noise", "minor")
+        }) { next, _ -> commented += next.image; "" }
+        runCurrent()
+        assertTrue(compared.isEmpty())
+        current = current.copy(pixels = current.pixels.copyOf())
+        advanceTimeBy(1000); runCurrent()
+        assertTrue(compared.isEmpty())
+        assertEquals(listOf("first"), commented)
+        current = frame(0x101010).copy(image = "noise")
+        advanceTimeBy(1000); runCurrent()
+        assertEquals(listOf("first" to "noise"), compared)
+        current = frame(0x202020).copy(image = "minor")
+        advanceTimeBy(1000); runCurrent()
+        assertEquals(listOf("first"), commented)
+        current = frame(0x404040).copy(image = "changed")
+        advanceTimeBy(1000); runCurrent()
+        current = frame(0x606060).copy(image = "next")
+        advanceTimeBy(1000); runCurrent()
+        assertEquals(listOf("first" to "noise", "first" to "minor", "first" to "changed", "changed" to "next"), compared)
+        assertEquals(listOf("first", "changed", "next"), commented)
+        controller.stop()
+    }
+
+    @Test fun unchangedGateSeesLocalizedChangesEvenWhenTheColorGridIsIdentical() = runTest {
+        var current = frame().copy(image = "first")
+        val compared = mutableListOf<Pair<String, String>>()
+        val commented = mutableListOf<String>()
+        val controller = CompanionController(backgroundScope, capture = { current })
+        controller.start(1000, unchanged = { previous, next ->
+            compared += previous.image to next.image
+            false
+        }) { next, _ -> commented += next.image; "" }
+        runCurrent()
+        // Subtitle changes fit in the bottom two rows of the sampled grid.
+        current = frame().copy(image = "dialogue", pixels = IntArray(1024) { if (it >= 960) 0xffffff else 0 })
+        advanceTimeBy(1000); runCurrent()
+        assertEquals(listOf("first" to "dialogue"), compared)
+        assertEquals(listOf("first", "dialogue"), commented)
+        current = current.copy(image = "result")
+        advanceTimeBy(1000); runCurrent()
+        assertEquals(listOf("first" to "dialogue", "dialogue" to "result"), compared)
+        assertEquals(listOf("first", "dialogue", "result"), commented)
+        controller.stop()
+    }
+
+    @Test fun intervalStartsAfterBothComparisonAndCommentComplete() = runTest {
+        val captures = mutableListOf<Long>()
+        val comments = mutableListOf<Long>()
+        val controller = CompanionController(backgroundScope, capture = {
+            captures += currentTime
+            frame(app = "app${captures.size}")
+        })
+        controller.start(1000, unchanged = { _, _ -> delay(2000); false }) { _, _ ->
+            comments += currentTime
+            delay(3000)
+            ""
+        }
+        runCurrent()
+        advanceTimeBy(9999); runCurrent()
+        assertEquals(listOf(0L, 4000L), captures)
+        assertEquals(listOf(0L, 6000L), comments)
+        advanceTimeBy(1); runCurrent()
+        assertEquals(listOf(0L, 4000L, 10000L), captures)
+        controller.stop()
+    }
+
+    @Test fun stoppingDuringComparisonPreventsLateCommentsAndStateChanges() = runTest {
+        var captures = 0
+        var comments = 0
+        val controller = CompanionController(backgroundScope, capture = { frame(app = "app${captures++}") })
+        controller.start(1000, unchanged = { _, _ -> withContext(NonCancellable) { delay(2000) }; false }) { _, _ ->
+            comments++
+            ""
+        }
+        runCurrent()
+        advanceTimeBy(1000); runCurrent()
+        controller.stop()
+        advanceTimeBy(2000); runCurrent()
+        assertEquals(1, comments)
+        assertEquals(CompanionState(), controller.state.value)
+    }
+
     @Test fun stoppingCancelsRequestAndRestartWaitsForItToFinish() = runTest {
         val spoken = mutableListOf<String>()
         val controller = CompanionController(backgroundScope, capture = { frame() }, speak = { spoken += it })
