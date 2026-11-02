@@ -2,9 +2,10 @@
 
 ## [Unreleased]
 
-- Android: Turn spoken companion comments on separately; they are off by default. Comments stay visible for at least five seconds when speech is disabled, fails or is interrupted, giving you time to read them.
 - Android: Add companion mode with brief comments about what's happening while you play games or watch videos. You can adjust how often it comments. Start companion mode from the main screen and stop it from the floating bubble's expanded menu.
 - Android: Use a favorite picture as your floating bubble avatar, or restore the default at any time.
+- Android: Companion comments hide automatically, and dragging the bubble to the top of the screen makes it smaller to keep more of your game or video visible. Dragging an expanded comment or panel keeps its current position without jumping.
+- Android: Turn spoken companion comments on separately; they are off by default. Comments stay visible for at least five seconds when speech is disabled, fails or is interrupted, giving you time to read them.
 
 ## [1.1.0] - 2026-10-31
 

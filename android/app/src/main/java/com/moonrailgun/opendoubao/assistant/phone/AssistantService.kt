@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -34,6 +35,7 @@ import android.view.SurfaceView
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.WindowInsets
 import android.view.accessibility.AccessibilityEvent
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
@@ -131,6 +133,9 @@ class AssistantService : AccessibilityService() {
     /** User activation, independent of temporary hiding for screenshots or the lock screen. */
     val bubbleActive = mutableBubbleActive.asStateFlow()
     private var bubble: View? = null
+    private var bubbleAvatar: View? = null
+    private var topDocked = false
+    private var compactBubble = false
     private var bubbleRing: BubbleRing? = null
     private var taskPill: View? = null
     private var taskGoal: TextView? = null
@@ -484,6 +489,7 @@ class AssistantService : AccessibilityService() {
         companionPreview?.cancel()
         companionPreview = null
         showingCompanionComment = false
+        topDocked = false
         companion.stop()
         cancelCompanionSpeech?.invoke()
         cancelCompanionSpeech = null
@@ -503,6 +509,11 @@ class AssistantService : AccessibilityService() {
             showingCompanionComment = false
             applyOverlay()
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyOverlay()
     }
 
     fun stop() { stopCompanion(); controller?.stop() }
@@ -585,6 +596,7 @@ class AssistantService : AccessibilityService() {
             foreground = BubbleRing(resources.displayMetrics.density).also { bubbleRing = it }
             clipToOutline = true
         }
+        bubbleAvatar = ball
         scope.launch {
             BubbleAvatar.version.collect {
                 val avatar = withContext(Dispatchers.IO) { BubbleAvatar.load(this@AssistantService) }
@@ -638,6 +650,14 @@ class AssistantService : AccessibilityService() {
                     val dx = event.rawX - downX; val dy = event.rawY - downY
                     if (!dragging && dx * dx + dy * dy > slop * slop) dragging = true
                     if (dragging) {
+                        if (topDocked) {
+                            topDocked = false
+                            if (compactBubble) {
+                                startX = 0
+                                startY = -windows.currentWindowMetrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top
+                            }
+                            applyOverlay()
+                        }
                         // With END gravity x counts from the right edge, so moving right shrinks it.
                         params.x = (startX + (if (onRight) -dx else dx).toInt()).coerceIn(0, (screen.width() - root.width).coerceAtLeast(0))
                         params.y = (startY + dy.toInt()).coerceIn(0, (screen.height() - root.height).coerceAtLeast(0))
@@ -652,6 +672,8 @@ class AssistantService : AccessibilityService() {
                         params.gravity = Gravity.TOP or if (onRight) Gravity.END else Gravity.START
                         chip.layoutDirection = if (onRight) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
                         params.x = 0
+                        topDocked = companionState.value.active && params.y <= dp(16) && currentBubbleDock() != null
+                        applyOverlay()
                         windows.updateViewLayout(root, params)
                     }
                     !dragging && event.actionMasked == MotionEvent.ACTION_UP -> view.performClick()
@@ -975,10 +997,42 @@ class AssistantService : AccessibilityService() {
         // prompt is seen (the screen slept 11 s into one on 2026-10-16), then may sleep: a paused task survives screen off.
         val flags = if (lit) focusFlags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             else focusFlags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
+        val dock = if (topDocked && companionState.value.active) currentBubbleDock() else null
+        if (dock == null) topDocked = false
+        val compact = dock != null && !expanded && !voice && !showingCompanionComment
+        if (compact != compactBubble || compact) {
+            val density = resources.displayMetrics.density
+            val padding = if (compact) 0 else (8 * density).toInt()
+            root.setPadding(padding, padding, padding, padding)
+            bubbleAvatar?.let { avatar ->
+                val size = if (compact) dock!!.size else (48 * density).toInt()
+                avatar.layoutParams = avatar.layoutParams.apply { width = size; height = size }
+            }
+            params.setFitInsetsTypes(if (compact) 0 else WindowInsets.Type.systemBars())
+            params.layoutInDisplayCutoutMode = if (compact) WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+            val right = (params.gravity and Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT
+            params.x = if (compact) {
+                if (right) getSystemService(WindowManager::class.java).currentWindowMetrics.bounds.width() - dock!!.left - dock.size else dock!!.left
+            } else 0
+            params.y = if (compact) dock!!.top else 0
+            compactBubble = compact
+            getSystemService(WindowManager::class.java).updateViewLayout(root, params)
+        }
         if (flags != params.flags) {
             if (!focusable) input?.let { getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(it.windowToken, 0) }
             params.flags = flags
             getSystemService(WindowManager::class.java).updateViewLayout(root, params)
         }
+    }
+
+    private fun currentBubbleDock(): BubbleDock? {
+        val metrics = getSystemService(WindowManager::class.java).currentWindowMetrics
+        val barHeight = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top
+        val density = resources.displayMetrics.density
+        val right = ((layout?.gravity ?: Gravity.END) and Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT
+        val cutouts = metrics.windowInsets.displayCutout?.boundingRects.orEmpty()
+            .filter { it.top < barHeight && it.bottom > 0 }.map { it.left until it.right }
+        return bubbleDock(metrics.bounds.width(), barHeight, (28 * density).toInt(), (2 * density).toInt(), right, cutouts)
     }
 }
