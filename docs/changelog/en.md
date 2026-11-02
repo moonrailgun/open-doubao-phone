@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Android: Add companion mode with brief comments about what's happening while you play games or watch videos. You can adjust how often it comments.
+- Android: Add companion mode with brief comments about what's happening while you play games or watch videos. You can adjust how often it comments. Start companion mode from the main screen and stop it from the floating bubble's expanded menu.
 - Android: Use a favorite picture as your floating bubble avatar, or restore the default at any time.
 
 ## [1.1.0] - 2026-10-31

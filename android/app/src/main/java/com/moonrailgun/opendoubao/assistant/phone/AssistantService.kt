@@ -137,7 +137,6 @@ class AssistantService : AccessibilityService() {
     private var statusIcon: ImageView? = null
     private var statusText: TextView? = null
     private var stopButton: View? = null
-    private var companionButton: View? = null
     private var resumeControls: View? = null
     private var handOverButton: View? = null
     private var peek: View? = null
@@ -783,14 +782,6 @@ class AssistantService : AccessibilityService() {
             }, LinearLayout.LayoutParams(dp(112), dp(48)).apply { marginStart = dp(8) })
         }
         card.addView(resumeControls, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
-        companionButton = Button(this).apply {
-            text = "开启陪伴模式"; textSize = 15f; isAllCaps = false
-            setTextColor(Color.WHITE)
-            background = rounded(Color.argb(50, 255, 255, 255), 14)
-            stateListAnimator = null
-            setOnClickListener { runCatching { startCompanion() }.onFailure { statusText?.text = it.message } }
-        }
-        card.addView(companionButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) })
         stopButton = Button(this).apply {
             // Emergency stop keeps its words next to the glyph; it is the one control that must never be guessed.
             val glyph = getDrawable(R.drawable.lucide_octagon_x)!!.mutate().apply { setTint(Color.WHITE); setBounds(0, 0, dp(18), dp(18)) }
@@ -947,7 +938,6 @@ class AssistantService : AccessibilityService() {
         panel?.visibility = if (active && expanded && !voice) View.VISIBLE else View.GONE
         voiceCard?.visibility = if (active && voice) View.VISIBLE else View.GONE
         stopButton?.visibility = if (running || paused || companionState.value.active) View.VISIBLE else View.GONE
-        companionButton?.visibility = if (!running && !paused && !companionState.value.active) View.VISIBLE else View.GONE
         resumeControls?.visibility = if (paused) View.VISIBLE else View.GONE
         val offscreen = virtual?.hasSession == true
         peek?.visibility = if (expanded && offscreen) View.VISIBLE else View.GONE
