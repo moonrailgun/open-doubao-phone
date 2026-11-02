@@ -71,22 +71,41 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
 
     private fun windows() = service.windowsOnAllDisplays[displayId] ?: emptyList()
 
+    private fun windowDetails(window: AccessibilityWindowInfo): String = runCatching {
+        val type = when (window.type) {
+            AccessibilityWindowInfo.TYPE_APPLICATION -> "APPLICATION"
+            AccessibilityWindowInfo.TYPE_INPUT_METHOD -> "INPUT_METHOD"
+            AccessibilityWindowInfo.TYPE_SYSTEM -> "SYSTEM"
+            AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY -> "ACCESSIBILITY_OVERLAY"
+            else -> window.type.toString()
+        }
+        val pkg = runCatching { window.root?.let { root ->
+            try { root.packageName?.toString() } finally { root.recycle() }
+        } }.getOrNull() ?: "unknown"
+        "id=${window.id} package=$pkg type=$type layer=${window.layer} " +
+            "bounds=${Rect().also(window::getBoundsInScreen).toShortString()} active=${window.isActive} focused=${window.isFocused}"
+    }.getOrDefault("window=unavailable")
+
     private suspend fun capture(screen: Screen, restoreOverlay: Boolean): String = captures.withLock {
         if (!screen.matchesForAction(observe())) throw ScreenChangedException()
         if (screen.protected) throw PhoneUnavailableException("密码页面不可截图")
         if (shell == null) service.setOverlayVisible(false)
+        var captureWindow: AccessibilityWindowInfo? = null
         try {
             delay(120)
             delay((350 - (SystemClock.uptimeMillis() - lastCaptureAt)).coerceAtLeast(0))
             val target = window()
+            captureWindow = target
             if (target.id != screen.windowId) throw ScreenChangedException()
             val bounds = Rect().also(target::getBoundsInScreen)
             if (!bounds.intersect(0, 0, screen.width, screen.height)) throw ScreenChangedException()
             if (Build.VERSION.SDK_INT < 34) {
-                if (windows().any { other ->
+                val blockers = windows().filter { other ->
                     other.id != target.id && other.layer > target.layer &&
                         Rect.intersects(bounds, Rect().also(other::getBoundsInScreen))
-                }) throw PhoneUnavailableException("键盘或其他浮层遮挡，无法可靠截图")
+                }
+                if (blockers.isNotEmpty()) throw PhoneUnavailableException("键盘或其他浮层遮挡，无法可靠截图",
+                    "blockers=${blockers.size} " + blockers.take(8).joinToString("; ") { "blocker={${windowDetails(it)}}" })
             }
             val bitmap = suspendCancellableCoroutine<Bitmap> { continuation ->
                 val callback = object : AccessibilityService.TakeScreenshotCallback {
@@ -118,6 +137,15 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
                 if (!screen.matchesForAction(observe())) throw ScreenChangedException()
                 return encodeScreenshot(bitmap, if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else bounds, bounds, screen)
             } finally { bitmap.recycle() }
+        } catch (e: PhoneUnavailableException) {
+            val version = runCatching { service.packageManager.getPackageInfo(service.packageName, 0).let {
+                "${it.versionName}(${it.longVersionCode})"
+            } }.getOrDefault("unknown")
+            val context = "sdk=${Build.VERSION.SDK_INT} android=${Build.VERSION.RELEASE} model=${Build.MODEL} app=$version " +
+                "display=$displayId size=${screen.width}x${screen.height} rotation=${screen.rotation} " +
+                "capture=${if (Build.VERSION.SDK_INT >= 34) "window" else "display"} " +
+                "target={${captureWindow?.let(::windowDetails) ?: "unavailable"}}"
+            throw PhoneUnavailableException(e.message ?: "截图不可用", "$context ${e.diagnostics.orEmpty()}".trim()).also { it.initCause(e) }
         } finally { if (restoreOverlay && shell == null) service.setOverlayVisible(true) }
     }
 

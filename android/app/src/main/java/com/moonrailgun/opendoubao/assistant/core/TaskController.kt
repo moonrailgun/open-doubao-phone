@@ -164,13 +164,13 @@ class TaskController(
                         val initialScreen = try {
                             phone.observe().takeIf { it.packageName in apps && !it.protected }
                         } catch (e: CancellationException) { throw e }
-                        catch (e: Exception) { trace("未读到初始页面：${e.message}"); null }
+                        catch (e: Exception) { trace("未读到初始页面：${e.message}"); traceDiagnostics(e); null }
                         checkCurrent(token)
                         val initialImage = initialScreen?.let {
                             keep(it)
                             try { timed("初始截图") { phone.screenshot(it) } }
                             catch (e: CancellationException) { throw e }
-                            catch (e: Exception) { trace("初始截图不可用，使用页面文字：${e.message}"); null }
+                            catch (e: Exception) { trace("初始截图不可用，使用页面文字：${e.message}"); traceDiagnostics(e); null }
                         }
                         checkCurrent(token)
                         // Both models see the same page before anything can switch apps.
@@ -406,6 +406,7 @@ class TaskController(
                             failures = 0
                         } catch (e: PhoneUnavailableException) {
                             checkCurrent(token)
+                            traceDiagnostics(e)
                             if (stuck("${e.message ?: "当前页面无法操作"}，请手动处理后点击继续")) return@withTimeout
                             delay(500)
                         } catch (_: ScreenChangedException) {
@@ -428,6 +429,7 @@ class TaskController(
                 throw e
             } catch (e: PhoneUnavailableException) {
                 if (generation == token && state.value.status == TaskStatus.RUNNING) {
+                    traceDiagnostics(e)
                     pause("${e.message ?: "当前页面无法操作"}，请手动处理后点击继续")
                 }
             } catch (e: ScreenChangedException) {
@@ -555,7 +557,7 @@ class TaskController(
                 perform(click, fresh, token, on = target)
                 if (previous?.dispatched == false) { previous = null; break }
             }
-        } catch (e: CancellationException) { throw e } catch (e: Exception) { trace("规划前先走一步中止：${e.message}") }
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { trace("规划前先走一步中止：${e.message}"); traceDiagnostics(e) }
         return app
     }
 
@@ -572,6 +574,10 @@ class TaskController(
     private fun finish(status: TaskStatus, message: String) {
         mutable.value = state.value.copy(status = status, message = message)
         trace("结束：${status.name}，$message")
+    }
+
+    private fun traceDiagnostics(error: Exception) {
+        (error as? PhoneUnavailableException)?.diagnostics?.let { trace("诊断：$it") }
     }
 
     // ponytail: oldest entries drop past 24,000 characters; keep the head too if long tasks ever lose their plan.

@@ -1095,20 +1095,21 @@ class TaskControllerTest {
     }
 
     @Test fun unavailableObservationCaptureOrActionPausesAndResumesWithTheSamePlan() = runTest {
+        val details = "sdk=33 display=0 target=browser.app blocker=keyboard.app type=INPUT_METHOD layer=12 bounds=[0,800][1080,1920]"
         for (stage in listOf("observe", "screenshot", "execute")) {
             val device = FakePhone()
             var unavailable = true
             val phone = object : Phone by device {
                 override suspend fun observe(): Screen {
-                    if (unavailable && stage == "observe") throw PhoneUnavailableException("Page unavailable")
+                    if (unavailable && stage == "observe") throw PhoneUnavailableException("Page unavailable", details)
                     return device.observe()
                 }
                 override suspend fun screenshot(screen: Screen): String {
-                    if (unavailable && stage == "screenshot") throw PhoneUnavailableException("Capture unavailable")
+                    if (unavailable && stage == "screenshot") throw PhoneUnavailableException("Capture unavailable", details)
                     return device.screenshot(screen)
                 }
                 override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean {
-                    if (unavailable && stage == "execute" && action !is Action.OpenApp) throw PhoneUnavailableException("Action unavailable")
+                    if (unavailable && stage == "execute" && action !is Action.OpenApp) throw PhoneUnavailableException("Action unavailable", details)
                     return device.execute(action, expected, expectedImage)
                 }
             }
@@ -1121,6 +1122,9 @@ class TaskControllerTest {
             advanceUntilIdle()
             assertEquals(stage, TaskStatus.PAUSED, controller.state.value.status)
             assertEquals(stage, 0, controller.state.value.steps)
+            val remote = com.moonrailgun.opendoubao.assistant.remote.RemoteSnapshot("task-1", controller.state.value).json()
+            assertTrue(stage, remote.getJSONArray("log").toString().contains(details))
+            assertFalse(stage, remote.getString("message").contains("blocker="))
             unavailable = false
             controller.resume()
             advanceUntilIdle()

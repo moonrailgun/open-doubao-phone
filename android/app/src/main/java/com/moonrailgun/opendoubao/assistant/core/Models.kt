@@ -155,7 +155,7 @@ data class Evidence(val screens: List<Screen>, val sources: List<Source> = empty
 }
 
 class ScreenChangedException : IllegalStateException("页面已变化")
-class PhoneUnavailableException(message: String) : IllegalStateException(message)
+class PhoneUnavailableException(message: String, val diagnostics: String? = null) : IllegalStateException(message)
 
 interface Phone {
     /** Where actions land, written to the task log once at the start. */
