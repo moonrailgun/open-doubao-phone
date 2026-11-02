@@ -154,6 +154,7 @@ class AssistantService : AccessibilityService() {
     val virtualActive = mutableVirtualActive.asStateFlow()
     /** Mirrors the virtual display under [parent] for the app's live view; null when no session is open. */
     fun peekVirtual(parent: SurfaceControl, width: Int, height: Int, surface: android.view.Surface? = null): AutoCloseable? = virtual?.peek(parent, width, height, surface)
+    private var statusLabel: TextView? = null
     private var openButton: View? = null
     private var inputRow: View? = null
     private var input: EditText? = null
@@ -698,18 +699,24 @@ class AssistantService : AccessibilityService() {
             setPadding(dp(10), dp(10), dp(10), dp(10))
             setOnClickListener { click() }
         }
-        // Status and summary, followed by app and collapse controls.
+        // Keep the toolbar separate so long results use the full card width.
         statusIcon = ImageView(this).apply { setOnTouchListener(drag) }
         statusText = TextView(this).apply {
             setTextColor(Color.argb(210, 255, 255, 255)); textSize = 13f
             movementMethod = ScrollingMovementMethod()
-            setPadding(dp(8), dp(9), 0, dp(8))
+            setPadding(0, dp(4), 0, dp(10))
             setOnTouchListener { view, event -> if (text.isEmpty()) drag.onTouch(view, event) else false }
         }
         card.addView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
             setOnTouchListener(drag)
-            addView(statusIcon, LinearLayout.LayoutParams(dp(20), dp(20)).apply { topMargin = dp(10) })
-            addView(statusText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(statusIcon, LinearLayout.LayoutParams(dp(20), dp(20)))
+            statusLabel = TextView(this@AssistantService).apply {
+                setTextColor(Color.WHITE); textSize = 13f
+                setPadding(dp(8), 0, 0, 0)
+                setOnTouchListener(drag)
+            }
+            addView(statusLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             openButton = iconButton(R.drawable.lucide_external_link, "打开 Open Doubao") {
                 collapse()
                 packageManager.getLaunchIntentForPackage(packageName)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -718,6 +725,7 @@ class AssistantService : AccessibilityService() {
             addView(iconButton(R.drawable.lucide_plus, "新对话") { newConversation() }, LinearLayout.LayoutParams(dp(40), dp(40)))
             addView(iconButton(R.drawable.lucide_minimize_2, "收起") { collapse() }, LinearLayout.LayoutParams(dp(40), dp(40)))
         })
+        card.addView(statusText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         val field = EditText(this).apply {
             hint = "输入要求，可接着补充"; textSize = 14f
             setTextColor(Color.WHITE); setHintTextColor(Color.argb(140, 255, 255, 255))
@@ -881,6 +889,7 @@ class AssistantService : AccessibilityService() {
         if (running != wasRunning || paused && !wasPaused) { expanded = !running; typing = false }
         if (running) voiceStatus?.visibility = View.GONE
         val (label, color, glyph) = statusStyle(value.status.name)
+        statusLabel?.text = label
         statusIcon?.apply {
             setImageResource(glyph); imageTintList = ColorStateList.valueOf(color.toArgb()); contentDescription = label
         }
@@ -898,6 +907,7 @@ class AssistantService : AccessibilityService() {
         taskStep?.text = value.message
         if (companionState.value.active) {
             val companion = companionState.value
+            statusLabel?.text = "陪伴模式"
             statusIcon?.apply { setImageResource(R.drawable.app_logo); imageTintList = null; contentDescription = "陪伴模式" }
             statusText?.text = listOf(companion.message, companion.comment).filter { it.isNotBlank() }.joinToString("\n\n")
             taskGoal?.text = "陪伴模式"

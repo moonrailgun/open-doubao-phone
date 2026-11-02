@@ -548,7 +548,7 @@ class NativeBridgeTest {
                 val field = view("input") as android.widget.EditText
                 val targets = listOf(
                     "card padding" to { point(panel, panel.width / 2f, panel.paddingTop / 2f) },
-                    "empty header" to { point(view("statusText")) },
+                    "empty header" to { point(view("statusLabel")) },
                     "input row gap" to { point(row, (field.right + row.getChildAt(1).left) / 2f, row.height / 2f) },
                     "outer padding" to { point(root, root.paddingLeft / 2f, root.height / 2f) },
                 )
@@ -577,6 +577,9 @@ class NativeBridgeTest {
                 render.invoke(service, TaskState(status = TaskStatus.COMPLETED, result = (1..80).joinToString("\n") { "第 $it 行结果" }))
                 delay(100)
                 val summary = view("statusText") as android.widget.TextView
+                assertSame("Body sits directly in the card", panel, summary.parent)
+                assertEquals("Body uses all available width", panel.width - panel.paddingLeft - panel.paddingRight, summary.width)
+                assertTrue("Body starts below the toolbar", summary.top >= header.bottom)
                 gesture(point(summary), 0f, -dp(60))
                 assertTrue("Summary keeps its scrolling gesture", summary.scrollY > 0)
                 assertEquals(x, params.x)
