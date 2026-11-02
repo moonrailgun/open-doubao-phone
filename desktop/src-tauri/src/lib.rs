@@ -1,4 +1,5 @@
 pub mod bridge;
+mod diagnostics;
 
 #[cfg(feature = "desktop")]
 mod desktop {
@@ -88,6 +89,13 @@ mod desktop {
     }
 
     #[tauri::command]
+    fn open_diagnostics(app: AppHandle, bridge: State<'_, Arc<Bridge>>) -> Result<String, String> {
+        let path = bridge.diagnostics_directory()?.to_string_lossy().into_owned();
+        app.opener().open_path(&path, None::<&str>).map_err(|error| error.to_string())?;
+        Ok(path)
+    }
+
+    #[tauri::command]
     async fn create_pairing(
         host: String,
         bridge: State<'_, Arc<Bridge>>,
@@ -143,6 +151,7 @@ mod desktop {
             })
             .invoke_handler(tauri::generate_handler![
                 get_snapshot,
+                open_diagnostics,
                 create_pairing,
                 request,
                 forget_device,

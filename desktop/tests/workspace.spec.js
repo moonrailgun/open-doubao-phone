@@ -32,6 +32,7 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
           return { code: `open-doubao://pair?v=1&host=192.168.1.20&port=38687&fingerprint=${'a'.repeat(64)}&token=${'b'.repeat(64)}`, expiresAt: Date.now() + 300000 };
         }
         if (command === 'forget_device') { window.testSnapshot.device = null; window.testSnapshot.connected = false; window.testSnapshot.state = null; return; }
+        if (command === 'open_diagnostics') return '/local/diagnostics';
         if (command === 'download_calls' && window.testDownloadFailure) throw window.testDownloadFailure;
         if (command === 'request') {
           if (window.testFailure) throw window.testFailure;
@@ -80,6 +81,15 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
 const recentRecords = Array.from({ length: 30 }, (_, index) => ({
   id: `history-${index + 1}`, goal: `历史任务 ${index + 1}`, status: 'COMPLETED', time: 1791504000000 - index * 60000,
 }));
+
+test('diagnostics remain accessible while disconnected and report write failures', async ({ page }) => {
+  await bridge(page, false);
+  await page.goto('/');
+  await page.getByRole('button', { name: '打开诊断日志' }).click();
+  await expect(page.locator('#notice')).toContainText('/local/diagnostics');
+  await page.evaluate(() => { window.testSnapshot.diagnostics_error = '诊断日志写入失败：磁盘已满'; });
+  await expect(page.locator('#diagnostics-error')).toHaveText('诊断日志写入失败：磁盘已满');
+});
 
 async function expectNoDocumentOverflow(page) {
   expect(await page.evaluate(() => ({

@@ -1,3 +1,4 @@
+use crate::diagnostics::DiagnosticLog;
 use futures_util::{SinkExt, StreamExt};
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -66,6 +67,7 @@ pub struct Snapshot {
     pub connected: bool,
     pub state: Option<DeviceState>,
     pub error: Option<String>,
+    pub diagnostics_error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -122,6 +124,7 @@ struct Inner {
 
 pub struct Bridge {
     path: PathBuf,
+    diagnostics: DiagnosticLog,
     inner: Mutex<Inner>,
     notify: Arc<dyn Fn(Snapshot) + Send + Sync>,
 }
@@ -411,8 +414,11 @@ impl Bridge {
     pub fn new(directory: PathBuf, notify: Arc<dyn Fn(Snapshot) + Send + Sync>) -> Arc<Self> {
         let loaded = load_credentials(&directory);
         let error = loaded.as_ref().err().cloned();
+        let diagnostics = DiagnosticLog::new(directory.join("diagnostics"));
+        diagnostics.record("started", &json!({"os": std::env::consts::OS, "arch": std::env::consts::ARCH}));
         Arc::new(Self {
             path: directory.join("credentials.json"),
+            diagnostics,
             inner: Mutex::new(Inner {
                 credentials: loaded.ok(),
                 pairing: None,
@@ -440,11 +446,19 @@ impl Bridge {
             connected: inner.connection.is_some(),
             state: inner.state.clone(),
             error: inner.error.clone(),
+            diagnostics_error: self.diagnostics.error(),
         }
     }
 
     async fn publish(&self) {
-        (self.notify)(self.snapshot().await);
+        let mut snapshot = self.snapshot().await;
+        self.diagnostics.record("snapshot", &snapshot);
+        snapshot.diagnostics_error = self.diagnostics.error();
+        (self.notify)(snapshot);
+    }
+
+    pub fn diagnostics_directory(&self) -> Result<PathBuf, String> {
+        self.diagnostics.directory()
     }
 
     pub async fn create_pairing(&self, host: &str) -> Result<PairingCode, String> {
@@ -487,42 +501,52 @@ impl Bridge {
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
         validate_request(method, &params)?;
         let id = Uuid::new_v4().to_string();
-        let receiver = {
-            let mut inner = self.inner.lock().await;
-            if inner.pending.len() >= 16 {
-                return Err("请求过多，请稍后再试".into());
+        let task_id = params.get("taskId").and_then(Value::as_str);
+        let started = Instant::now();
+        // Settings contain credentials; record only command identity, never params or response bodies.
+        self.diagnostics.record("request", &json!({"id": id, "method": method, "taskId": task_id}));
+        let mut outcome = "not_sent";
+        let result = async {
+            let receiver = {
+                let mut inner = self.inner.lock().await;
+                if inner.pending.len() >= 16 {
+                    return Err("请求过多，请稍后再试".into());
+                }
+                let sender = inner.connection.as_ref().ok_or("手机未连接")?.sender.clone();
+                let (response, receiver) = oneshot::channel();
+                sender.try_send(Message::Text(
+                    json!({"type":"request", "id":id, "method":method, "params":params}).to_string().into(),
+                )).map_err(|_| "发送队列不可用，请检查手机连接".to_string())?;
+                inner.pending.insert(id.clone(), response);
+                receiver
+            };
+            outcome = "connection_lost";
+            // The phone tests two model services with up to 60 seconds each.
+            let wait = if method == "config.test" { 130 } else { 10 };
+            match timeout(Duration::from_secs(wait), receiver).await {
+                Ok(Ok(result)) => {
+                    outcome = match &result {
+                        Ok(_) => "ok",
+                        Err(error) if error == CONNECTION_LOST => "connection_lost",
+                        Err(_) => "phone_error",
+                    };
+                    result
+                }
+                Ok(Err(_)) => Err(CONNECTION_LOST.into()),
+                Err(_) => {
+                    outcome = "timeout";
+                    self.inner.lock().await.pending.remove(&id);
+                    Err(if method == "config.test" {
+                        "手机 130 秒内未返回测试结果，请稍后重试".into()
+                    } else {
+                        "手机 10 秒内未回复，任务执行状态未知；请查看当前状态，不要重复下发".into()
+                    })
+                }
             }
-            let sender = inner
-                .connection
-                .as_ref()
-                .ok_or("手机未连接")?
-                .sender
-                .clone();
-            let (response, receiver) = oneshot::channel();
-            sender
-                .try_send(Message::Text(
-                    json!({"type":"request", "id":id, "method":method, "params":params})
-                        .to_string()
-                        .into(),
-                ))
-                .map_err(|_| "发送队列不可用，请检查手机连接".to_string())?;
-            inner.pending.insert(id.clone(), response);
-            receiver
-        };
-        // The phone tests two model services with up to 60 seconds each.
-        let wait = if method == "config.test" { 130 } else { 10 };
-        match timeout(Duration::from_secs(wait), receiver).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(CONNECTION_LOST.into()),
-            Err(_) => {
-                self.inner.lock().await.pending.remove(&id);
-                Err(if method == "config.test" {
-                    "手机 130 秒内未返回测试结果，请稍后重试".into()
-                } else {
-                    "手机 10 秒内未回复，任务执行状态未知；请查看当前状态，不要重复下发".into()
-                })
-            }
-        }
+        }.await;
+        self.diagnostics.record("request_completed", &json!({"id": id, "method": method, "taskId": task_id,
+            "durationMs": started.elapsed().as_millis(), "outcome": outcome}));
+        result
     }
 
     /// Pulls one task's model calls, the ZIP the phone builds, 150 KiB a chunk, into `directory`; returns the file path.
@@ -679,11 +703,19 @@ impl Bridge {
             let Some(message) = outgoing_message else {
                 break;
             };
+            let request_id = match &message {
+                Message::Text(text) => serde_json::from_str::<Value>(text).ok()
+                    .and_then(|value| value.get("id")?.as_str().map(str::to_owned)),
+                _ => None,
+            };
             if !matches!(
                 timeout(Duration::from_secs(5), socket.send(message)).await,
                 Ok(Ok(()))
             ) {
                 break;
+            }
+            if let Some(request_id) = request_id {
+                self.diagnostics.record("request_sent", &json!({"id": request_id}));
             }
         }
         let _ = timeout(
@@ -1146,5 +1178,48 @@ mod tests {
             .unwrap();
         assert!(matches!(message, Message::Close(Some(frame)) if frame.code == CloseCode::Policy));
         assert!(!bridge.snapshot().await.connected);
+    }
+
+    #[tokio::test]
+    async fn diagnostics_keep_pause_resume_and_connection_evidence_without_command_payloads() {
+        let directory = tempfile::tempdir().unwrap();
+        let bridge = Bridge::new(directory.path().into(), Arc::new(|_| {}));
+        let hello = hello(&token());
+        bridge.inner.lock().await.pairing = Some(PendingPairing {
+            token: hello.token.clone(), expires_at: now_ms() + 10_000,
+        });
+        let mut socket = connect(&bridge).await;
+        send_hello(&mut socket, &hello).await;
+        next_text(&mut socket).await;
+        let task_id = Uuid::new_v4().to_string();
+        let state = json!({"taskId":task_id, "status":"PAUSED", "goal":"read", "message":"截图被遮挡",
+            "result":"", "steps":0, "log":["blocker=keyboard.app type=INPUT_METHOD"]});
+        socket.send(Message::Text(json!({"type":"state", "data":state}).to_string().into())).await.unwrap();
+        let request_bridge = bridge.clone();
+        let task = task_id.clone();
+        let requested = tokio::spawn(async move { request_bridge.request("task.resume", json!({"taskId":task})).await });
+        let request = next_text(&mut socket).await;
+        socket.send(Message::Text(json!({"type":"response", "id":request["id"], "ok":true, "data":{"secret":"response-body-not-for-logs"}}).to_string().into())).await.unwrap();
+        requested.await.unwrap().unwrap();
+        let request_bridge = bridge.clone();
+        let rejected = tokio::spawn(async move { request_bridge.request("task.start", json!({"goal":"command-body-not-for-logs"})).await });
+        let rejected_request = next_text(&mut socket).await;
+        socket.send(Message::Text(json!({"type":"response", "id":rejected_request["id"], "ok":false, "error":"error-body-not-for-logs"}).to_string().into())).await.unwrap();
+        assert!(rejected.await.unwrap().is_err());
+        let connection_id = bridge.inner.lock().await.connection.as_ref().unwrap().id;
+        bridge.connection_ended(connection_id).await;
+        assert!(bridge.request("status.get", json!({})).await.is_err());
+        let text = fs::read_to_string(directory.path().join("diagnostics/desktop.jsonl")).unwrap();
+        for private in [&hello.token, "response-body-not-for-logs", "command-body-not-for-logs", "error-body-not-for-logs"] {
+            assert!(!text.contains(private));
+        }
+        let entries: Vec<Value> = text.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+        assert!(entries.iter().all(|e| e["time"].as_u64().unwrap() > 0));
+        assert!(entries.iter().any(|e| e["event"] == "snapshot" && e["data"]["state"] == state));
+        assert!(entries.iter().any(|e| e["event"] == "request_sent" && e["data"]["id"] == request["id"]));
+        assert!(entries.iter().any(|e| e["data"]["id"] == request["id"] && e["data"]["outcome"] == "ok"));
+        assert!(entries.iter().any(|e| e["data"]["id"] == rejected_request["id"] && e["data"]["outcome"] == "phone_error"));
+        assert!(entries.iter().any(|e| e["data"]["outcome"] == "not_sent"));
+        assert!(entries.iter().any(|e| e["event"] == "snapshot" && e["data"]["connected"] == false && e["data"]["state"] == state));
     }
 }

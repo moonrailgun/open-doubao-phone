@@ -217,6 +217,8 @@ function render(next) {
     notice('手机已绑定。现在可以下发任务和读取记录。');
   }
   if (next.error && next.error !== old.error) notice(next.error, true);
+  $('diagnostics-error').textContent = next.diagnostics_error || '';
+  $('diagnostics-error').hidden = !next.diagnostics_error;
   const state = next.state;
   $('task-empty').hidden = Boolean(state?.taskId);
   $('task-content').hidden = !state?.taskId;
@@ -636,10 +638,15 @@ $('confirm-forget').addEventListener('click', async () => {
   finally { $('confirm-forget').disabled = false; }
 });
 document.querySelectorAll('.close-dialog').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
+$('diagnostics-open').addEventListener('click', async () => {
+  try { notice(`已打开诊断日志：${await invoke('open_diagnostics')}`); }
+  catch (error) { notice(message(error), true); }
+});
 initUpdates();
 if (isTauri()) poll();
 else {
   $('pair-open').disabled = true;
+  $('diagnostics-open').disabled = true;
   $('connection-status').textContent = '网页预览';
   notice('请通过 npm run desktop 启动 Tauri 桌面应用，启用手机连接。');
 }
