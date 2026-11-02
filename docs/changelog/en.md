@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Android: Fix tasks incorrectly reporting an obstructed screen and repeatedly pausing on some Huawei phones with gesture navigation.
+- Android: Fix tasks incorrectly reporting an obstructed screen and repeatedly pausing on some Huawei phones with gesture navigation, including while the assistant bubble is still disappearing.
 - Android: Add companion mode with brief comments about what's happening while you play games or watch videos. You can adjust how often it comments. Start companion mode from the main screen and stop it from the floating bubble's expanded menu.
 - Android: Use a favorite picture as your floating bubble avatar, or restore the default at any time.
 - Android: Companion comments hide automatically, and dragging the bubble to the top of the screen makes it smaller to keep more of your game or video visible. Dragging an expanded comment or panel keeps its current position without jumping.

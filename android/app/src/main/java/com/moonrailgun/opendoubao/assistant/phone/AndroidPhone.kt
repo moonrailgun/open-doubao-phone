@@ -94,27 +94,31 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
         try {
             delay(120)
             delay((350 - (SystemClock.uptimeMillis() - lastCaptureAt)).coerceAtLeast(0))
-            val target = window()
-            captureWindow = target
-            if (target.id != screen.windowId) throw ScreenChangedException()
-            val bounds = Rect().also(target::getBoundsInScreen)
-            if (!bounds.intersect(0, 0, screen.width, screen.height)) throw ScreenChangedException()
-            if (Build.VERSION.SDK_INT < 34) {
-                val blockers = windows().filter { other ->
-                    val otherBounds = Rect().also(other::getBoundsInScreen)
-                    if (other.id == target.id || other.layer <= target.layer || !Rect.intersects(bounds, otherBounds)) false
-                    else {
-                        val pkg = runCatching { other.root?.let { root ->
-                            try { root.packageName?.toString() } finally { root.recycle() }
-                        } }.getOrDefault("")
-                        !isHuaweiGestureNavigation(Build.MANUFACTURER, other.type, other.title?.toString(), pkg,
-                            other.isActive, other.isFocused,
-                            Bounds(otherBounds.left, otherBounds.top, otherBounds.right, otherBounds.bottom),
-                            screen.width, screen.height)
+            val bounds = Rect()
+            val target = awaitScreenshotReady {
+                val current = window()
+                captureWindow = current
+                if (current.id != screen.windowId) throw ScreenChangedException()
+                current.getBoundsInScreen(bounds)
+                if (!bounds.intersect(0, 0, screen.width, screen.height)) throw ScreenChangedException()
+                if (Build.VERSION.SDK_INT < 34) {
+                    val blockers = windows().filter { other ->
+                        val otherBounds = Rect().also(other::getBoundsInScreen)
+                        if (other.id == current.id || other.layer <= current.layer || !Rect.intersects(bounds, otherBounds)) false
+                        else {
+                            val pkg = runCatching { other.root?.let { root ->
+                                try { root.packageName?.toString() } finally { root.recycle() }
+                            } }.getOrDefault("")
+                            !isHuaweiGestureNavigation(Build.MANUFACTURER, other.type, other.title?.toString(), pkg,
+                                other.isActive, other.isFocused,
+                                Bounds(otherBounds.left, otherBounds.top, otherBounds.right, otherBounds.bottom),
+                                screen.width, screen.height)
+                        }
                     }
+                    if (blockers.isNotEmpty()) throw PhoneUnavailableException("键盘或其他浮层遮挡，无法可靠截图",
+                        "blockers=${blockers.size} " + blockers.take(8).joinToString("; ") { "blocker={${windowDetails(it)}}" })
                 }
-                if (blockers.isNotEmpty()) throw PhoneUnavailableException("键盘或其他浮层遮挡，无法可靠截图",
-                    "blockers=${blockers.size} " + blockers.take(8).joinToString("; ") { "blocker={${windowDetails(it)}}" })
+                current
             }
             val bitmap = suspendCancellableCoroutine<Bitmap> { continuation ->
                 val callback = object : AccessibilityService.TakeScreenshotCallback {
@@ -261,6 +265,14 @@ internal suspend fun awaitPackage(pkg: String, timeoutMillis: Long, ready: () ->
         delay(100)
     }
     return false
+}
+
+internal suspend fun <T> awaitScreenshotReady(check: suspend () -> T): T {
+    // Hiding a window can precede its removal from the system's accessibility window list.
+    repeat(5) {
+        try { return check() } catch (_: PhoneUnavailableException) { delay(100) }
+    }
+    return check()
 }
 
 internal fun isHuaweiGestureNavigation(manufacturer: String, type: Int, title: String?, packageName: String?,

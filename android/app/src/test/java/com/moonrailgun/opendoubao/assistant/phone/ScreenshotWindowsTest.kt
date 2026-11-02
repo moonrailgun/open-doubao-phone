@@ -2,10 +2,49 @@ package com.moonrailgun.opendoubao.assistant.phone
 
 import android.view.accessibility.AccessibilityWindowInfo
 import com.moonrailgun.opendoubao.assistant.core.Bounds
+import com.moonrailgun.opendoubao.assistant.core.PhoneUnavailableException
+import com.moonrailgun.opendoubao.assistant.core.ScreenChangedException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ScreenshotWindowsTest {
+    @Test fun aHiddenOverlayCanDisappearAfterTheFirstWindowCheck() = runTest {
+        val target = awaitScreenshotReady {
+            if (currentTime < 250) throw PhoneUnavailableException("overlay still listed")
+            "current app"
+        }
+        assertEquals("current app", target)
+        assertTrue(currentTime in 250..1_000)
+    }
+
+    @Test fun aPersistentBlockerStillStopsCaptureWithFreshDiagnostics() = runTest {
+        try {
+            awaitScreenshotReady {
+                throw PhoneUnavailableException("blocked", if (currentTime < 250) "old overlay" else "keyboard")
+            }
+            fail("A real blocker must not be ignored")
+        } catch (e: PhoneUnavailableException) {
+            assertEquals("keyboard", e.diagnostics)
+            assertTrue(currentTime in 250..1_000)
+        }
+    }
+
+    @Test fun changingTheAppWhileWaitingAbortsCapture() = runTest {
+        try {
+            awaitScreenshotReady {
+                if (currentTime == 0L) throw PhoneUnavailableException("overlay still listed")
+                throw ScreenChangedException()
+            }
+            fail("A different screen must not be captured")
+        } catch (_: ScreenChangedException) {
+            assertTrue(currentTime in 1..250)
+        }
+    }
+
     private fun navigation(title: String? = "GestureNavLeft", bounds: Bounds = Bounds(0, 122, 54, 2700),
         manufacturer: String = "HUAWEI", type: Int = AccessibilityWindowInfo.TYPE_SYSTEM,
         packageName: String? = "android", active: Boolean = false, focused: Boolean = false,
