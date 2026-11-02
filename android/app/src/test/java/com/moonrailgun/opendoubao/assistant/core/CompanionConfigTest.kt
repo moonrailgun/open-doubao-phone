@@ -10,6 +10,15 @@ class CompanionConfigTest {
     private val general = ModelConfig(chatEndpoint = "https://general.test/chat", chatModel = "vision", chatKey = "general",
         jevKey = "jev", jevVision = true)
 
+    @Test fun speechIsOptInAndPersistsIndependently() {
+        assertFalse(CompanionConfig.fromJson(null).speechEnabled)
+        assertFalse(CompanionConfig.fromJson(JSONObject("{\"intervalSeconds\":45}")).speechEnabled)
+        for (enabled in listOf(true, false)) {
+            val config = CompanionConfig(speechEnabled = enabled)
+            assertEquals(config, CompanionConfig.fromJson(JSONObject(config.json().toString())))
+        }
+    }
+
     @Test fun oldSettingsDefaultToGeneralModelAndDedicatedSettingsRoundTrip() {
         val defaults = CompanionConfig.fromJson(null)
         assertEquals(20, defaults.intervalSeconds)

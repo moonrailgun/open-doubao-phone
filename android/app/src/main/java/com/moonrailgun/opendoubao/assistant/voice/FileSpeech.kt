@@ -22,11 +22,11 @@ internal val speechAttributes: AudioAttributes by lazy {
 
 /** Online or separate-UID local synthesis; PCM playback belongs to our foreground service. */
 class FileSpeech(private val context: Context, private val unlockPrompt: Boolean = false,
-    private val online: OnlineSpeech = OnlineSpeech(), private val finished: (String?) -> Unit) {
+    private val online: OnlineSpeech = OnlineSpeech(), private val finished: (String?) -> Unit) : AudioManager.OnAudioFocusChangeListener {
     private val handler = Handler(Looper.getMainLooper())
     private val audio = context.getSystemService(AudioManager::class.java)
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-        .setAudioAttributes(speechAttributes).setOnAudioFocusChangeListener { if (it < 0) stop() }.build()
+        .setAudioAttributes(speechAttributes).setOnAudioFocusChangeListener(this).build()
     private var tts: TextToSpeech? = null
     private val scope = CoroutineScope(Dispatchers.Main.immediate)
     private val playback = Executors.newSingleThreadExecutor()
@@ -34,6 +34,10 @@ class FileSpeech(private val context: Context, private val unlockPrompt: Boolean
     private var writtenFrames = 0L // Only accessed on the playback worker.
     private var file: File? = null
     @Volatile private var active: String? = null
+
+    override fun onAudioFocusChange(focusChange: Int) {
+        if (focusChange < 0) stop("音频焦点丢失，播报中断")
+    }
 
     fun speak(text: String) {
         check(active == null)

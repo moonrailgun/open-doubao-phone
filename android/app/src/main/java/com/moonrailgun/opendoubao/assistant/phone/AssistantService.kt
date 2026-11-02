@@ -105,13 +105,15 @@ class AssistantService : AccessibilityService() {
     private val mutable = MutableStateFlow(TaskState())
     val state = mutable.asStateFlow()
     private var cancelCompanionSpeech: (() -> Unit)? = null
+    private var companionPreview: Job? = null
+    private var showingCompanionComment = false
     private val companion = CompanionController(scope, capture = {
         requireUnlockedScreen()
         if (conversing || typing || listening != null) null
         else captureCompanion(phone, packageName, Vault(this).read().excludedApps) { image ->
             withContext(Dispatchers.Default) { companionPixels(image) }
         }
-    }, speak = { cancelCompanionSpeech = VoiceRuntime.speakCancellable(this, it) })
+    }, speak = ::showCompanionComment)
     val companionState = companion.state
     private val remoteSnapshot = MutableStateFlow(RemoteSnapshot())
     var remote: RemoteReceiver? = null
@@ -479,9 +481,28 @@ class AssistantService : AccessibilityService() {
     }
 
     fun stopCompanion() {
+        companionPreview?.cancel()
+        companionPreview = null
+        showingCompanionComment = false
         companion.stop()
         cancelCompanionSpeech?.invoke()
         cancelCompanionSpeech = null
+        applyOverlay()
+    }
+
+    private fun showCompanionComment(text: String) {
+        companionPreview?.cancel()
+        showingCompanionComment = true
+        val speech = if (Vault(this).read().companion.speechEnabled) CompletableDeferred<Boolean>() else null
+        cancelCompanionSpeech = speech?.let { result ->
+            VoiceRuntime.speakCancellable(this, text) { result.complete(it) }
+        }
+        applyOverlay()
+        companionPreview = scope.launch {
+            awaitCompanionPreview(speech)
+            showingCompanionComment = false
+            applyOverlay()
+        }
     }
 
     fun stop() { stopCompanion(); controller?.stop() }
@@ -934,7 +955,7 @@ class AssistantService : AccessibilityService() {
         root.visibility = if (captureHidden || locked || !active && !lit) View.GONE else View.VISIBLE
         val voice = listening != null
         bubble?.visibility = if (!active || expanded || voice) View.GONE else View.VISIBLE
-        taskPill?.visibility = if (running || companionState.value.active) View.VISIBLE else View.GONE
+        taskPill?.visibility = if (running || companionState.value.active && showingCompanionComment) View.VISIBLE else View.GONE
         panel?.visibility = if (active && expanded && !voice) View.VISIBLE else View.GONE
         voiceCard?.visibility = if (active && voice) View.VISIBLE else View.GONE
         stopButton?.visibility = if (running || paused || companionState.value.active) View.VISIBLE else View.GONE

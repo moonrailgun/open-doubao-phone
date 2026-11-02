@@ -608,7 +608,13 @@ class MainActivity : ComponentActivity() {
         OutlinedTextField(interval, { interval = it }, Modifier.fillMaxWidth(), label = { Text("请求间隔（秒）") },
             singleLine = true, shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             supportingText = { Text("默认 20 秒，可设为 5–300 秒。间隔越短，用量越大。") })
-        Text("评论会显示在悬浮球旁，并沿用语音页的播报设置。锁屏、息屏、开始任务或退出悬浮球时停止陪伴。",
+        Row(Modifier.fillMaxWidth().toggleable(config.speechEnabled, role = Role.Switch) {
+            config = config.copy(speechEnabled = it)
+        }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("陪伴语音播报", Modifier.weight(1f))
+            Switch(config.speechEnabled, null)
+        }
+        Text("默认只显示文字评论。开启陪伴语音播报后，使用语音页配置的音色与服务。锁屏、息屏、开始任务或退出悬浮球时停止陪伴。",
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Section("陪伴模型", "默认复用已保存的规划与视觉模型。陪伴会持续使用图片输入，可单独选择成本更低的模型。") {

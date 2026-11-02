@@ -304,21 +304,22 @@ object VoiceRuntime {
 
     fun speak(context: Context, text: String) = speak(context, text, false)
     /** A caller can stop its own playback without cancelling a newer voice command. */
-    fun speakCancellable(context: Context, text: String): (() -> Unit)? {
-        if (!speak(context, text)) return null
+    fun speakCancellable(context: Context, text: String, completed: (Boolean) -> Unit): (() -> Unit)? {
+        if (!speak(context, text, false, completed = completed)) { completed(false); return null }
         val id = active ?: return null
         return { cancel(id) }
     }
     /** Plays one bundled prompt through the normal playback path, for the debug page. */
     fun playPrompt(context: Context, clip: String) = speak(context, "", false, clip)
     private fun speakUnlock(context: Context) = speak(context, "请先点亮并解锁手机，然后重新下达指令。", true)
-    private fun speak(context: Context, text: String, unlockPrompt: Boolean, clip: String? = null, after: (() -> Unit)? = null): Boolean {
+    private fun speak(context: Context, text: String, unlockPrompt: Boolean, clip: String? = null,
+        completed: ((Boolean) -> Unit)? = null, after: (() -> Unit)? = null): Boolean {
         if (!unlockPrompt && !screenAvailable(context)) return false
         val id = begin(context, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, "正在播报") ?: return false
         scope.launch {
             try {
                 withTimeout(5_000) { ready.await() }
-                if (!requests.accepts(id)) { finish(id); return@launch }
+                if (!requests.accepts(id)) { finish(id); completed?.invoke(false); return@launch }
                 val prompt = clip ?: context.assets.open("voice/prompts/prompts.json").bufferedReader().use {
                     voicePrompt(text, JSONObject(it.readText()))
                 }
@@ -332,10 +333,11 @@ object VoiceRuntime {
                         // A prompt that should have led into listening failed: fold the card it opened.
                         if (after != null) mutableListening.value = null
                     }
+                    completed?.invoke(error == null && requests.accepts(id))
                     finish(id, if (error == null) after else null)
                 }
                 if (prompt != null) speech?.play(prompt) else speech?.speak(text)
-            } catch (e: Exception) { mutableError.value = e.message ?: "播报失败"; finish(id) }
+            } catch (e: Exception) { mutableError.value = e.message ?: "播报失败"; completed?.invoke(false); finish(id) }
         }
         return true
     }
