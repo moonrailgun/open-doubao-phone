@@ -1,0 +1,36 @@
+name: Check changelog
+
+on:
+  pull_request:
+    paths:
+      - 'docs/changelog/**'
+      - 'docs/changelog.md'
+      - 'CHANGELOG.md'
+      - 'scripts/changelog.py'
+      - 'scripts/test_changelog.py'
+      - 'release.sh'
+      - '.github/workflows/changelog.yml'
+  push:
+    paths:
+      - 'docs/changelog/**'
+      - 'docs/changelog.md'
+      - 'CHANGELOG.md'
+      - 'scripts/changelog.py'
+      - 'scripts/test_changelog.py'
+      - 'release.sh'
+      - '.github/workflows/changelog.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate changelog
+        run: python3 scripts/changelog.py check
+      - name: Test changelog and release flow
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Check release script syntax
+        run: bash -n release.sh
