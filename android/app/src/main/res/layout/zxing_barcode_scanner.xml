@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides the zxing-android-embedded layout of the same name for PairingCaptureActivity. -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <com.journeyapps.barcodescanner.BarcodeView
+        android:id="@+id/zxing_barcode_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:zxing_framing_rect_width="280dp"
+        app:zxing_framing_rect_height="280dp" />
+
+    <com.moonrailgun.opendoubao.assistant.remote.PairingViewfinderView
+        android:id="@+id/zxing_viewfinder_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Centered, then pushed just below the 280dp frame. -->
+    <TextView
+        android:id="@+id/zxing_status_view"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="180dp"
+        android:shadowColor="#99000000"
+        android:shadowRadius="6"
+        android:textColor="#FFFFFFFF"
+        android:textSize="15sp" />
+</merge>
