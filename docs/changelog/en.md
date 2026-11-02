@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-03
+
 - Android: Give floating-panel text the full panel width, with Open app and New conversation grouped in a More menu.
 - Android: Fix tasks incorrectly reporting an obstructed screen and repeatedly pausing on some Huawei phones with gesture navigation, including while the assistant bubble is still disappearing.
 - Android: Add companion mode with brief comments about what's happening while you play games or watch videos. You can adjust how often it comments. Start companion mode from the main screen and stop it from the floating bubble's expanded menu.
