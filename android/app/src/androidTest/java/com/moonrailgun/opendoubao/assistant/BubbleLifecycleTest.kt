@@ -55,17 +55,33 @@ class BubbleLifecycleTest {
             assertTrue(device.hasObject(By.desc("开始任务")))
             device.findObject(By.clazz("android.widget.EditText")).text = "task draft"
             assertFalse(device.hasObject(By.text("开始陪伴")))
+            assertFalse(device.hasObject(By.text("启动悬浮球")))
+            assertFalse(device.hasObject(By.text("退出悬浮球")))
             device.findObject(By.text("陪伴模式")).click()
             assertTrue(device.wait(Until.hasObject(By.text("开始陪伴")), 5000))
             assertFalse(device.hasObject(By.desc("开始任务")))
             device.findObject(By.text("执行")).click()
             assertTrue(device.wait(Until.hasObject(By.text("task draft")), 5000))
+            device.findObject(By.text("陪伴模式")).click()
+            device.findObject(By.text("陪伴设置")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("请求间隔（秒）")), 5000))
+            assertFalse(device.hasObject(By.text("悬浮球头像")))
+            activity = instrument.startActivitySync(Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            assertTrue(device.wait(Until.hasObject(By.desc("设置")), 5000))
+            device.findObject(By.desc("设置")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("悬浮球头像")), 5000))
+            device.findObject(By.text("模型")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("规划与视觉模型")), 5000))
+            assertFalse(device.hasObject(By.text("悬浮球头像")))
+            device.findObject(By.text("概览")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("悬浮球头像")), 5000))
         }
         fun toggle(label: String) {
             val button = device.wait(Until.findObject(By.clickable(true).hasChild(By.text(label))), 5000)
             assertNotNull("Missing bubble action: $label", button)
             assertTrue(button.isEnabled)
-            // The expanded bubble can cover the center of the button.
+            // The expanded bubble can cover the center of the Overview button.
             val bounds = button.visibleBounds
             device.click(bounds.left + bounds.width() / 10, bounds.centerY())
         }

@@ -270,6 +270,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        val accessibilityNotice = @Composable {
+            if (service == null) Banner("还差一步：开启无障碍服务", "手机需要它读取屏幕、替你点按和输入。开始任务或陪伴后工作。") {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+        }
         Scaffold(bottomBar = {
             NavigationBar {
                 listOf(Triple("任务", R.drawable.lucide_bot, 0), Triple("记录", R.drawable.lucide_history, 1),
@@ -298,14 +303,7 @@ class MainActivity : ComponentActivity() {
                                 Tab(homeTab == index, { homeTab = index }, text = { Text(title) })
                             }
                         }
-                        if (service == null) Banner("还差一步：开启无障碍服务", "手机需要它读取屏幕、替你点按和输入。开始任务或陪伴后工作。") {
-                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        }
-                        OutlinedButton({ attempt { service?.setBubbleActive(!bubbleActive) } },
-                            Modifier.fillMaxWidth().height(52.dp), enabled = service != null, shape = RoundedCornerShape(16.dp)) {
-                            Icon(painterResource(if (bubbleActive) R.drawable.lucide_x else R.drawable.lucide_play), null, Modifier.size(18.dp))
-                            Text(if (bubbleActive) "退出悬浮球" else "启动悬浮球", Modifier.padding(start = 8.dp))
-                        }
+                        accessibilityNotice()
                         if (homeTab == 0) {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(if (paused) "任务已暂停，等你处理" else if (busy) "正在替你操作手机" else "想让手机帮你做什么？", fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
@@ -315,7 +313,7 @@ class MainActivity : ComponentActivity() {
                                     else "说一句话，它会自己打开应用、点按和输入，做完把结果告诉你。",
                                     fontSize = 15.sp, lineHeight = 22.sp, color = colors.onSurfaceVariant)
                             }
-                            if (!configReady && !busy) Banner("还没有设置模型", "填好规划与视觉模型的地址和密钥后才能开始，Jev 可选。") { tab = SETTINGS; settingsTab = 0 }
+                            if (!configReady && !busy) Banner("还没有设置模型", "填好规划与视觉模型的地址和密钥后才能开始，Jev 可选。") { tab = SETTINGS; settingsTab = 1 }
                             if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = { force ->
                                 moveTaskToBack(true)
                                 scope.launch { delay(300); attempt { service?.resume(ignoreScreenChanges = force) } }
@@ -376,7 +374,7 @@ class MainActivity : ComponentActivity() {
                                     } }, enabled = service != null && !busy) {
                                         Text(if (companion.active) "停止陪伴" else "开始陪伴")
                                     }
-                                    TextButton({ tab = SETTINGS; settingsTab = 4 }) { Text("陪伴设置") }
+                                    TextButton({ tab = SETTINGS; settingsTab = 5 }) { Text("陪伴设置") }
                                 }
                             }
                         }
@@ -410,15 +408,24 @@ class MainActivity : ComponentActivity() {
                     }
                     2 -> MemoryControls(vault, refresh) { message = it }
                     SETTINGS -> {
-                        PageTitle("设置", "配置模型服务、执行方式、语音播报和远程连接。")
-                        BubbleAvatarControls()
+                        PageTitle("设置", "管理悬浮球，配置模型服务、执行方式、语音播报和远程连接。")
                         PrimaryScrollableTabRow(settingsTab, edgePadding = 0.dp) {
-                            listOf("模型", "语音", "桌面远程", "执行", "陪伴").forEachIndexed { index, title ->
+                            listOf("概览", "模型", "语音", "桌面远程", "执行", "陪伴").forEachIndexed { index, title ->
                                 Tab(settingsTab == index, { settingsTab = index }, text = { Text(title) })
                             }
                         }
                         when (settingsTab) {
                             0 -> {
+                                accessibilityNotice()
+                                OutlinedButton({ attempt { service?.setBubbleActive(!bubbleActive) } },
+                                    Modifier.fillMaxWidth().height(52.dp), enabled = service != null, shape = RoundedCornerShape(16.dp)) {
+                                    Icon(painterResource(if (bubbleActive) R.drawable.lucide_x else R.drawable.lucide_play), null, Modifier.size(18.dp))
+                                    Text(if (bubbleActive) "退出悬浮球" else "启动悬浮球", Modifier.padding(start = 8.dp))
+                                }
+                                BubbleAvatarControls()
+                                notice()
+                            }
+                            1 -> {
                                 Section("规划与视觉模型", if (config.jevVision) "生成输入文字和最终回答，并在 Jev 置信度不足时看截图决定下一步。需要支持图片输入的 Chat Completions 接口。" else "拆解任务、看截图和总结结果。需要支持图片输入的 Chat Completions 接口。") {
                                     SettingField("完整接口地址", config.chatEndpoint, "通常以 /v1/chat/completions 结尾") { config = config.copy(chatEndpoint = it.trim()) }
                                     SettingField("模型", config.chatModel) { config = config.copy(chatModel = it.trim()) }
@@ -468,13 +475,13 @@ class MainActivity : ComponentActivity() {
                                 Text("测试连接会向已配置的服务各发一次请求，可能产生少量费用。密钥经 Android Keystore 加密后只存在本机，不写入日志和备份。",
                                     Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                             }
-                            1 -> {
+                            2 -> {
                                 TtsControls(vault)
                                 VoiceControls()
                             }
-                            2 -> RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-                            3 -> ExecutionControls()
-                            4 -> CompanionControls(vault, service) { message = it }
+                            3 -> RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                            4 -> ExecutionControls()
+                            5 -> CompanionControls(vault, service) { message = it }
                         }
                         OutlinedButton({ startActivity(Intent(this@MainActivity, DebugActivity::class.java)) }, Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp)) { Text("调试") }
