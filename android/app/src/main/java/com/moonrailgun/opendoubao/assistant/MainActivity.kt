@@ -308,7 +308,7 @@ class MainActivity : ComponentActivity() {
                             Icon(painterResource(if (bubbleActive) R.drawable.lucide_x else R.drawable.lucide_play), null, Modifier.size(18.dp))
                             Text(if (bubbleActive) "退出悬浮球" else "启动悬浮球", Modifier.padding(start = 8.dp))
                         }
-                        Section("陪伴模式", "陪你玩游戏、看视频。定时看看画面，变化不大时保持安静。开启后自动收进顶部胶囊，点开可查看评论。") {
+                        Section("陪伴模式", "陪你玩游戏、看视频。定时看看画面，变化不大时保持安静。开启后自动收进顶部胶囊，点开可查看评论、输入聊天或补充关注点，发送后会再看一次画面并回复。") {
                             if (companion.active) {
                                 Text(companion.message, fontSize = 13.sp, color = colors.onSurfaceVariant)
                                 if (companion.comment.isNotBlank()) Text(companion.comment)

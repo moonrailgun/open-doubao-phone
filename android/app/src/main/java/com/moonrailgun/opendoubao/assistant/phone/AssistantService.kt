@@ -160,6 +160,7 @@ class AssistantService : AccessibilityService() {
     private var moreMenu: PopupMenu? = null
     private var inputRow: View? = null
     private var input: EditText? = null
+    private var submitButton: View? = null
     private var voiceInput: LocalVoiceInput? = null
     private var voiceStatus: TextView? = null
     private var layout: WindowManager.LayoutParams? = null
@@ -475,9 +476,9 @@ class AssistantService : AccessibilityService() {
             if (!companionFrameAvailable(current)) true
             else if (previous.packageName in Vault(this).read().excludedApps) false
             else models.companionUnchanged(previous, current)
-        } else null) { frame, recent ->
+        } else null) { frame, context ->
             if (!companionFrameAvailable(frame)) return@start null
-            val reply = models.companionComment(frame, recent)
+            val reply = models.companionComment(frame, context)
             if (companionFrameAvailable(frame)) reply else null
         }
         applyOverlay()
@@ -818,7 +819,8 @@ class AssistantService : AccessibilityService() {
                     voice.start()
                 },
                     LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
-                addView(iconButton(R.drawable.lucide_play, "执行") { submit() },
+                submitButton = iconButton(R.drawable.lucide_play, "执行") { submit() }
+                addView(submitButton,
                     LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
             })
             addView(status)
@@ -889,7 +891,13 @@ class AssistantService : AccessibilityService() {
     private fun submit() {
         val goal = input?.text?.toString()?.trim().orEmpty()
         if (goal.isEmpty()) return
-        runCatching { startTask(goal, UUID.randomUUID().toString(), fromBubble = true) }
+        runCatching {
+            if (companionState.value.active) {
+                requireUnlockedScreen()
+                collapse()
+                check(companion.submit(goal)) { "陪伴已停止，请重新开启" }
+            } else startTask(goal, UUID.randomUUID().toString(), fromBubble = true)
+        }
             .onSuccess { input?.text?.clear() }
             .onFailure { statusText?.text = it.message ?: "无法开始任务" }
     }
@@ -935,6 +943,8 @@ class AssistantService : AccessibilityService() {
             statusLabel?.text = "陪伴模式"
             statusIcon?.apply { setImageResource(R.drawable.app_logo); imageTintList = null; contentDescription = "陪伴模式" }
         }
+        input?.hint = if (companion.active) "聊两句，或补充想让我关注的事" else "输入要求，可接着补充"
+        submitButton?.contentDescription = if (companion.active) "发送" else "执行"
         ringBubble()
         applyOverlay()
     }
@@ -983,7 +993,7 @@ class AssistantService : AccessibilityService() {
         ball.contentDescription = when {
             running -> "Open Doubao 正在操作手机，点按展开可补充要求或停止"
             paused -> "Open Doubao 已暂停，点按展开继续任务"
-            companionState.value.active -> "Open Doubao 陪伴中，点按查看评论或停止"
+            companionState.value.active -> "Open Doubao 陪伴中，点按查看评论、输入或停止"
             conversing -> "Open Doubao 正在语音对话，点按展开"
             else -> "Open Doubao，点按查看结果或下达命令"
         }

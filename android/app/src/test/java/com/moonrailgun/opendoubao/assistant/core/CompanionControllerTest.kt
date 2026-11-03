@@ -10,6 +10,141 @@ class CompanionControllerTest {
     private fun frame(color: Int = 0, app: String = "game") =
         CompanionFrame(app, 1080, 2400, 0, "jpeg", IntArray(1024) { color })
 
+    @Test fun manualInputBypassesUnchangedScreenAndStaysInAutomaticContext() = runTest {
+        var current = frame()
+        val calls = mutableListOf<Pair<Long, CompanionContext>>()
+        val spoken = mutableListOf<String>()
+        val controller = CompanionController(backgroundScope, capture = { current }, speak = { spoken += it })
+        assertFalse(controller.submit("尚未开始"))
+        controller.start(1000, unchanged = { _, _ -> false }) { _, context ->
+            calls += currentTime to context
+            "同一句回复"
+        }
+        runCurrent()
+        advanceTimeBy(100)
+        assertFalse(controller.submit("  "))
+        assertTrue(controller.submit("  我在玩辅助  "))
+        runCurrent()
+        assertEquals(listOf(0L, 100L), calls.map { it.first })
+        assertEquals(listOf("我在玩辅助"), calls.last().second.userMessages)
+        assertTrue(calls.last().second.manual)
+        assertEquals(2, spoken.size)
+        current = current.copy(image = "next")
+        advanceTimeBy(999); runCurrent()
+        assertEquals(2, calls.size)
+        advanceTimeBy(1); runCurrent()
+        assertEquals(1100L, calls.last().first)
+        assertFalse(calls.last().second.manual)
+        assertEquals(listOf("我在玩辅助"), calls.last().second.userMessages)
+        controller.stop()
+    }
+
+    @Test fun queuedInputsNeverOverlapAndStopDiscardsTheOldSession() = runTest {
+        val contexts = mutableListOf<CompanionContext>()
+        val controller = CompanionController(backgroundScope, capture = { frame() })
+        controller.start(1000) { _, context ->
+            contexts += context
+            withContext(NonCancellable) { delay(3000) }
+            "回复"
+        }
+        runCurrent()
+        controller.submit("第一句")
+        controller.submit("第二句")
+        advanceTimeBy(2999); runCurrent()
+        assertEquals(1, contexts.size)
+        advanceTimeBy(1); runCurrent()
+        assertEquals(listOf("第一句"), contexts.last().userMessages)
+        advanceTimeBy(3000); runCurrent()
+        assertEquals(listOf("第一句", "第二句"), contexts.last().userMessages)
+        controller.submit("不能进入新一轮")
+        controller.stop()
+        assertFalse(controller.submit("已停止"))
+        controller.start(1000) { _, context -> contexts += context; "新回复" }
+        runCurrent()
+        assertEquals(3, contexts.size)
+        advanceTimeBy(3000); runCurrent()
+        assertEquals(CompanionContext(), contexts.last())
+        assertEquals(4, contexts.size)
+        controller.stop()
+    }
+
+    @Test fun manualInputSurvivesUnavailableScreensStaleFramesAndRequestErrors() = runTest {
+        var current: CompanionFrame? = frame()
+        var manualCalls = 0
+        val controller = CompanionController(backgroundScope, capture = { current })
+        controller.start(1000) { _, context ->
+            if (!context.manual) "自动评论" else {
+                assertEquals(listOf("这是什么？"), context.userMessages)
+                when (++manualCalls) {
+                    1 -> null
+                    2 -> error("private server error")
+                    else -> "手动回复"
+                }
+            }
+        }
+        runCurrent()
+        current = null
+        controller.submit("这是什么？")
+        runCurrent()
+        assertEquals(0, manualCalls)
+        current = frame()
+        repeat(3) { advanceTimeBy(1000); runCurrent() }
+        assertEquals(3, manualCalls)
+        assertEquals("手动回复", controller.state.value.comment)
+        advanceTimeBy(1000); runCurrent()
+        assertEquals(3, manualCalls)
+        controller.stop()
+    }
+
+    @Test fun newInputWakesPendingRetriesAndKeepsEarlierContext() = runTest {
+        var current: CompanionFrame? = frame()
+        val calls = mutableListOf<Pair<Long, CompanionContext>>()
+        val controller = CompanionController(backgroundScope, capture = { current })
+        controller.start(300_000) { _, context ->
+            calls += currentTime to context
+            when (context.userMessages.size) {
+                2 -> null
+                3 -> error("request failed")
+                else -> "回复"
+            }
+        }
+        runCurrent()
+        current = null
+        assertTrue(controller.submit("这是什么？"))
+        runCurrent()
+        assertEquals(1, calls.size)
+
+        advanceTimeBy(1000)
+        current = frame()
+        assertTrue(controller.submit("已经回到游戏了"))
+        runCurrent()
+        assertEquals(listOf(0L, 1000L), calls.map { it.first })
+        assertEquals(listOf("这是什么？", "已经回到游戏了"), calls.last().second.userMessages)
+
+        advanceTimeBy(1000)
+        assertTrue(controller.submit("请关注辅助"))
+        runCurrent()
+        assertEquals(listOf(0L, 1000L, 2000L), calls.map { it.first })
+
+        advanceTimeBy(1000)
+        assertTrue(controller.submit("再试一次"))
+        runCurrent()
+        assertEquals(listOf(0L, 1000L, 2000L, 3000L), calls.map { it.first })
+        assertEquals(listOf("这是什么？", "已经回到游戏了", "请关注辅助", "再试一次"), calls.last().second.userMessages)
+        assertTrue(calls.drop(1).all { it.second.manual })
+        controller.stop()
+    }
+
+    @Test fun userContextKeepsTheLatestEightInputsInOrder() = runTest {
+        var last = CompanionContext()
+        val controller = CompanionController(backgroundScope, capture = { frame() })
+        controller.start(1000) { _, context -> last = context; "回复" }
+        runCurrent()
+        repeat(10) { controller.submit("输入$it"); runCurrent() }
+        assertEquals((2..9).map { "输入$it" }, last.userMessages)
+        controller.stop()
+    }
+
     @Test fun waitsFromCompletionAndNeverOverlapsRequests() = runTest {
         val starts = mutableListOf<Long>()
         var captures = 0
@@ -140,11 +275,11 @@ class CompanionControllerTest {
         controller.stop()
         assertFalse(controller.state.value.active)
         var restarted = false
-        controller.start(1000) { _, history -> restarted = true; assertTrue(history.isEmpty()); "新的回复" }
+        controller.start(1000) { _, history -> restarted = true; assertEquals(CompanionContext(), history); "新的回复" }
         runCurrent()
         assertFalse(restarted)
         controller.stop()
-        controller.start(1000) { _, history -> restarted = true; assertTrue(history.isEmpty()); "新的回复" }
+        controller.start(1000) { _, history -> restarted = true; assertEquals(CompanionContext(), history); "新的回复" }
         runCurrent()
         assertFalse(restarted)
         advanceTimeBy(2000); runCurrent()
@@ -167,7 +302,7 @@ class CompanionControllerTest {
         var calls = 0
         val controller = CompanionController(backgroundScope, capture = { frame() })
         controller.start(1000) { _, history ->
-            assertTrue(history.isEmpty())
+            assertEquals(CompanionContext(), history)
             if (++calls == 1) null else "回到游戏了！"
         }
         runCurrent()
@@ -256,7 +391,7 @@ class CompanionControllerTest {
         val spoken = mutableListOf<String>()
         val controller = CompanionController(backgroundScope, capture = { frame(app = "app${capture++}") }, speak = { spoken += it })
         controller.start(1000) { _, history ->
-            assertTrue(history.size <= 3)
+            assertTrue(history.recentComments.size <= 3)
             if (capture <= 2) "重复" else "评论$capture"
         }
         runCurrent()

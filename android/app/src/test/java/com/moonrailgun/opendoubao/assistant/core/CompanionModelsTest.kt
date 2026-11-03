@@ -120,7 +120,9 @@ class CompanionModelsTest {
         val config = CompanionConfig(20, true, "https://companion.test/chat", "small-vision", "companion-key").modelConfig(general)
         val models = CloudModels(config, HttpTransport(client))
         val frame = CompanionFrame("game.app", 1080, 2400, 0, "screen-pixels", intArrayOf(1))
-        assertEquals(reply, models.companionComment(frame, listOf("旧的", "第一句", "第二句", "第三句")))
+        val userMessages = (1..10).map { "用户上下文$it" }
+        assertEquals(reply, models.companionComment(frame, CompanionContext(
+            recentComments = listOf("旧的", "第一句", "第二句", "第三句"), userMessages = userMessages)))
         val request = requests.single()
         assertEquals("small-vision", request.getString("model"))
         assertEquals(160, request.getInt("max_tokens"))
@@ -134,15 +136,26 @@ class CompanionModelsTest {
         assertEquals(listOf("第一句", "第二句", "第三句"), context.getJSONArray("recentComments").let { array ->
             (0 until array.length()).map(array::getString)
         })
+        assertEquals(userMessages.takeLast(8), context.getJSONArray("userMessages").let { array ->
+            (0 until array.length()).map(array::getString)
+        })
+        assertTrue(messages.getJSONObject(0).getString("content").contains("If nothing warrants a comment"))
         assertEquals("data:image/jpeg;base64,screen-pixels", content.getJSONObject(1).getJSONObject("image_url").getString("url"))
+        val question = "我玩的是辅助，\"这件装备\"适合吗？\n不要剧透"
+        assertEquals(reply, models.companionComment(frame, CompanionContext(userMessages = listOf(question), manual = true)))
+        val manual = requests.last().getJSONArray("messages")
+        assertTrue(manual.getJSONObject(0).getString("content").contains("Respond directly to it, even if the screen is unchanged"))
+        assertFalse(manual.getJSONObject(0).getString("content").contains("If nothing warrants a comment"))
+        assertEquals(question, JSONObject(manual.getJSONObject(1).getJSONArray("content").getJSONObject(0).getString("text"))
+            .getJSONArray("userMessages").getString(0))
         reply = " [SILENT] \n"
-        assertEquals("", models.companionComment(frame, emptyList()))
+        assertEquals("", models.companionComment(frame, CompanionContext()))
         reply = "长".repeat(500)
-        val bounded = models.companionComment(frame, emptyList())
+        val bounded = models.companionComment(frame, CompanionContext())
         assertTrue(bounded.length <= 120)
         assertTrue(bounded.endsWith("…"))
         reply = "短评\n\n  很精彩！"
-        assertEquals("短评 很精彩！", models.companionComment(frame, emptyList()))
-        assertEquals(4, requests.size)
+        assertEquals("短评 很精彩！", models.companionComment(frame, CompanionContext()))
+        assertEquals(5, requests.size)
     }
 }

@@ -18,6 +18,7 @@ import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.moonrailgun.opendoubao.assistant.core.CompanionState
+import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
@@ -29,7 +30,7 @@ import java.io.File
 
 class CompanionOverlayTest {
     @Suppress("UNCHECKED_CAST")
-    @Test fun autoDocksAndWrapsComments() {
+    @Test fun autoDocksWrapsCommentsAndAcceptsInputWithoutStartingATask() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("bubbleUiCheck") == "true")
         val instrument = InstrumentationRegistry.getInstrumentation()
         val context = instrument.targetContext
@@ -120,6 +121,19 @@ class CompanionOverlayTest {
                 assertTrue("Comment fits or can be scrolled", text.height >= text.layout.height || text.movementMethod != null)
             }
             screenshot("companion-comment")
+            device.findObject(By.desc("Open Doubao 陪伴中，点按查看评论、输入或停止")).click()
+            val send = device.wait(Until.findObject(By.desc("发送")), 5000)
+            assertNotNull(send)
+            val input = send.parent.findObject(By.clazz("android.widget.EditText"))
+            assertNotNull(input)
+            input.click()
+            input.text = "下一次请关注辅助的装备"
+            screenshot("companion-input")
+            device.findObject(By.desc("发送")).click()
+            await("Input reaches companion even on an excluded page") { service.companionState.value.message.contains("已保留你的输入") }
+            assertTrue(service.companionState.value.active)
+            assertEquals("Input must not create an automation task", TaskStatus.IDLE, service.state.value.status)
+            assertEquals(saved.records, vault.read().records)
         } finally {
             try {
                 if (configured) {
