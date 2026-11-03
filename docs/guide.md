@@ -162,7 +162,7 @@ cd android
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-Debug 使用独立包名 `com.moonrailgun.opendoubao.assistant.debug`，名称为 `Open Doubao Debug`，可与正式版同时安装。设置、记录和权限独立，首次安装需单独配置并开启 Debug 的无障碍服务。
+Debug 使用独立包名 `com.moonrailgun.opendoubao.assistant.debug`，名称为 `Open Doubao Debug`，桌面图标带橙色 `DBG` 标记，可与正式版同时安装。设置、记录和权限独立，首次安装需单独配置并开启 Debug 的无障碍服务。
 
 日常修改后，在 `android/` 目录执行下面的命令即可重新构建并覆盖安装，保留已有 Debug 数据：
 

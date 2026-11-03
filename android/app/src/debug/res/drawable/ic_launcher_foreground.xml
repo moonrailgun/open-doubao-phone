@@ -1,0 +1,6 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <inset android:drawable="@drawable/app_logo" android:inset="16.666667%" />
+    </item>
+    <item android:drawable="@drawable/ic_debug_badge" />
+</layer-list>
