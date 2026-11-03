@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Android: Add spacing above the Stop button in the floating panel so it no longer touches the input field.
 - Android: Organize the home screen into Execute and Companion mode tabs, and move floating-bubble controls and the avatar picker into the new Overview tab in Settings.
 - Android: Debug builds now install alongside the production app, with a separate name and an orange DBG icon badge. Reinstalling a Debug build with the same signing key keeps its settings and history.
 - Android: Companion mode now opens as a capsule at the top of the screen, without the green avatar border. Comments wrap onto multiple lines, with scrolling for longer text.

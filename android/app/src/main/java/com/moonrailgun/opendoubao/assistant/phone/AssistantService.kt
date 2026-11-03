@@ -865,7 +865,7 @@ class AssistantService : AccessibilityService() {
             stateListAnimator = null
             setOnClickListener { stop() }
         }
-        card.addView(stopButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)))
+        card.addView(stopButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) })
         root.addView(card, FrameLayout.LayoutParams(dp(320), FrameLayout.LayoutParams.WRAP_CONTENT))
         // From the wake word until the command is dispatched, the bubble opens into lines and live captions instead.
         val wave = VoiceWaveView(this)
