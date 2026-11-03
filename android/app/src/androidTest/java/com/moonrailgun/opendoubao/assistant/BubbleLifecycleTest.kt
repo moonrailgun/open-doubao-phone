@@ -51,12 +51,23 @@ class BubbleLifecycleTest {
         fun openApp() {
             activity = instrument.startActivitySync(Intent(context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            assertTrue(device.wait(Until.hasObject(By.text("执行")), 5000))
+            assertTrue(device.hasObject(By.desc("开始任务")))
+            device.findObject(By.clazz("android.widget.EditText")).text = "task draft"
+            assertFalse(device.hasObject(By.text("开始陪伴")))
+            device.findObject(By.text("陪伴模式")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("开始陪伴")), 5000))
+            assertFalse(device.hasObject(By.desc("开始任务")))
+            device.findObject(By.text("执行")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("task draft")), 5000))
         }
         fun toggle(label: String) {
             val button = device.wait(Until.findObject(By.clickable(true).hasChild(By.text(label))), 5000)
             assertNotNull("Missing bubble action: $label", button)
             assertTrue(button.isEnabled)
-            button.click()
+            // The expanded bubble can cover the center of the button.
+            val bounds = button.visibleBounds
+            device.click(bounds.left + bounds.width() / 10, bounds.centerY())
         }
         fun hidden() {
             assertTrue("Bubble must remain hidden", device.wait(Until.gone(bubble), 5000))

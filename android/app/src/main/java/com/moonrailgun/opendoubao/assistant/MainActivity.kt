@@ -184,6 +184,7 @@ class MainActivity : ComponentActivity() {
         var records by remember { mutableStateOf(saved.records) }
         var goal by remember { mutableStateOf("") }
         var tab by rememberSaveable { mutableIntStateOf(0) }
+        var homeTab by rememberSaveable { mutableIntStateOf(0) }
         var settingsTab by rememberSaveable { mutableIntStateOf(0) }
         var message by remember { mutableStateOf("") }
         var choosingApps by remember { mutableStateOf(false) }
@@ -212,7 +213,7 @@ class MainActivity : ComponentActivity() {
         }
         val scroll = rememberScrollState()
         LaunchedEffect(message) { if (message.isNotEmpty() && tab != SETTINGS) scroll.animateScrollTo(0) }
-        LaunchedEffect(tab, settingsTab) { scroll.scrollTo(0) }
+        LaunchedEffect(tab, homeTab, settingsTab) { scroll.scrollTo(0) }
         val service by AssistantService.connected.collectAsState()
         val bubbleActive = service?.bubbleActive?.collectAsState()?.value == true
         val task = service?.state?.collectAsState()?.value ?: TaskState()
@@ -292,13 +293,10 @@ class MainActivity : ComponentActivity() {
                                     tint = if (service != null) Color(0xFF2FA672) else colors.outline)
                             }
                         }
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(if (paused) "任务已暂停，等你处理" else if (busy) "正在替你操作手机" else "想让手机帮你做什么？", fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
-                            Text(if (paused) "点继续表示同意它接着执行；页面反复变化时，可点「忽略并继续」忽略下一步的变化。也可以先自己处理，或停止任务。"
-                                else if (busy && bubbleActive) "可以切到别的界面看它工作，点开悬浮球随时能停止。"
-                                else if (busy) "可以切到别的界面看它工作，回到此页可随时停止。"
-                                else "说一句话，它会自己打开应用、点按和输入，做完把结果告诉你。",
-                                fontSize = 15.sp, lineHeight = 22.sp, color = colors.onSurfaceVariant)
+                        PrimaryTabRow(homeTab) {
+                            listOf("执行", "陪伴模式").forEachIndexed { index, title ->
+                                Tab(homeTab == index, { homeTab = index }, text = { Text(title) })
+                            }
                         }
                         if (service == null) Banner("还差一步：开启无障碍服务", "手机需要它读取屏幕、替你点按和输入。开始任务或陪伴后工作。") {
                             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -308,68 +306,79 @@ class MainActivity : ComponentActivity() {
                             Icon(painterResource(if (bubbleActive) R.drawable.lucide_x else R.drawable.lucide_play), null, Modifier.size(18.dp))
                             Text(if (bubbleActive) "退出悬浮球" else "启动悬浮球", Modifier.padding(start = 8.dp))
                         }
-                        Section("陪伴模式", "陪你玩游戏、看视频。定时看看画面，变化不大时保持安静。开启后自动收进顶部胶囊，点开可查看评论、输入聊天或补充关注点，发送后会再看一次画面并回复。") {
-                            if (companion.active) {
-                                Text(companion.message, fontSize = 13.sp, color = colors.onSurfaceVariant)
-                                if (companion.comment.isNotBlank()) Text(companion.comment)
+                        if (homeTab == 0) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(if (paused) "任务已暂停，等你处理" else if (busy) "正在替你操作手机" else "想让手机帮你做什么？", fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold)
+                                Text(if (paused) "点继续表示同意它接着执行；页面反复变化时，可点「忽略并继续」忽略下一步的变化。也可以先自己处理，或停止任务。"
+                                    else if (busy && bubbleActive) "可以切到别的界面看它工作，点开悬浮球随时能停止。"
+                                    else if (busy) "可以切到别的界面看它工作，回到此页可随时停止。"
+                                    else "说一句话，它会自己打开应用、点按和输入，做完把结果告诉你。",
+                                    fontSize = 15.sp, lineHeight = 22.sp, color = colors.onSurfaceVariant)
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Button({ attempt {
-                                    if (companion.active) service?.stopCompanion()
-                                    else {
-                                        checkNotNull(service) { "请先开启无障碍服务" }.startCompanion()
-                                        moveTaskToBack(true)
-                                    }
-                                } }, enabled = service != null && !busy) {
-                                    Text(if (companion.active) "停止陪伴" else "开始陪伴")
-                                }
-                                TextButton({ tab = SETTINGS; settingsTab = 4 }) { Text("陪伴设置") }
-                            }
-                        }
-                        if (!configReady && !busy) Banner("还没有设置模型", "填好规划与视觉模型的地址和密钥后才能开始，Jev 可选。") { tab = SETTINGS; settingsTab = 0 }
-                        if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = { force ->
-                            moveTaskToBack(true)
-                            scope.launch { delay(300); attempt { service?.resume(ignoreScreenChanges = force) } }
-                        }, onStop = { service?.stop() })
-                        val virtualActive = service?.virtualActive?.collectAsState()?.value == true
-                        if (virtualActive) service?.let { VirtualPeek(it) }
-                        if (!busy) {
-                            Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, colors.outlineVariant)) {
-                                Column {
-                                    // Typing a command opens the model connections, so the task's first call needs no handshake.
-                                    TextField(goal, { goal = it.take(4000) }, Modifier.fillMaxWidth().padding(top = 4.dp)
-                                        .onFocusChanged { if (it.isFocused) warmModels(this@MainActivity) },
-                                        placeholder = { Text("例如：在浏览器里搜索北京这周末的天气，告诉我适不适合出门") },
-                                        textStyle = LocalTextStyle.current.copy(fontSize = 17.sp, lineHeight = 26.sp), minLines = 4, maxLines = 8,
-                                        colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
-                                            focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
-                                    Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        FilledTonalIconButton({ attempt {
-                                            voice()
-                                        } }) { Icon(painterResource(R.drawable.lucide_mic), "语音输入") }
-                                        Spacer(Modifier.weight(1f))
-                                        TextButton({ choosingApps = true }, Modifier.semantics { contentDescription = appsLabel },
-                                            colors = if (apps.isEmpty()) ButtonDefaults.textButtonColors(contentColor = colors.error)
-                                            else ButtonDefaults.textButtonColors()) {
-                                            Icon(painterResource(R.drawable.lucide_layout_grid), null, Modifier.size(18.dp))
-                                            if (excludedHere.isNotEmpty()) Text("排除 ${excludedHere.size}", Modifier.padding(start = 6.dp))
-                                        }
-                                        FilledIconButton({ start() }, Modifier.size(48.dp), enabled = service != null && configReady && goal.isNotBlank()) {
-                                            Icon(painterResource(R.drawable.lucide_play), "开始任务")
+                            if (!configReady && !busy) Banner("还没有设置模型", "填好规划与视觉模型的地址和密钥后才能开始，Jev 可选。") { tab = SETTINGS; settingsTab = 0 }
+                            if (task.status != TaskStatus.IDLE) RunPanel(task, onResume = { force ->
+                                moveTaskToBack(true)
+                                scope.launch { delay(300); attempt { service?.resume(ignoreScreenChanges = force) } }
+                            }, onStop = { service?.stop() })
+                            val virtualActive = service?.virtualActive?.collectAsState()?.value == true
+                            if (virtualActive) service?.let { VirtualPeek(it) }
+                            if (!busy) {
+                                Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(28.dp), border = BorderStroke(1.dp, colors.outlineVariant)) {
+                                    Column {
+                                        // Typing a command opens the model connections, so the task's first call needs no handshake.
+                                        TextField(goal, { goal = it.take(4000) }, Modifier.fillMaxWidth().padding(top = 4.dp)
+                                            .onFocusChanged { if (it.isFocused) warmModels(this@MainActivity) },
+                                            placeholder = { Text("例如：在浏览器里搜索北京这周末的天气，告诉我适不适合出门") },
+                                            textStyle = LocalTextStyle.current.copy(fontSize = 17.sp, lineHeight = 26.sp), minLines = 4, maxLines = 8,
+                                            colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+                                                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent))
+                                        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            FilledTonalIconButton({ attempt {
+                                                voice()
+                                            } }) { Icon(painterResource(R.drawable.lucide_mic), "语音输入") }
+                                            Spacer(Modifier.weight(1f))
+                                            TextButton({ choosingApps = true }, Modifier.semantics { contentDescription = appsLabel },
+                                                colors = if (apps.isEmpty()) ButtonDefaults.textButtonColors(contentColor = colors.error)
+                                                else ButtonDefaults.textButtonColors()) {
+                                                Icon(painterResource(R.drawable.lucide_layout_grid), null, Modifier.size(18.dp))
+                                                if (excludedHere.isNotEmpty()) Text("排除 ${excludedHere.size}", Modifier.padding(start = 6.dp))
+                                            }
+                                            FilledIconButton({ start() }, Modifier.size(48.dp), enabled = service != null && configReady && goal.isNotBlank()) {
+                                                Icon(painterResource(R.drawable.lucide_play), "开始任务")
+                                            }
                                         }
                                     }
                                 }
+                                if (excludedHere.isNotEmpty()) Text("不操作：" + installed.filter { it.packageName in excluded }.joinToString("、") { it.label },
+                                    Modifier.padding(horizontal = 4.dp), fontSize = 13.sp, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (goal.isBlank()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Examples.forEach { (title, text, glyph) ->
+                                        SuggestionChip({ goal = text }, { Text(title) }, shape = CircleShape,
+                                            icon = { Icon(painterResource(glyph), null, Modifier.size(18.dp)) })
+                                    }
+                                }
+                                Text("开始后自动执行，可随时回到此页或点开已启动的悬浮球停止。遇到发送、付款、删除等操作会先暂停征求同意，点继续即授权它执行；输入密码或凭据仍需你手动处理。无法保证识别所有敏感操作。",
+                                    Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                             }
-                            if (excludedHere.isNotEmpty()) Text("不操作：" + installed.filter { it.packageName in excluded }.joinToString("、") { it.label },
-                                Modifier.padding(horizontal = 4.dp), fontSize = 13.sp, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (goal.isBlank()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Examples.forEach { (title, text, glyph) ->
-                                    SuggestionChip({ goal = text }, { Text(title) }, shape = CircleShape,
-                                        icon = { Icon(painterResource(glyph), null, Modifier.size(18.dp)) })
+                        } else {
+                            Section("陪伴模式", "陪你玩游戏、看视频。定时看看画面，变化不大时保持安静。开启后自动收进顶部胶囊，点开可查看评论、输入聊天或补充关注点，发送后会再看一次画面并回复。") {
+                                if (companion.active) {
+                                    Text(companion.message, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                                    if (companion.comment.isNotBlank()) Text(companion.comment)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Button({ attempt {
+                                        if (companion.active) service?.stopCompanion()
+                                        else {
+                                            checkNotNull(service) { "请先开启无障碍服务" }.startCompanion()
+                                            moveTaskToBack(true)
+                                        }
+                                    } }, enabled = service != null && !busy) {
+                                        Text(if (companion.active) "停止陪伴" else "开始陪伴")
+                                    }
+                                    TextButton({ tab = SETTINGS; settingsTab = 4 }) { Text("陪伴设置") }
                                 }
                             }
-                            Text("开始后自动执行，可随时回到此页或点开已启动的悬浮球停止。遇到发送、付款、删除等操作会先暂停征求同意，点继续即授权它执行；输入密码或凭据仍需你手动处理。无法保证识别所有敏感操作。",
-                                Modifier.padding(horizontal = 4.dp), fontSize = 12.sp, lineHeight = 18.sp, color = colors.onSurfaceVariant)
                         }
                     }
                     1 -> {
@@ -379,7 +388,7 @@ class MainActivity : ComponentActivity() {
                             Icon(painterResource(R.drawable.lucide_history), null, Modifier.size(40.dp), tint = colors.outline)
                             Text("还没有任务记录", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             Text("开始的任务会按时间出现在这里。", fontSize = 14.sp, color = colors.onSurfaceVariant)
-                            TextButton({ tab = 0 }) { Text("去写一个任务") }
+                            TextButton({ tab = 0; homeTab = 0 }) { Text("去写一个任务") }
                         } else Surface(color = colors.surfaceContainerLowest, shape = RoundedCornerShape(24.dp)) {
                             Column {
                                 records.forEachIndexed { index, record ->
