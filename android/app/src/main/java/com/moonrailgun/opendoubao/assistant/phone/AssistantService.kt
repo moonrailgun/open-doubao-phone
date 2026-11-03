@@ -10,6 +10,7 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.SpannableStringBuilder
@@ -164,7 +165,6 @@ class AssistantService : AccessibilityService() {
     private var voiceInput: LocalVoiceInput? = null
     private var voiceStatus: TextView? = null
     private var layout: WindowManager.LayoutParams? = null
-    private var captureHidden = false
     private var locked = false
     private var running = false
     private var paused = false
@@ -571,9 +571,14 @@ class AssistantService : AccessibilityService() {
         applyOverlay()
     }
 
-    fun setOverlayVisible(visible: Boolean) {
-        captureHidden = !visible
-        applyOverlay()
+    val overlayWindowId: Int get() = overlay?.createAccessibilityNodeInfo()?.let {
+        try { it.windowId } finally { it.recycle() }
+    } ?: -1
+
+    fun overlayBounds(): Rect? {
+        val root = overlay?.takeIf { it.isShown } ?: return null
+        val location = IntArray(2).also(root::getLocationOnScreen)
+        return Rect(location[0], location[1], location[0] + root.width, location[1] + root.height)
     }
 
     private fun createOverlay() {
@@ -656,7 +661,7 @@ class AssistantService : AccessibilityService() {
                 // Keyboard taps also arrive as outside touches, so typing keeps the panel open.
                 MotionEvent.ACTION_OUTSIDE -> {
                     if (listening != null) VoiceRuntime.cancel()
-                    else if (expanded && !captureHidden && !typing) collapse()
+                    else if (expanded && !typing) collapse()
                     return@OnTouchListener false
                 }
                 MotionEvent.ACTION_DOWN -> { downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y; dragging = false }
@@ -1017,7 +1022,7 @@ class AssistantService : AccessibilityService() {
         val active = bubbleActive.value
         val lit = running || paused && SystemClock.uptimeMillis() - pausedAt < PAUSE_LIT_MILLIS
         // An empty, untouchable window still keeps running tasks lit after the user exits the bubble.
-        root.visibility = if (captureHidden || locked || !active && !lit) View.GONE else View.VISIBLE
+        root.visibility = if (locked || !active && !lit) View.GONE else View.VISIBLE
         val voice = listening != null
         bubble?.visibility = if (!active || expanded || voice) View.GONE else View.VISIBLE
         taskPill?.visibility = if (running || companionState.value.active && showingCompanionComment) View.VISIBLE else View.GONE
@@ -1028,9 +1033,9 @@ class AssistantService : AccessibilityService() {
         val offscreen = virtual?.hasSession == true
         peek?.visibility = if (expanded && offscreen) View.VISIBLE else View.GONE
         handOverButton?.visibility = if (paused && offscreen) View.VISIBLE else View.GONE
-        if (!active || !expanded || voice || captureHidden || locked || running) moreMenu?.dismiss()
+        if (!active || !expanded || voice || locked || running) moreMenu?.dismiss()
         inputRow?.visibility = View.VISIBLE
-        val focusable = active && typing && expanded && !voice && !running && !captureHidden && !locked
+        val focusable = active && typing && expanded && !voice && !running && !locked
         val touchFlags = if (active) (params.flags or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH) and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
             else (params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) and WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH.inv()
         val focusFlags = if (focusable) touchFlags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()

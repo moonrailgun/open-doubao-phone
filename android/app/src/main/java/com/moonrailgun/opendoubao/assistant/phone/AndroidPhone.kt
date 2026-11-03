@@ -67,7 +67,7 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
         return withContext(Dispatchers.IO) { readScreen(window, size.x, size.y, display.rotation) }.also { lastPackage = it.packageName }
     }
 
-    override suspend fun screenshot(screen: Screen): String = capture(screen, restoreOverlay = true)
+    override suspend fun screenshot(screen: Screen): String = capture(screen)
 
     override fun sameImage(before: String, after: String, screen: Screen, region: Bounds) = screenshotsMatch(before, after, screen, region)
 
@@ -88,10 +88,9 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
             "bounds=${Rect().also(window::getBoundsInScreen).toShortString()} active=${window.isActive} focused=${window.isFocused}"
     }.getOrDefault("window=unavailable")
 
-    private suspend fun capture(screen: Screen, restoreOverlay: Boolean): String = captures.withLock {
+    private suspend fun capture(screen: Screen): String = captures.withLock {
         if (!screen.matchesForAction(observe())) throw ScreenChangedException()
         if (screen.protected) throw PhoneUnavailableException("密码页面不可截图")
-        if (shell == null) service.setOverlayVisible(false)
         var captureWindow: AccessibilityWindowInfo? = null
         try {
             delay(120)
@@ -111,9 +110,10 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
                     // Edge-to-edge app windows include system bars; omit their pixels without changing display coordinates.
                     if (!bounds.intersect(insets.left, insets.top, screen.width - insets.right, screen.height - insets.bottom))
                         throw ScreenChangedException()
+                    val overlayId = if (displayId == Display.DEFAULT_DISPLAY) service.overlayWindowId else -1
                     val blockers = windows().filter { other ->
                         val otherBounds = Rect().also(other::getBoundsInScreen)
-                        if (other.id == current.id || other.layer <= current.layer || !Rect.intersects(bounds, otherBounds)) false
+                        if (other.id == current.id || other.id == overlayId || other.layer <= current.layer || !Rect.intersects(bounds, otherBounds)) false
                         else {
                             val pkg = runCatching { other.root?.let { root ->
                                 try { root.packageName?.toString() } finally { root.recycle() }
@@ -129,6 +129,8 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
                 }
                 current
             }
+            val maskOverlay = Build.VERSION.SDK_INT < 34 && displayId == Display.DEFAULT_DISPLAY
+            val excluded = if (maskOverlay) service.overlayBounds() else null
             val bitmap = suspendCancellableCoroutine<Bitmap> { continuation ->
                 val callback = object : AccessibilityService.TakeScreenshotCallback {
                     override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
@@ -157,7 +159,8 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
             }
             try {
                 if (!screen.matchesForAction(observe())) throw ScreenChangedException()
-                return encodeScreenshot(bitmap, if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else bounds, bounds, screen)
+                if (maskOverlay && excluded != service.overlayBounds()) throw ScreenChangedException()
+                return encodeScreenshot(bitmap, if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else bounds, bounds, screen, excluded)
             } finally { bitmap.recycle() }
         } catch (e: PhoneUnavailableException) {
             val version = runCatching { service.packageManager.getPackageInfo(service.packageName, 0).let {
@@ -168,7 +171,7 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
                 "capture=${if (Build.VERSION.SDK_INT >= 34) "window" else "display"} " +
                 "target={${captureWindow?.let(::windowDetails) ?: "unavailable"}}"
             throw PhoneUnavailableException(e.message ?: "截图不可用", "$context ${e.diagnostics.orEmpty()}".trim()).also { it.initCause(e) }
-        } finally { if (restoreOverlay && shell == null) service.setOverlayVisible(true) }
+        }
     }
 
     override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean {
@@ -229,27 +232,27 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
     }
 
     private suspend fun gesture(path: Path, duration: Long, expected: Screen, expectedImage: String, region: Bounds): Boolean {
-        if (shell == null) service.setOverlayVisible(false)
-        try {
-            val image = capture(expected, restoreOverlay = false)
-            val current = observe()
-            if (!expected.matchesForAction(current)) return false
-            if (!expected.canIgnoreChanges(current) && !screenshotsMatch(expectedImage, image, expected, region)) return false
-            val target = window()
-            if (windows().any { other ->
-                val bounds = Rect().also(other::getBoundsInScreen)
-                other.id != target.id && other.layer > target.layer &&
-                    region.intersects(Bounds(bounds.left, bounds.top, bounds.right, bounds.bottom))
-            }) return false
-            return suspendCancellableCoroutine { continuation ->
-        val dispatched = service.dispatchGesture(GestureDescription.Builder().setDisplayId(displayId)
-            .addStroke(GestureDescription.StrokeDescription(path, 0, duration)).build(), object : AccessibilityService.GestureResultCallback() {
+        val image = capture(expected)
+        val current = observe()
+        if (!expected.matchesForAction(current)) return false
+        if (!expected.canIgnoreChanges(current) && !screenshotsMatch(expectedImage, image, expected, region)) return false
+        if (displayId == Display.DEFAULT_DISPLAY && service.overlayBounds()?.let {
+            region.intersects(Bounds(it.left, it.top, it.right, it.bottom))
+        } == true) return false
+        val target = window()
+        if (windows().any { other ->
+            val bounds = Rect().also(other::getBoundsInScreen)
+            other.id != target.id && other.layer > target.layer &&
+                region.intersects(Bounds(bounds.left, bounds.top, bounds.right, bounds.bottom))
+        }) return false
+        return suspendCancellableCoroutine { continuation ->
+            val dispatched = service.dispatchGesture(GestureDescription.Builder().setDisplayId(displayId)
+                .addStroke(GestureDescription.StrokeDescription(path, 0, duration)).build(), object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) { if (continuation.isActive) continuation.resume(true) }
                 override fun onCancelled(gestureDescription: GestureDescription?) { if (continuation.isActive) continuation.resume(false) }
             }, null)
-        if (!dispatched && continuation.isActive) continuation.resume(false)
-            }
-        } finally { if (shell == null) service.setOverlayVisible(true) }
+            if (!dispatched && continuation.isActive) continuation.resume(false)
+        }
     }
 
     private suspend fun settle() {
@@ -277,7 +280,7 @@ internal suspend fun awaitPackage(pkg: String, timeoutMillis: Long, ready: () ->
 }
 
 internal suspend fun <T> awaitScreenshotReady(check: suspend () -> T): T {
-    // Hiding a window can precede its removal from the system's accessibility window list.
+    // Transient windows can remain in the accessibility window list after closing.
     repeat(5) {
         try { return check() } catch (_: PhoneUnavailableException) { delay(100) }
     }
@@ -407,13 +410,14 @@ internal fun screenshotsMatch(before: String, after: String, screen: Screen, reg
 }
 
 /** JPEG of [source] drawn at [bounds], black elsewhere, keeping the original display coordinate system. */
-internal fun encodeScreenshot(bitmap: Bitmap, source: Rect, bounds: Rect, screen: Screen): String {
+internal fun encodeScreenshot(bitmap: Bitmap, source: Rect, bounds: Rect, screen: Screen, excluded: Rect? = null): String {
     val ratio = minOf(1f, 1440f / maxOf(screen.width, screen.height))
     val scaled = Bitmap.createBitmap((screen.width * ratio).toInt(), (screen.height * ratio).toInt(), Bitmap.Config.ARGB_8888)
     try {
         val canvas = Canvas(scaled)
         canvas.drawColor(Color.BLACK)
         canvas.scale(ratio, ratio)
+        excluded?.let { canvas.clipOutRect(it) }
         canvas.drawBitmap(bitmap, source, bounds, null)
         return ByteArrayOutputStream().use { output ->
             if (!scaled.compress(Bitmap.CompressFormat.JPEG, 75, output)) throw PhoneUnavailableException("截图编码失败")

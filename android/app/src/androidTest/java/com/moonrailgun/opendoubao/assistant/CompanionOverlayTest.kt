@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Base64
@@ -21,6 +22,7 @@ import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.moonrailgun.opendoubao.assistant.core.CompanionState
+import com.moonrailgun.opendoubao.assistant.core.Action
 import com.moonrailgun.opendoubao.assistant.core.Phone
 import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.data.Vault
@@ -108,28 +110,63 @@ class CompanionOverlayTest {
                 } finally { ring.bounds = bounds; bitmap.recycle() }
             }
             screenshot("companion-capsule")
-            runBlocking {
+            fun captureWithoutBlink(checkGesture: Boolean = false, uncoveredTap: Action.Tap? = null) = runBlocking {
                 withContext(Dispatchers.Main) {
+                    val root = field(service, "overlay") as View
                     val phone = field(service, "phone") as Phone
-                    val screen = phone.observe()
-                    val encoded = phone.screenshot(screen)
-                    val bytes = Base64.decode(encoded, Base64.NO_WRAP)
-                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    var hidden = false
+                    val watcher = launch {
+                        while (isActive) { hidden = hidden || root.visibility != View.VISIBLE; delay(10) }
+                    }
                     try {
-                        val bar = service.getSystemService(WindowManager::class.java).currentWindowMetrics.windowInsets
-                            .getInsets(WindowInsets.Type.statusBars()).top
-                        val y = bar * bitmap.height / screen.height / 2
-                        assertTrue("Status bar and capsule must be excluded from the image", (0 until bitmap.width).all {
-                            val color = bitmap.getPixel(it, y)
-                            Color.red(color) < 10 && Color.green(color) < 10 && Color.blue(color) < 10
-                        })
-                        assertTrue("The app content must remain visible in the model image", (0 until bitmap.height).any { y ->
-                            val color = bitmap.getPixel(bitmap.width / 2, y)
-                            Color.red(color) > 20 || Color.green(color) > 20 || Color.blue(color) > 20
-                        })
-                    } finally { bitmap.recycle() }
+                        val location = IntArray(2).also(root::getLocationOnScreen)
+                        val overlayBounds = android.graphics.Rect(location[0], location[1],
+                            location[0] + root.width, location[1] + root.height)
+                        val screen = phone.observe()
+                        val encoded = phone.screenshot(screen)
+                        assertFalse("Capturing must keep the capsule and expanded panel visible", hidden)
+                        val bytes = Base64.decode(encoded, Base64.NO_WRAP)
+                        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        try {
+                            val bar = service.getSystemService(WindowManager::class.java).currentWindowMetrics.windowInsets
+                                .getInsets(WindowInsets.Type.statusBars()).top
+                            val y = bar * bitmap.height / screen.height / 2
+                            assertTrue("Status bar and capsule must be excluded from the image", (0 until bitmap.width).all {
+                                val color = bitmap.getPixel(it, y)
+                                Color.red(color) < 10 && Color.green(color) < 10 && Color.blue(color) < 10
+                            })
+                            if (Build.VERSION.SDK_INT < 34) {
+                                val scale = bitmap.width.toFloat() / screen.width
+                                val left = (overlayBounds.left * scale).toInt().coerceAtLeast(0) + 4
+                                val top = (overlayBounds.top * scale).toInt().coerceAtLeast(0) + 4
+                                val right = (overlayBounds.right * scale).toInt().coerceAtMost(bitmap.width) - 4
+                                val bottom = (overlayBounds.bottom * scale).toInt().coerceAtMost(bitmap.height) - 4
+                                assertTrue("The visible overlay must be masked in the model image", (left until right).all { x ->
+                                    (top until bottom).all { y ->
+                                        val color = bitmap.getPixel(x, y)
+                                        Color.red(color) < 10 && Color.green(color) < 10 && Color.blue(color) < 10
+                                    }
+                                })
+                            }
+                            assertTrue("The app content must remain visible in the model image", (0 until bitmap.height).any { y ->
+                                val color = bitmap.getPixel(bitmap.width / 2, y)
+                                Color.red(color) > 20 || Color.green(color) > 20 || Color.blue(color) > 20
+                            })
+                        } finally { bitmap.recycle() }
+                        if (uncoveredTap != null) {
+                            assertTrue("Automation can tap outside the capsule", phone.execute(uncoveredTap, screen, encoded))
+                            assertFalse("An accepted tap must not blink the overlay", hidden)
+                        }
+                        if (checkGesture) {
+                            assertFalse("Automation must not tap the visible panel", phone.execute(
+                                Action.Tap(overlayBounds.centerX(), overlayBounds.centerY()), screen, encoded))
+                            assertFalse("Rejecting a covered tap must not blink the overlay", hidden)
+                        }
+                    } finally { watcher.cancelAndJoin() }
                 }
             }
+            val executeTab = device.findObject(By.text("执行")).visibleBounds
+            captureWithoutBlink(uncoveredTap = Action.Tap(executeTab.centerX(), executeTab.centerY()))
             instrument.runOnMainSync {
                 val controller = field(service, "companion")
                 (field(controller, "mutable") as MutableStateFlow<CompanionState>).value =
@@ -154,9 +191,11 @@ class CompanionOverlayTest {
                 assertTrue("Comment fits or can be scrolled", text.height >= text.layout.height || text.movementMethod != null)
             }
             screenshot("companion-comment")
+            captureWithoutBlink()
             device.findObject(By.desc("Open Doubao 陪伴中，点按查看评论、输入或停止")).click()
             val send = device.wait(Until.findObject(By.desc("发送")), 5000)
             assertNotNull(send)
+            captureWithoutBlink(checkGesture = true)
             val input = send.parent.findObject(By.clazz("android.widget.EditText"))
             assertNotNull(input)
             input.click()

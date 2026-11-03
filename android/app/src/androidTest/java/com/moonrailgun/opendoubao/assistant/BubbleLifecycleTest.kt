@@ -103,17 +103,10 @@ class BubbleLifecycleTest {
             connect(true)
             assertTrue("Default bubble should appear", device.wait(Until.hasObject(bubble), 5000))
             val service = AssistantService.connected.value!!
-            instrument.runOnMainSync { service.setOverlayVisible(false) }
-            assertTrue(device.wait(Until.gone(bubble), 5000))
-            assertTrue("Temporary hiding must not change the toggle", device.hasObject(By.text("退出悬浮球")))
-            instrument.runOnMainSync { service.setOverlayVisible(true) }
-            assertTrue(device.wait(Until.hasObject(bubble), 5000))
 
             toggle("退出悬浮球")
             hidden()
             assertSame("Exiting the bubble keeps accessibility connected", service, AssistantService.connected.value)
-            instrument.runOnMainSync { service.setOverlayVisible(false); service.setOverlayVisible(true) }
-            hidden()
             openApp()
             hidden()
             connect(false)

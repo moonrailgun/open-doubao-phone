@@ -12,7 +12,7 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ScreenshotWindowsTest {
-    @Test fun aHiddenOverlayCanDisappearAfterTheFirstWindowCheck() = runTest {
+    @Test fun aTransientOverlayCanDisappearAfterTheFirstWindowCheck() = runTest {
         val target = awaitScreenshotReady {
             if (currentTime < 250) throw PhoneUnavailableException("overlay still listed")
             "current app"
