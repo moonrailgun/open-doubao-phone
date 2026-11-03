@@ -899,29 +899,31 @@ class AssistantService : AccessibilityService() {
         if (running != wasRunning || paused && !wasPaused) { expanded = !running; typing = false }
         if (running) voiceStatus?.visibility = View.GONE
         val (label, color, glyph) = statusStyle(value.status.name)
+        val companion = companionState.value
         statusLabel?.text = label
         statusIcon?.apply {
             setImageResource(glyph); imageTintList = ColorStateList.valueOf(color.toArgb()); contentDescription = label
         }
         statusText?.apply {
-            text = when (value.status) {
+            val content = if (companion.active) listOf(companion.message, companion.comment)
+                .filter { it.isNotBlank() }.joinToString("\n\n") else when (value.status) {
                 TaskStatus.IDLE -> ""
                 TaskStatus.COMPLETED -> value.result.takeIf { it.isNotBlank() }?.let { styled(Markdown.parse(it)) } ?: value.message
                 else -> value.message
             }
-            maxLines = if (running) 2 else 18
+            if (text.toString() != content.toString()) { text = content; scrollTo(0, 0) }
+            if (companion.active) maxHeight = getSystemService(WindowManager::class.java).currentWindowMetrics.bounds.height() / 3
+            else maxLines = if (running) 2 else 18
             ellipsize = if (running) TextUtils.TruncateAt.END else null
-            scrollTo(0, 0)
         }
-        taskGoal?.text = value.goal
-        taskStep?.text = value.message
-        if (companionState.value.active) {
-            val companion = companionState.value
+        taskGoal?.text = if (companion.active) "陪伴模式" else value.goal
+        taskStep?.apply {
+            val content = if (companion.active) companion.comment.ifBlank { companion.message } else value.message
+            if (text.toString() != content) { text = content; scrollTo(0, 0) }
+        }
+        if (companion.active) {
             statusLabel?.text = "陪伴模式"
             statusIcon?.apply { setImageResource(R.drawable.app_logo); imageTintList = null; contentDescription = "陪伴模式" }
-            statusText?.text = listOf(companion.message, companion.comment).filter { it.isNotBlank() }.joinToString("\n\n")
-            taskGoal?.text = "陪伴模式"
-            taskStep?.text = companion.comment.ifBlank { companion.message }
         }
         ringBubble()
         applyOverlay()
@@ -1019,8 +1021,24 @@ class AssistantService : AccessibilityService() {
         val dock = if (topDocked && companionState.value.active) currentBubbleDock() else null
         if (dock == null) topDocked = false
         val compact = dock != null && !expanded && !voice && !showingCompanionComment
+        val density = resources.displayMetrics.density
+        val companionComment = companionState.value.active
+        taskStep?.apply {
+            if (isSingleLine == companionComment) {
+                isSingleLine = !companionComment
+                ellipsize = if (companionComment) null else TextUtils.TruncateAt.END
+                movementMethod = if (companionComment) ScrollingMovementMethod.getInstance() else null
+                setOnClickListener(if (companionComment) View.OnClickListener { bubble?.performClick() } else null)
+                isClickable = companionComment
+            }
+            if (companionComment) maxHeight = getSystemService(WindowManager::class.java).currentWindowMetrics.bounds.height() / 3
+        }
+        taskPill?.apply {
+            val verticalPadding = if (companionComment) (10 * density).toInt() else 0
+            setPadding((16 * density).toInt(), verticalPadding, (16 * density).toInt(), verticalPadding)
+            layoutParams = layoutParams.apply { height = if (companionComment) LinearLayout.LayoutParams.WRAP_CONTENT else (48 * density).toInt() }
+        }
         if (compact != compactBubble || compact) {
-            val density = resources.displayMetrics.density
             val padding = if (compact) 0 else (8 * density).toInt()
             root.setPadding(padding, padding, padding, padding)
             bubbleAvatar?.let { avatar ->

@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Android: Companion mode no longer shows a green avatar border.
+- Android: Companion mode no longer shows a green avatar border. Comments wrap onto multiple lines, with scrolling for longer text.
 
 ## [1.2.0] - 2026-11-03
 

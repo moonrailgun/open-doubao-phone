@@ -9,20 +9,25 @@ import android.graphics.Canvas
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
+import android.widget.TextView
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import com.moonrailgun.opendoubao.assistant.core.CompanionState
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import java.io.File
 
 class CompanionOverlayTest {
-    @Test fun doesNotPaintGreenRing() {
+    @Suppress("UNCHECKED_CAST")
+    @Test fun wrapsCommentsWithoutGreenRing() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("bubbleUiCheck") == "true")
         val instrument = InstrumentationRegistry.getInstrumentation()
         val context = instrument.targetContext
@@ -49,6 +54,13 @@ class CompanionOverlayTest {
         }
         fun field(owner: Any, name: String): Any = owner.javaClass.getDeclaredField(name).run {
             isAccessible = true; get(owner)!!
+        }
+        fun screenshot(name: String) {
+            device.waitForIdle(1000)
+            val bitmap = automation.takeScreenshot()!!
+            try { File(context.getExternalFilesDir(null), "$name.png").outputStream().use {
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+            } } finally { bitmap.recycle() }
         }
         try {
             assertFalse("Finish existing tasks first", saved.records.any { it.status in setOf("RUNNING", "PAUSED") })
@@ -81,6 +93,24 @@ class CompanionOverlayTest {
                     })
                 } finally { ring.bounds = bounds; bitmap.recycle() }
             }
+            val comment = "这波配合很漂亮，先照顾后排再找机会推进。".repeat(5) + "完整结尾。"
+            instrument.runOnMainSync {
+                val controller = field(service, "companion")
+                (field(controller, "mutable") as MutableStateFlow<CompanionState>).value =
+                    CompanionState(active = true, message = "陪伴中，等待下一次观察", comment = comment)
+                AssistantService::class.java.getDeclaredMethod("showCompanionComment", String::class.java).apply {
+                    isAccessible = true; invoke(service, comment)
+                }
+            }
+            assertNotNull(device.wait(Until.findObject(By.text(comment)), 5000))
+            instrument.runOnMainSync {
+                val text = field(service, "taskStep") as TextView
+                assertTrue("Comment must wrap", text.lineCount > 1)
+                assertEquals(comment.length, text.layout.getLineEnd(text.lineCount - 1))
+                assertTrue((0 until text.lineCount).all { text.layout.getEllipsisCount(it) == 0 })
+                assertTrue("Comment fits or can be scrolled", text.height >= text.layout.height || text.movementMethod != null)
+            }
+            screenshot("companion-comment")
         } finally {
             try {
                 if (configured) {
