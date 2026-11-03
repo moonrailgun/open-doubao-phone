@@ -9,6 +9,8 @@ import android.graphics.Canvas
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
+import android.view.WindowInsets
+import android.view.WindowManager
 import android.widget.TextView
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -27,7 +29,7 @@ import java.io.File
 
 class CompanionOverlayTest {
     @Suppress("UNCHECKED_CAST")
-    @Test fun wrapsCommentsWithoutGreenRing() {
+    @Test fun autoDocksAndWrapsComments() {
         assumeTrue(InstrumentationRegistry.getArguments().getString("bubbleUiCheck") == "true")
         val instrument = InstrumentationRegistry.getInstrumentation()
         val context = instrument.targetContext
@@ -81,8 +83,14 @@ class CompanionOverlayTest {
             await("Connect accessibility") { AssistantService.connected.value != null }
             val service = AssistantService.connected.value!!
             instrument.runOnMainSync { service.startCompanion() }
-            assertNotNull(device.wait(Until.findObject(By.desc("Open Doubao 陪伴中，点按查看评论或停止")), 5000))
+            assertNotNull(device.wait(Until.findObject(By.text("陪伴中")), 5000))
             instrument.runOnMainSync {
+                val chip = field(service, "bubble") as View
+                val location = IntArray(2).also(chip::getLocationOnScreen)
+                val bar = service.getSystemService(WindowManager::class.java).currentWindowMetrics.windowInsets
+                    .getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top
+                assertTrue("Capsule must be inside the status bar", location[1] >= 0 && location[1] + chip.height <= bar)
+                assertTrue("Capsule includes a label beside the avatar", chip.width > chip.height * 2)
                 val ring = (field(service, "bubbleAvatar") as View).foreground
                 val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
                 val bounds = android.graphics.Rect(ring.bounds)
@@ -93,6 +101,7 @@ class CompanionOverlayTest {
                     })
                 } finally { ring.bounds = bounds; bitmap.recycle() }
             }
+            screenshot("companion-capsule")
             val comment = "这波配合很漂亮，先照顾后排再找机会推进。".repeat(5) + "完整结尾。"
             instrument.runOnMainSync {
                 val controller = field(service, "companion")

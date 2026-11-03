@@ -135,6 +135,7 @@ class AssistantService : AccessibilityService() {
     val bubbleActive = mutableBubbleActive.asStateFlow()
     private var bubble: View? = null
     private var bubbleAvatar: View? = null
+    private var companionDockLabel: TextView? = null
     private var topDocked = false
     private var compactBubble = false
     private var bubbleRing: BubbleRing? = null
@@ -469,6 +470,7 @@ class AssistantService : AccessibilityService() {
         val models = CloudModels(config)
         setBubbleActive(true)
         collapse()
+        topDocked = true
         companion.start(saved.companion.intervalSeconds * 1000L, unchanged = if (config.jevVision) { previous, current ->
             if (!companionFrameAvailable(current)) true
             else if (previous.packageName in Vault(this).read().excludedApps) false
@@ -478,6 +480,7 @@ class AssistantService : AccessibilityService() {
             val reply = models.companionComment(frame, recent)
             if (companionFrameAvailable(frame)) reply else null
         }
+        applyOverlay()
     }
 
     private suspend fun companionFrameAvailable(frame: CompanionFrame): Boolean {
@@ -618,6 +621,12 @@ class AssistantService : AccessibilityService() {
         }
         taskGoal = line(13f, 255).apply { typeface = Typeface.DEFAULT_BOLD }
         taskStep = line(12f, 180)
+        companionDockLabel = TextView(this).apply {
+            text = "陪伴中"; textSize = 11f; setTextColor(Color.WHITE)
+            includeFontPadding = false; gravity = Gravity.CENTER; isSingleLine = true
+            setPadding(dp(6), 0, dp(8), 0)
+            visibility = View.GONE
+        }
         // While a task runs, a pill beside the ball names it and its current step.
         taskPill = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
@@ -633,6 +642,7 @@ class AssistantService : AccessibilityService() {
             // RTL on the right edge puts the pill on the ball's screen-facing side.
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             addView(ball, LinearLayout.LayoutParams(dp(48), dp(48)))
+            addView(companionDockLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(taskPill, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(48)).apply { marginStart = dp(6) })
             setOnClickListener { expanded = true; applyOverlay() }
         }
@@ -1019,8 +1029,8 @@ class AssistantService : AccessibilityService() {
         val flags = if (lit) focusFlags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             else focusFlags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
         val dock = if (topDocked && companionState.value.active) currentBubbleDock() else null
-        if (dock == null) topDocked = false
         val compact = dock != null && !expanded && !voice && !showingCompanionComment
+        companionDockLabel?.visibility = if (compact) View.VISIBLE else View.GONE
         val density = resources.displayMetrics.density
         val companionComment = companionState.value.active
         taskStep?.apply {
@@ -1038,7 +1048,10 @@ class AssistantService : AccessibilityService() {
             setPadding((16 * density).toInt(), verticalPadding, (16 * density).toInt(), verticalPadding)
             layoutParams = layoutParams.apply { height = if (companionComment) LinearLayout.LayoutParams.WRAP_CONTENT else (48 * density).toInt() }
         }
-        if (compact != compactBubble || compact) {
+        if (compact != compactBubble || topDocked) {
+            bubble?.background = if (compact) GradientDrawable().apply {
+                setColor(Color.rgb(28, 28, 30)); cornerRadius = 24 * density
+            } else null
             val padding = if (compact) 0 else (8 * density).toInt()
             root.setPadding(padding, padding, padding, padding)
             bubbleAvatar?.let { avatar ->
@@ -1050,7 +1063,7 @@ class AssistantService : AccessibilityService() {
                 else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
             val right = (params.gravity and Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT
             params.x = if (compact) {
-                if (right) getSystemService(WindowManager::class.java).currentWindowMetrics.bounds.width() - dock!!.left - dock.size else dock!!.left
+                if (right) getSystemService(WindowManager::class.java).currentWindowMetrics.bounds.width() - dock!!.left - dock.width else dock!!.left
             } else 0
             params.y = if (compact) dock!!.top else 0
             compactBubble = compact
@@ -1070,6 +1083,8 @@ class AssistantService : AccessibilityService() {
         val right = ((layout?.gravity ?: Gravity.END) and Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT
         val cutouts = metrics.windowInsets.displayCutout?.boundingRects.orEmpty()
             .filter { it.top < barHeight && it.bottom > 0 }.map { it.left until it.right }
-        return bubbleDock(metrics.bounds.width(), barHeight, (28 * density).toInt(), (2 * density).toInt(), right, cutouts)
+        val size = minOf((28 * density).toInt(), barHeight - (4 * density).toInt())
+        val labelWidth = companionDockLabel?.let { kotlin.math.ceil(it.paint.measureText(it.text.toString())).toInt() + it.paddingLeft + it.paddingRight } ?: 0
+        return bubbleDock(metrics.bounds.width(), barHeight, (28 * density).toInt(), (2 * density).toInt(), right, cutouts, size + labelWidth)
     }
 }
