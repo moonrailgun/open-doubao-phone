@@ -19,6 +19,8 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Base64
 import android.view.Display
+import android.view.WindowInsets
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import com.moonrailgun.opendoubao.assistant.core.*
@@ -102,6 +104,13 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
                 current.getBoundsInScreen(bounds)
                 if (!bounds.intersect(0, 0, screen.width, screen.height)) throw ScreenChangedException()
                 if (Build.VERSION.SDK_INT < 34) {
+                    val display = service.getSystemService(DisplayManager::class.java).getDisplay(displayId)
+                        ?: throw PhoneUnavailableException("目标屏幕已断开")
+                    val insets = service.createDisplayContext(display).getSystemService(WindowManager::class.java)
+                        .currentWindowMetrics.windowInsets.getInsets(WindowInsets.Type.systemBars())
+                    // Edge-to-edge app windows include system bars; omit their pixels without changing display coordinates.
+                    if (!bounds.intersect(insets.left, insets.top, screen.width - insets.right, screen.height - insets.bottom))
+                        throw ScreenChangedException()
                     val blockers = windows().filter { other ->
                         val otherBounds = Rect().also(other::getBoundsInScreen)
                         if (other.id == current.id || other.layer <= current.layer || !Rect.intersects(bounds, otherBounds)) false

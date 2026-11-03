@@ -5,9 +5,12 @@ import android.app.UiAutomation
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Base64
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -18,10 +21,12 @@ import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.moonrailgun.opendoubao.assistant.core.CompanionState
+import com.moonrailgun.opendoubao.assistant.core.Phone
 import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.data.Vault
 import com.moonrailgun.opendoubao.assistant.model.ModelConfig
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -103,6 +108,28 @@ class CompanionOverlayTest {
                 } finally { ring.bounds = bounds; bitmap.recycle() }
             }
             screenshot("companion-capsule")
+            runBlocking {
+                withContext(Dispatchers.Main) {
+                    val phone = field(service, "phone") as Phone
+                    val screen = phone.observe()
+                    val encoded = phone.screenshot(screen)
+                    val bytes = Base64.decode(encoded, Base64.NO_WRAP)
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    try {
+                        val bar = service.getSystemService(WindowManager::class.java).currentWindowMetrics.windowInsets
+                            .getInsets(WindowInsets.Type.statusBars()).top
+                        val y = bar * bitmap.height / screen.height / 2
+                        assertTrue("Status bar and capsule must be excluded from the image", (0 until bitmap.width).all {
+                            val color = bitmap.getPixel(it, y)
+                            Color.red(color) < 10 && Color.green(color) < 10 && Color.blue(color) < 10
+                        })
+                        assertTrue("The app content must remain visible in the model image", (0 until bitmap.height).any { y ->
+                            val color = bitmap.getPixel(bitmap.width / 2, y)
+                            Color.red(color) > 20 || Color.green(color) > 20 || Color.blue(color) > 20
+                        })
+                    } finally { bitmap.recycle() }
+                }
+            }
             val comment = "这波配合很漂亮，先照顾后排再找机会推进。".repeat(5) + "完整结尾。"
             instrument.runOnMainSync {
                 val controller = field(service, "companion")
