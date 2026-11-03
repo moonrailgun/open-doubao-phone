@@ -964,7 +964,7 @@ class AssistantService : AccessibilityService() {
             when {
                 running -> show(BubbleRing.Mode.RUNNING, statusStyle(TaskStatus.RUNNING.name).second.toArgb())
                 paused -> show(BubbleRing.Mode.PAUSED, statusStyle(TaskStatus.PAUSED.name).second.toArgb())
-                conversing || companionState.value.active -> show(BubbleRing.Mode.VOICE, VoiceRing.toArgb())
+                conversing && !companionState.value.active -> show(BubbleRing.Mode.VOICE, VoiceRing.toArgb())
                 else -> show(BubbleRing.Mode.IDLE, Color.TRANSPARENT)
             }
         }

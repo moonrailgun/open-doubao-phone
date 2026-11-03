@@ -1,0 +1,103 @@
+package com.moonrailgun.opendoubao.assistant
+
+import android.Manifest
+import android.app.UiAutomation
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.SystemClock
+import android.provider.Settings
+import android.view.View
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Configurator
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
+import com.moonrailgun.opendoubao.assistant.data.Vault
+import com.moonrailgun.opendoubao.assistant.model.ModelConfig
+import com.moonrailgun.opendoubao.assistant.phone.AssistantService
+import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
+import org.junit.Test
+
+class CompanionOverlayTest {
+    @Test fun doesNotPaintGreenRing() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("bubbleUiCheck") == "true")
+        val instrument = InstrumentationRegistry.getInstrumentation()
+        val context = instrument.targetContext
+        val uiFlags = Configurator.getInstance().uiAutomationFlags
+        Configurator.getInstance().uiAutomationFlags = UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES
+        val automation = instrument.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        automation.adoptShellPermissionIdentity(Manifest.permission.WRITE_SECURE_SETTINGS)
+        val resolver = context.contentResolver
+        val services = Settings.Secure.getString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+        val enabled = Settings.Secure.getString(resolver, Settings.Secure.ACCESSIBILITY_ENABLED)
+        val component = "${context.packageName}/${AssistantService::class.java.name}"
+        val others = services.orEmpty().split(':').filter { it.isNotBlank() && it != component }.joinToString(":")
+        val preferences = context.getSharedPreferences("overlay", Context.MODE_PRIVATE)
+        val overlayEnabled = if (preferences.contains("enabled")) preferences.getBoolean("enabled", true) else null
+        val vault = Vault(context)
+        val saved = vault.read()
+        val device = UiDevice.getInstance(instrument)
+        var activity: android.app.Activity? = null
+        var configured = false
+        fun await(message: String, condition: () -> Boolean) {
+            val end = SystemClock.uptimeMillis() + 8000
+            while (!condition() && SystemClock.uptimeMillis() < end) SystemClock.sleep(50)
+            assertTrue(message, condition())
+        }
+        fun field(owner: Any, name: String): Any = owner.javaClass.getDeclaredField(name).run {
+            isAccessible = true; get(owner)!!
+        }
+        try {
+            assertFalse("Finish existing tasks first", saved.records.any { it.status in setOf("RUNNING", "PAUSED") })
+            assertFalse("Stop existing companion sessions first", AssistantService.connected.value?.companionState?.value?.active == true)
+            configured = true
+            Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, others)
+            await("Disconnect accessibility") { AssistantService.connected.value == null }
+            // The app's own page is excluded from capture; this UI test never calls a provider.
+            vault.write(saved.copy(config = ModelConfig(chatEndpoint = "https://example.invalid/chat", chatModel = "test", chatKey = "test"),
+                companion = saved.companion.copy(intervalSeconds = 300, useDedicatedModel = false, speechEnabled = false)))
+            device.wakeUp()
+            device.executeShellCommand("wm dismiss-keyguard")
+            activity = instrument.startActivitySync(Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                listOf(others, component).filter(String::isNotEmpty).joinToString(":"))
+            Settings.Secure.putString(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, "1")
+            await("Connect accessibility") { AssistantService.connected.value != null }
+            val service = AssistantService.connected.value!!
+            instrument.runOnMainSync { service.startCompanion() }
+            assertNotNull(device.wait(Until.findObject(By.desc("Open Doubao 陪伴中，点按查看评论或停止")), 5000))
+            instrument.runOnMainSync {
+                val ring = (field(service, "bubbleAvatar") as View).foreground
+                val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                val bounds = android.graphics.Rect(ring.bounds)
+                try {
+                    ring.setBounds(0, 0, 64, 64); ring.draw(Canvas(bitmap))
+                    assertTrue("Companion must not paint a green ring", (0 until 64).all { x ->
+                        (0 until 64).all { y -> android.graphics.Color.green(bitmap.getPixel(x, y)) == 0 }
+                    })
+                } finally { ring.bounds = bounds; bitmap.recycle() }
+            }
+        } finally {
+            try {
+                if (configured) {
+                    instrument.runOnMainSync { AssistantService.connected.value?.stopCompanion(); activity?.finishAndRemoveTask() }
+                    Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, others)
+                    await("Disconnect test service") { AssistantService.connected.value == null }
+                    vault.write(saved)
+                    preferences.edit().apply {
+                        if (overlayEnabled == null) remove("enabled") else putBoolean("enabled", overlayEnabled)
+                    }.commit()
+                }
+            } finally {
+                Settings.Secure.putString(resolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, services)
+                Settings.Secure.putString(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, enabled)
+                automation.dropShellPermissionIdentity()
+                Configurator.getInstance().uiAutomationFlags = uiFlags
+            }
+        }
+    }
+}

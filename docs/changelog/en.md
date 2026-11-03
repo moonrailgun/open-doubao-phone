@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Android: Companion mode no longer shows a green avatar border.
+
 ## [1.2.0] - 2026-11-03
 
 - Android: Give floating-panel text the full panel width, with Open app and New conversation grouped in a More menu.
