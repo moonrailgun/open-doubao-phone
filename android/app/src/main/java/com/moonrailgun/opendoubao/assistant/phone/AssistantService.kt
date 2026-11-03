@@ -918,6 +918,7 @@ class AssistantService : AccessibilityService() {
         if (running) voiceStatus?.visibility = View.GONE
         val (label, color, glyph) = statusStyle(value.status.name)
         val companion = companionState.value
+        companionDockLabel?.text = if (companion.retrying) "稍后重试" else "陪伴中"
         statusLabel?.text = label
         statusIcon?.apply {
             setImageResource(glyph); imageTintList = ColorStateList.valueOf(color.toArgb()); contentDescription = label

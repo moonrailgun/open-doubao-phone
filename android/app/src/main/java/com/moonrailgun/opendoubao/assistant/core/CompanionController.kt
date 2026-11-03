@@ -8,7 +8,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 
-data class CompanionState(val active: Boolean = false, val message: String = "", val comment: String = "")
+data class CompanionState(val active: Boolean = false, val message: String = "", val comment: String = "",
+    val retrying: Boolean = false)
 
 data class CompanionContext(val recentComments: List<String> = emptyList(),
     val userMessages: List<String> = emptyList(), val manual: Boolean = false)
@@ -62,9 +63,12 @@ class CompanionController(private val scope: CoroutineScope, private val capture
             val userMessages = ArrayDeque<String>()
             var pending: String? = null
             while (isActive) {
+                var captured = false
                 try {
                     val frame = capture()
                     ensureActive()
+                    captured = true
+                    mutable.value = mutable.value.copy(retrying = false)
                     val baseline = previous
                     val similar = pending == null && frame != null && baseline != null &&
                         if (unchanged == null) baseline.similarTo(frame) else {
@@ -102,7 +106,9 @@ class CompanionController(private val scope: CoroutineScope, private val capture
                 catch (_: Exception) {
                     ensureActive()
                     // Never echo server text: it may contain credentials or private screen content.
-                    mutable.value = mutable.value.copy(message = "本轮未成功，稍后重试；可检查模型配置和网络")
+                    mutable.value = mutable.value.copy(retrying = true, message = if (captured)
+                        "本轮未成功，稍后重试；可检查模型配置和网络"
+                        else "暂时无法查看画面，稍后重试；请收起键盘或其他浮层，并保持手机解锁")
                 }
                 val input = withTimeoutOrNull(intervalMillis) { requests.receive() }
                 if (input != null) {

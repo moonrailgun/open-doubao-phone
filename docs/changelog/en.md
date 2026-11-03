@@ -5,7 +5,7 @@
 - Android: Add spacing above the Stop button in the floating panel so it no longer touches the input field.
 - Android: Organize the home screen into Execute and Companion mode tabs, and move floating-bubble controls and the avatar picker into the new Overview tab in Settings.
 - Android: Debug builds now install alongside the production app, with a separate name and an orange DBG icon badge. Reinstalling a Debug build with the same signing key keeps its settings and history.
-- Android: Companion mode now opens as a capsule at the top of the screen, without the green avatar border. Comments wrap onto multiple lines, with scrolling for longer text. Fix observations being blocked by the status bar on Android 11–13.
+- Android: Companion mode now opens as a capsule at the top of the screen, without the green avatar border. Comments wrap onto multiple lines, with scrolling for longer text. Fix observations being blocked by the status bar on Android 11–13 and show retry status when an observation fails.
 - Android: Type into the companion panel to add context and request an extra reply, even when the screen is unchanged. Timed observations continue, and later replies remember your recent inputs until you stop companion mode. While waiting to retry, new input starts another attempt immediately.
 
 ## [1.2.0] - 2026-11-03

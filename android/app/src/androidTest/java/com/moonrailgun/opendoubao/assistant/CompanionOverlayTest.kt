@@ -130,6 +130,12 @@ class CompanionOverlayTest {
                     } finally { bitmap.recycle() }
                 }
             }
+            instrument.runOnMainSync {
+                val controller = field(service, "companion")
+                (field(controller, "mutable") as MutableStateFlow<CompanionState>).value =
+                    CompanionState(active = true, retrying = true, message = "暂时无法查看画面，稍后重试")
+            }
+            assertNotNull(device.wait(Until.findObject(By.text("稍后重试")), 5000))
             val comment = "这波配合很漂亮，先照顾后排再找机会推进。".repeat(5) + "完整结尾。"
             instrument.runOnMainSync {
                 val controller = field(service, "companion")

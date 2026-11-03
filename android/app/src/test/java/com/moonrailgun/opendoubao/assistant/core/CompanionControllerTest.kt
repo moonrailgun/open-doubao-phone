@@ -372,17 +372,46 @@ class CompanionControllerTest {
         assertArrayEquals(intArrayOf(42), captured.pixels)
     }
 
+    @Test fun captureErrorsExplainTheFailureAndRecoverWithoutLosingInput() = runTest {
+        var available = false
+        var calls = 0
+        val controller = CompanionController(backgroundScope, capture = {
+            if (!available) error("private screen details")
+            frame()
+        })
+        controller.start(1000) { _, context ->
+            calls++
+            assertEquals(listOf("看看画面"), context.userMessages)
+            "恢复了"
+        }
+        runCurrent()
+        assertEquals("暂时无法查看画面，稍后重试；请收起键盘或其他浮层，并保持手机解锁", controller.state.value.message)
+        assertTrue(controller.state.value.retrying)
+        controller.submit("看看画面")
+        runCurrent()
+        assertEquals(0, calls)
+        available = true
+        advanceTimeBy(1000); runCurrent()
+        assertEquals(1, calls)
+        assertEquals("恢复了", controller.state.value.comment)
+        assertFalse(controller.state.value.retrying)
+        controller.stop()
+    }
+
     @Test fun errorsWaitBeforeRetryAndDoNotConsumeTheFrame() = runTest {
         var calls = 0
         val controller = CompanionController(backgroundScope, capture = { frame() })
         controller.start(1000) { _, _ -> if (++calls == 1) error("failed") else "回来了" }
         runCurrent()
         assertEquals(1, calls)
+        assertTrue(controller.state.value.retrying)
+        assertEquals("本轮未成功，稍后重试；可检查模型配置和网络", controller.state.value.message)
         advanceTimeBy(999); runCurrent()
         assertEquals(1, calls)
         advanceTimeBy(1); runCurrent()
         assertEquals(2, calls)
         assertEquals("回来了", controller.state.value.comment)
+        assertFalse(controller.state.value.retrying)
         controller.stop()
     }
 
