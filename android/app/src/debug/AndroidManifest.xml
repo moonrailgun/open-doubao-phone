@@ -1,5 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application android:label="Open Doubao Debug" tools:replace="android:label">
         <activity android:name=".FixtureActivity" android:exported="false" />
     </application>
 </manifest>

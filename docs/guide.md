@@ -162,6 +162,16 @@ cd android
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
+Debug 使用独立包名 `com.moonrailgun.opendoubao.assistant.debug`，名称为 `Open Doubao Debug`，可与正式版同时安装。设置、记录和权限独立，首次安装需单独配置并开启 Debug 的无障碍服务。
+
+日常修改后，在 `android/` 目录执行下面的命令即可重新构建并覆盖安装，保留已有 Debug 数据：
+
+```sh
+./gradlew :app:installDebug
+```
+
+如果已经构建好 APK，可用 `adb -s SERIAL install -r app/build/outputs/apk/debug/app-debug.apk` 安装到指定设备。覆盖安装需要沿用同一份本地 Debug 签名（默认位于 `~/.android/debug.keystore`）。旧版没有 `.debug` 后缀的调试包仍属于原包名，不会自动迁移数据；release 和 system 的包名保持不变。`tools/test_wake_recovery.py --serial SERIAL` 默认测试 Debug；测试正式版或系统版时显式加 `--package com.moonrailgun.opendoubao.assistant`。
+
 设备测试请使用专用模拟器：测试会安装应用、开启它的无障碍服务、操作 debug 专用隔离页面。测试结束可以在系统设置里关闭服务。测试页面不包含在 release 构建中。
 
 验证结果以本地测试报告为准：`android/app/build/reports/tests/` 与 `android/app/build/reports/lint-results-debug.html`（相对于仓库根目录）。

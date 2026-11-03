@@ -22,12 +22,14 @@ import android.os.SystemClock;
 import android.view.InputEvent;
 import android.view.KeyEvent;
 
+import com.moonrailgun.opendoubao.assistant.BuildConfig;
+
 import java.lang.reflect.Method;
 import java.util.List;
 
 /** The same narrowly scoped shell process is started by either ADB or Shizuku. */
 public final class ShellDisplayService extends IShellDisplay.Stub {
-    private static final String APP = "com.moonrailgun.opendoubao.assistant";
+    private static final String APP = BuildConfig.APPLICATION_ID;
     private final Context context;
     private final int appUid;
     private final HandlerThread frames = new HandlerThread("virtual-display-frames");

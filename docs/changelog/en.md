@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Android: Debug builds now install alongside the production app, with a separate name. Reinstalling a Debug build with the same signing key keeps its settings and history.
 - Android: Companion mode now opens as a capsule at the top of the screen, without the green avatar border. Comments wrap onto multiple lines, with scrolling for longer text.
 - Android: Type into the companion panel to add context and request an extra reply, even when the screen is unchanged. Timed observations continue, and later replies remember your recent inputs until you stop companion mode. While waiting to retry, new input starts another attempt immediately.
 

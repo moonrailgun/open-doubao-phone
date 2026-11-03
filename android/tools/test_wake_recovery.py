@@ -6,8 +6,11 @@ import time
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--serial", required=True)
+parser.add_argument("--package", default="com.moonrailgun.opendoubao.assistant.debug",
+                    choices=["com.moonrailgun.opendoubao.assistant.debug", "com.moonrailgun.opendoubao.assistant"],
+                    help="Target Debug by default; select the production package explicitly for release/system builds")
 args = parser.parse_args()
-package = "com.moonrailgun.opendoubao.assistant"
+package = args.package
 
 
 def shell(*command):

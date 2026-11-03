@@ -44,7 +44,7 @@ class WakeLifecycleTest {
         try {
             // Instrumentation force-stops the target; restore the real system binding it tears down.
             shell("settings put secure voice_interaction_service ''")
-            shell("settings put secure voice_interaction_service com.moonrailgun.opendoubao.assistant/.voice.DouxianInteractionService")
+            shell("settings put secure voice_interaction_service ${ComponentName(context, DouxianInteractionService::class.java).flattenToString()}")
             instrument.runOnMainSync { VoiceRuntime.setEnabled(context, true) }
             awaitState("等待唤醒词")
             instrument.runOnMainSync { assertTrue(VoiceRuntime.speak(context, "语音测试。")) }

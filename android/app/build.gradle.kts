@@ -26,6 +26,10 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         getByName("release") { signingConfig = signingConfigs.findByName("release") }
         create("system") {
             initWith(getByName("release"))

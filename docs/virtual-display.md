@@ -16,7 +16,7 @@ Android 14 及以上可以通过 ADB 或 Shizuku 启动受限的 shell 桥接进
 电脑安装 [Android Platform Tools](https://developer.android.com/tools/releases/platform-tools) 和 [scrcpy](https://github.com/Genymobile/scrcpy)。手机开启 USB 调试并允许电脑连接。多台设备连接时为 `adb` 指定 `-s SERIAL`，为 `scrcpy` 指定 `--serial=SERIAL`。
 
 1. 在 Open Doubao 选择「ADB + scrcpy」。
-2. 复制设置页命令，在电脑终端运行，保持终端打开：
+2. 复制设置页命令，在电脑终端运行，保持终端打开。下面是正式版示例；Debug 版的 `pm path` 包名带 `.debug` 后缀，请复制对应应用里的命令：
 
    ```sh
    adb shell 'CLASSPATH=$(pm path com.moonrailgun.opendoubao.assistant | cut -d: -f2) app_process / com.moonrailgun.opendoubao.assistant.phone.ShellDisplayService'
@@ -46,7 +46,7 @@ Android 14 及以上可以通过 ADB 或 Shizuku 启动受限的 shell 桥接进
 adb -s emulator-5580 shell am instrument -w \
   -e shellDisplayCheck true \
   -e class com.moonrailgun.opendoubao.assistant.ShellDisplayTest \
-  com.moonrailgun.opendoubao.assistant.test/androidx.test.runner.AndroidJUnitRunner
+  com.moonrailgun.opendoubao.assistant.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 测试使用独立 UID 的测试应用，检查真实截图、文字输入、坐标点击、返回、主屏键盘焦点、`FLAG_SECURE` 截图保护、转到前台以及桥接死亡后的显示器释放。默认测试集跳过该测试，避免在日常手机上启动桥接或修改无障碍设置。
