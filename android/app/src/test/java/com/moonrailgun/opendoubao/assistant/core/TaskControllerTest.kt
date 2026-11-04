@@ -526,6 +526,149 @@ class TaskControllerTest {
         assertFalse(phone.actions.any { it is Action.Wait })
     }
 
+    @Test fun returningToMainIgnoresLatePlanningAndAppGuessesAndCanResume() = runTest {
+        for (guessApp in listOf(false, true)) {
+            val phone = FakePhone().apply { current = screen("launcher.app") }
+            var pending = true
+            val models = object : Models by (FakeModels().apply { finish = true }) {
+                override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?): Plan {
+                    if (pending) withContext(NonCancellable) { delay(2000) }
+                    return Plan("browser.app", listOf("search"), emptyList())
+                }
+                override suspend fun guessApp(goal: String, apps: Set<String>): String? {
+                    if (!guessApp) return null
+                    if (pending) withContext(NonCancellable) { delay(1000) }
+                    return "browser.app"
+                }
+            }
+            val controller = TaskController(this, phone, models)
+            controller.start("search", setOf("browser.app"))
+            runCurrent()
+            assertEquals(TaskStatus.RUNNING, controller.state.value.status)
+            assertTrue(phone.actions.isEmpty())
+            controller.pauseForUser("已返回主界面")
+            phone.current = screen("main.app")
+            advanceUntilIdle()
+            assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+            assertTrue("Late models must not reopen the target app", phone.actions.isEmpty())
+            pending = false
+            phone.current = screen()
+            controller.resume()
+            advanceUntilIdle()
+            assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        }
+    }
+
+    @Test fun resumeOpensTargetWhenPlanningFinishedBeforeTheAppGuess() = runTest {
+        val device = FakePhone().apply { current = screen("launcher.app") }
+        val phone = object : Phone by device {
+            override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean {
+                val opened = device.execute(action, expected, expectedImage)
+                if (action is Action.OpenApp) device.current = screen(action.packageName)
+                return opened
+            }
+        }
+        var plans = 0
+        var placements = 0
+        val saved = mutableListOf<MemoryOp>()
+        val models = object : Models by (FakeModels().apply { finish = true }) {
+            override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?): Plan {
+                plans++
+                return Plan("browser.app", listOf("search"), emptyList(), memory = listOf(MemoryOp.Add("喜欢简洁")))
+            }
+            override suspend fun guessApp(goal: String, apps: Set<String>): String? {
+                withContext(NonCancellable) { delay(1000) }
+                return "browser.app"
+            }
+        }
+        val controller = TaskController(this, phone, models,
+            remember = { saved += it; "新增 1 条" }, place = { placements++; phone to "测试" })
+        controller.start("search", setOf("browser.app"))
+        runCurrent()
+        assertEquals(listOf("search"), controller.state.value.plan)
+        assertTrue(device.actions.isEmpty())
+        controller.pauseForUser("已返回主界面")
+        device.current = screen("main.app")
+        advanceUntilIdle()
+        assertEquals(TaskStatus.PAUSED, controller.state.value.status)
+        assertTrue("The late guess must not act while paused", device.actions.isEmpty())
+        device.current = screen("launcher.app")
+        controller.resume()
+        advanceUntilIdle()
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals(listOf(Action.OpenApp("browser.app")), device.actions)
+        assertEquals(1, plans)
+        assertEquals(1, placements)
+        assertEquals(listOf(MemoryOp.Add("喜欢简洁")), saved)
+    }
+
+    @Test fun resumeCanOpenTheTargetOnAnUninitializedVirtualScreen() = runTest {
+        val device = FakePhone().apply { current = screen("launcher.app") }
+        val target = object : Phone by device {
+            override suspend fun observe(): Screen {
+                if (device.actions.isEmpty()) throw PhoneUnavailableException("虚拟屏上还没有打开目标应用")
+                return device.observe()
+            }
+            override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean {
+                val opened = device.execute(action, expected, expectedImage)
+                if (action is Action.OpenApp) device.current = screen(action.packageName)
+                return opened
+            }
+        }
+        val models = object : Models by (FakeModels().apply { finish = true }) {
+            override suspend fun guessApp(goal: String, apps: Set<String>): String? {
+                delay(1000)
+                return null
+            }
+        }
+        var placements = 0
+        val controller = TaskController(this, device, models, place = { placements++; target to "虚拟屏" })
+        controller.start("search", setOf("browser.app"))
+        runCurrent()
+        assertEquals(listOf("search"), controller.state.value.plan)
+        assertTrue(device.actions.isEmpty())
+        controller.pauseForUser("已返回主界面")
+        runCurrent()
+        controller.resume()
+        advanceUntilIdle()
+        assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+        assertEquals(listOf(Action.OpenApp("browser.app")), device.actions)
+        assertEquals(1, placements)
+    }
+
+    @Test fun resumeDoesNotReopenTargetWhenInitialLaunchWasInterruptedAfterDispatch() = runTest {
+        for (earlyOpen in listOf(false, true)) {
+            val device = FakePhone().apply { current = screen("launcher.app") }
+            val phone = object : Phone by device {
+                override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean {
+                    val opened = device.execute(action, expected, expectedImage)
+                    if (action is Action.OpenApp) {
+                        device.current = screen(action.packageName)
+                        delay(1000)
+                    }
+                    return opened
+                }
+            }
+            val models = object : Models by (FakeModels().apply { finish = true }) {
+                override suspend fun guessApp(goal: String, apps: Set<String>) = if (earlyOpen) "browser.app" else null
+            }
+            val controller = TaskController(this, phone, models)
+            controller.start("search", setOf("browser.app"))
+            runCurrent()
+            assertEquals(listOf("search"), controller.state.value.plan)
+            assertEquals(listOf(Action.OpenApp("browser.app")), device.actions)
+            controller.pauseForUser("已返回主界面")
+            device.current = screen("main.app")
+            advanceUntilIdle()
+            device.current = screen("browser.app", "Preserve the opened page")
+            controller.resume()
+            advanceUntilIdle()
+            assertEquals(TaskStatus.COMPLETED, controller.state.value.status)
+            assertEquals(listOf(Action.OpenApp("browser.app")), device.actions)
+            assertEquals("Preserve the opened page", device.current.elements[0].text)
+        }
+    }
+
     @Test fun inputPausesLateActionsAndCanResumeTheOriginalTask() = runTest {
         val phone = FakePhone()
         val models = FakeModels().apply { slow = true }

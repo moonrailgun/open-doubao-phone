@@ -41,6 +41,7 @@ class TaskController(
     private var apps = emptySet<String>()
     private var launchableApps = emptySet<String>()
     private var plan: Plan? = null
+    private var pendingApp: String? = null
     private var chat: Boolean? = null
     private var previous: Previous? = null
     private val evidence = ArrayDeque<Screen>()
@@ -64,6 +65,7 @@ class TaskController(
         apps = selectedApps.toSet()
         launchableApps = apps.filterTo(linkedSetOf(), phone::canLaunch)
         plan = null
+        pendingApp = null
         chat = null
         previous = null
         evidence.clear()
@@ -97,10 +99,12 @@ class TaskController(
         finish(TaskStatus.STOPPED, "已停止，不会再有新的操作")
     }
 
-    fun pauseForInput() {
+    fun pauseForInput() = pauseForUser("正在补充要求；可发送新要求或继续原任务")
+
+    fun pauseForUser(reason: String) {
         if (state.value.status != TaskStatus.RUNNING) return
         stopJob()
-        pause("正在补充要求；可发送新要求或继续原任务")
+        pause(reason)
     }
 
     /** Continuing after a handover grants what it asked for, so the vision model may then do it instead of asking again. */
@@ -147,6 +151,14 @@ class TaskController(
         job = scope.launch(ScreenChangeOverride(ignoreScreenChanges)) {
             try {
                 withTimeout(remainingActiveMillis) {
+                    if (pendingApp != null) {
+                        // A cancelled launch may already have opened the app; an uninitialized virtual screen cannot be read yet.
+                        val current = try { phone.observe() }
+                            catch (e: CancellationException) { throw e }
+                            catch (_: Exception) { null }
+                        checkCurrent(token)
+                        if (current?.packageName == pendingApp) pendingApp = null
+                    }
                     if (plan == null) {
                         if (chat == null && quick != null) {
                             // A plain command needs no model: done the moment it is carried out, with a fixed result.
@@ -224,26 +236,33 @@ class TaskController(
                         trace("规划结果：${planned.app}；步骤：${planned.steps.joinToString(" / ")}；待输入 ${planned.texts.size} 段，网址 ${planned.urls.size} 个")
                         require(planned.app in apps) { "规划选择了未授权应用" }
                         plan = planned
+                        pendingApp = planned.app.takeUnless { it == initialScreen?.packageName }
                         mutable.value = state.value.copy(plan = planned.steps)
                         val guessed = early?.await()
                         checkCurrent(token)
                         if (planned.app == initialScreen?.packageName) {
                             trace("继续当前页面 ${planned.app}，不重新打开应用")
                         } else if (guessed == planned.app) {
+                            pendingApp = null
                             trace("规划同为 ${planned.app}，已提前打开")
-                        } else if (planned.app in launchableApps) {
-                            val opened = execute(Action.OpenApp(planned.app), null, token)
+                        }
+                    }
+                    pendingApp?.let { app ->
+                        if (app in launchableApps) {
+                            val opened = execute(Action.OpenApp(app), null, token)
                             checkCurrent(token)
-                            trace("打开 ${planned.app}：${if (opened) "成功" else "失败"}")
+                            pendingApp = null
+                            trace("打开 $app：${if (opened) "成功" else "失败"}")
                             if (!opened) {
-                                pause("无法打开目标应用 ${planned.app}，请手动进入后点击继续")
+                                pause("无法打开目标应用 $app，请手动进入后点击继续")
                                 return@withTimeout
                             }
                         } else {
                             val current = phone.observe()
                             checkCurrent(token)
-                            if (current.packageName != planned.app) {
-                                pause("无法直接打开 ${planned.app}，请通过其他应用或手动进入该页面后点击继续")
+                            pendingApp = null
+                            if (current.packageName != app) {
+                                pause("无法直接打开 $app，请通过其他应用或手动进入该页面后点击继续")
                                 return@withTimeout
                             }
                         }
