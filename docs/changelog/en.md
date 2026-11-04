@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Android: Improve companion replies by combining your latest input and recent context with the current screen, including background and preferences you provide.
+
 ## [1.3.0] - 2026-11-04
 
 - Android: Add spacing above the Stop button in the floating panel so it no longer touches the input field.

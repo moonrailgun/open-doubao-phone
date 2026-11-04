@@ -139,15 +139,29 @@ class CompanionModelsTest {
         assertEquals(userMessages.takeLast(8), context.getJSONArray("userMessages").let { array ->
             (0 until array.length()).map(array::getString)
         })
+        assertFalse(context.has("currentUserMessage"))
         assertTrue(messages.getJSONObject(0).getString("content").contains("If nothing warrants a comment"))
         assertEquals("data:image/jpeg;base64,screen-pixels", content.getJSONObject(1).getJSONObject("image_url").getString("url"))
         val question = "我玩的是辅助，\"这件装备\"适合吗？\n不要剧透"
-        assertEquals(reply, models.companionComment(frame, CompanionContext(userMessages = listOf(question), manual = true)))
+        val followUp = CompanionContext(userMessages = userMessages + question, manual = true)
+        assertEquals(reply, models.companionComment(frame, followUp))
         val manual = requests.last().getJSONArray("messages")
         assertTrue(manual.getJSONObject(0).getString("content").contains("Respond directly to it, even if the screen is unchanged"))
         assertFalse(manual.getJSONObject(0).getString("content").contains("If nothing warrants a comment"))
-        assertEquals(question, JSONObject(manual.getJSONObject(1).getJSONArray("content").getJSONObject(0).getString("text"))
-            .getJSONArray("userMessages").getString(0))
+        val manualContent = manual.getJSONObject(1).getJSONArray("content")
+        val manualContext = JSONObject(manualContent.getJSONObject(0).getString("text"))
+        assertEquals(question, manualContext.getString("currentUserMessage"))
+        assertEquals((userMessages + question).takeLast(8), manualContext.getJSONArray("userMessages").let { array ->
+            (0 until array.length()).map(array::getString)
+        })
+        assertEquals("data:image/jpeg;base64,screen-pixels", manualContent.getJSONObject(1).getJSONObject("image_url").getString("url"))
+
+        assertEquals(reply, models.companionComment(frame.copy(image = "next-screen"), followUp.copy(manual = false)))
+        val nextContent = requests.last().getJSONArray("messages").getJSONObject(1).getJSONArray("content")
+        val nextContext = JSONObject(nextContent.getJSONObject(0).getString("text"))
+        assertFalse(nextContext.has("currentUserMessage"))
+        assertEquals(manualContext.getJSONArray("userMessages").toString(), nextContext.getJSONArray("userMessages").toString())
+        assertEquals("data:image/jpeg;base64,next-screen", nextContent.getJSONObject(1).getJSONObject("image_url").getString("url"))
         reply = " [SILENT] \n"
         assertEquals("", models.companionComment(frame, CompanionContext()))
         reply = "长".repeat(500)
@@ -156,6 +170,6 @@ class CompanionModelsTest {
         assertTrue(bounded.endsWith("…"))
         reply = "短评\n\n  很精彩！"
         assertEquals("短评 很精彩！", models.companionComment(frame, CompanionContext()))
-        assertEquals(5, requests.size)
+        assertEquals(6, requests.size)
     }
 }
