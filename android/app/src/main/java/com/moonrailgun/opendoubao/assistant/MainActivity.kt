@@ -570,26 +570,45 @@ class MainActivity : ComponentActivity() {
     val scope = rememberCoroutineScope()
     val version by BubbleAvatar.version.collectAsState()
     var avatar by remember { mutableStateOf<Bitmap?>(null) }
+    var pendingUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var pending by remember(pendingUri) { mutableStateOf<Bitmap?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(version) { avatar = withContext(Dispatchers.IO) { BubbleAvatar.load(context) } }
-    fun update(uri: Uri?) {
+    fun update(action: () -> Unit) {
         busy = true
         error = null
         scope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    if (uri == null) BubbleAvatar.reset(context) else BubbleAvatar.save(context, uri)
-                }
+                withContext(Dispatchers.IO) { action() }
+                pendingUri = null
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { error = "无法更新头像，请选择有效图片或重试。" }
             finally { busy = false }
         }
     }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) update(uri)
+    LaunchedEffect(pendingUri) {
+        val uri = pendingUri ?: return@LaunchedEffect
+        busy = true
+        error = null
+        try { pending = withContext(Dispatchers.IO) { BubbleAvatar.decode(context, uri) } }
+        catch (e: CancellationException) { throw e }
+        catch (_: Exception) {
+            pendingUri = null
+            error = "无法读取图片，请选择有效图片或重试。"
+        }
+        finally { busy = false }
     }
-    Section("悬浮球头像", "选择喜欢的图片，居中裁成圆形。仅保存在本机，选择后立即生效。") {
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) pendingUri = uri
+    }
+    pending?.let { source ->
+        BubbleAvatarCropDialog(source, busy, error,
+            onDismiss = { pendingUri = null; error = null },
+            onConfirm = { crop -> update { BubbleAvatar.save(context, source, crop) } },
+        )
+    }
+    Section("悬浮球头像", "选择喜欢的图片，拖动、缩放并确认裁切后生效。仅保存在本机。") {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             val preview = Modifier.size(64.dp).clip(CircleShape).background(Color.White)
             val current = avatar
@@ -600,11 +619,11 @@ class MainActivity : ComponentActivity() {
                     error = null
                     try { picker.launch("image/*") }
                     catch (_: Exception) { error = "无法打开图片选择器，请安装文件管理或相册应用。" }
-                }, enabled = !busy) { Text(if (busy) "正在保存…" else "选择图片") }
-                TextButton({ update(null) }, enabled = !busy && current != null) { Text("恢复默认") }
+                }, enabled = !busy) { Text(if (busy) "正在处理…" else "选择图片") }
+                TextButton({ update { BubbleAvatar.reset(context) } }, enabled = !busy && current != null) { Text("恢复默认") }
             }
         }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+        if (pending == null) error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
     }
 }
 

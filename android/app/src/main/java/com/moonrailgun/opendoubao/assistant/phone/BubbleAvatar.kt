@@ -3,13 +3,16 @@ package com.moonrailgun.opendoubao.assistant.phone
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.ImageDecoder
+import android.graphics.Paint
 import android.net.Uri
 import android.util.AtomicFile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.io.IOException
+import kotlin.math.roundToInt
 
 object BubbleAvatar {
     private val changes = MutableStateFlow(0)
@@ -21,16 +24,26 @@ object BubbleAvatar {
         file(context).openRead().use { BitmapFactory.decodeStream(it) }
     } catch (_: IOException) { null }
 
-    @Synchronized fun save(context: Context, uri: Uri) {
-        val bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
+    fun decode(context: Context, uri: Uri): Bitmap =
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             val longest = maxOf(info.size.width, info.size.height)
-            if (longest > 512) decoder.setTargetSize(
-                (info.size.width.toLong() * 512 / longest).toInt().coerceAtLeast(1),
-                (info.size.height.toLong() * 512 / longest).toInt().coerceAtLeast(1),
+            if (longest > 2048) decoder.setTargetSize(
+                (info.size.width.toLong() * 2048 / longest).toInt().coerceAtLeast(1),
+                (info.size.height.toLong() * 2048 / longest).toInt().coerceAtLeast(1),
             )
         }
+
+    @Synchronized internal fun save(context: Context, source: Bitmap, crop: AvatarCrop) {
+        require(crop.size.isFinite() && crop.size >= 1f && crop.size <= minOf(source.width, source.height) &&
+            crop.left in 0f..(source.width - crop.size) && crop.top in 0f..(source.height - crop.size))
+        val size = crop.size.roundToInt().coerceIn(1, 512)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         try {
+            Canvas(bitmap).apply {
+                scale(size / crop.size, size / crop.size)
+                drawBitmap(source, -crop.left, -crop.top, Paint(Paint.FILTER_BITMAP_FLAG))
+            }
             val target = file(context)
             val output = target.startWrite()
             try {
