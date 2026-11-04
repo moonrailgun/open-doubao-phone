@@ -80,6 +80,8 @@ data class AppAccess(val catalog: List<InstalledApp>, val selected: Set<String>)
 interface RemoteTasks {
     fun snapshot(): RemoteSnapshot
     fun records(): List<Record>
+    fun costs(): JSONObject
+    fun savePrice(modelId: String, price: JSONObject)
     fun start(goal: String, taskId: String): String
     fun stop(taskId: String)
     fun resume(taskId: String)
@@ -159,6 +161,18 @@ class RemoteCommands(private val tasks: RemoteTasks) {
                     check(current.task.status == TaskStatus.PAUSED) { "任务没有暂停，无需继续" }
                     tasks.resume(taskId)
                     JSONObject().put("taskId", taskId)
+                }
+                "costs.get" -> {
+                    params.exactFields()
+                    tasks.costs()
+                }
+                "costs.price" -> {
+                    params.exactFields("modelId", "price")
+                    val modelId = params.string("modelId")
+                    require(modelId.matches(Regex("[0-9a-f]{64}"))) { "模型 ID 无效" }
+                    val price = params.getJSONObject("price")
+                    tasks.savePrice(modelId, price)
+                    tasks.costs()
                 }
                 "records.list" -> {
                     params.exactFields()

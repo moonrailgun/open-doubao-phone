@@ -168,6 +168,8 @@ class RemoteReceiverTest {
         override fun tts() = com.moonrailgun.opendoubao.assistant.voice.TtsSettings("", "", "m", "v")
         override fun saveTts(tts: com.moonrailgun.opendoubao.assistant.voice.TtsSettings) = Unit
         override fun exportCalls(taskId: String, fresh: Boolean) = java.io.File.createTempFile("calls", ".zip").apply { deleteOnExit() }
+        override fun costs() = JSONObject()
+        override fun savePrice(modelId: String, price: JSONObject) = Unit
     }
 
     private class Fixture(config: RemoteConfig) : AutoCloseable {

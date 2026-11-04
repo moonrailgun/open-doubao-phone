@@ -47,6 +47,9 @@ class RemoteProtocolTest {
         }
         override fun snapshot() = current
         override fun records() = saved.toList()
+        override fun costs() = JSONObject().put("total", 123)
+        var priceWrite: Pair<String, JSONObject>? = null
+        override fun savePrice(modelId: String, price: JSONObject) { priceWrite = modelId to price }
         override fun start(goal: String, taskId: String): String {
             starts++
             current = RemoteSnapshot(taskId, TaskState(status = TaskStatus.RUNNING, goal = goal))
@@ -69,6 +72,20 @@ class RemoteProtocolTest {
         val exports = mutableListOf<Boolean>()
         val exportFile = java.io.File.createTempFile("calls", ".zip").apply { writeBytes(ByteArray(160 * 1024) { it.toByte() }); deleteOnExit() }
         override fun exportCalls(taskId: String, fresh: Boolean): java.io.File { exports += fresh; return exportFile }
+    }
+
+    @Test fun costStatisticsAndPricesRemainAvailableWhileTasksRun() {
+        val phone = Phone().apply { current = RemoteSnapshot(id, TaskState(status = TaskStatus.RUNNING)) }
+        val commands = RemoteCommands(phone)
+        assertEquals(123, commands.call(request("costs.get")).getJSONObject("data").getInt("total"))
+        val modelId = "a".repeat(64)
+        val price = JSONObject("""{"input":"2.5","output":"8","cached":"0"}""")
+        val params = JSONObject().put("modelId", modelId).put("price", price)
+        assertTrue(commands.call(request("costs.price", params, otherId)).getBoolean("ok"))
+        assertEquals(modelId, phone.priceWrite?.first)
+        assertEquals("2.5", phone.priceWrite?.second?.getString("input"))
+        assertFalse(RemoteCommands(phone).call(request("costs.price", params.put("modelId", "bad"))).getBoolean("ok"))
+        assertFalse(RemoteCommands(phone).call(request("costs.get", JSONObject().put("extra", true))).getBoolean("ok"))
     }
 
     @Test fun modelCallExportsStreamInChunksAndRebuildOnlyFromTheStart() {

@@ -14,6 +14,16 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
       { packageName: 'com.google.android.gms', label: 'Google Play 服务', launchable: false },
     ] };
     window.testTts = { endpoint: 'https://speech.example/v1/audio/speech', model: 'eleven', voice: 'voice-1', hasToken: true };
+    const usage = (calls, inputTokens, outputTokens, amount, unknownCalls = 0, unpricedCalls = 0) =>
+      ({ calls, inputTokens, outputTokens, amount, cachedTokens: 0, unknownCalls, unpricedCalls });
+    window.testCosts = { since: 1793836800000,
+      execution: usage(2, 1000, 100, '0.0028', 1), companion: usage(1, 2000, 200, '0.0056'), total: usage(3, 3000, 300, '0.0084', 1),
+      models: [
+        { id: 'a'.repeat(64), model: 'chat-model', endpoint: 'https://chat.example/v1', price: { input: '2', output: '8', cached: '0.5' },
+          execution: usage(1, 1000, 100, '0.0028'), companion: usage(1, 2000, 200, '0.0056'), total: usage(2, 3000, 300, '0.0084') },
+        { id: 'b'.repeat(64), model: '<img src=x onerror=alert(1)>', endpoint: 'https://jev.example/v1', price: null,
+          execution: usage(1, 0, 0, null, 1), companion: usage(0, 0, 0, '0'), total: usage(1, 0, 0, null, 1) },
+      ] };
     window.testSnapshot = {
       listening: true, addresses: ['192.168.1.20'], port: 38687, connected,
       device: connected ? { id: 'phone-1', name: '测试手机' } : null,
@@ -36,6 +46,13 @@ async function bridge(page, connected = true, records = [{ id: 'record-1', goal:
         if (command === 'download_calls' && window.testDownloadFailure) throw window.testDownloadFailure;
         if (command === 'request') {
           if (window.testFailure) throw window.testFailure;
+          if (args.method === 'costs.get' || args.method === 'costs.price') {
+            const result = structuredClone(window.testCosts);
+            if (window.testCostsPending) await new Promise(resolve => { window.finishCosts = resolve; });
+            if (window.testCostsFailure) throw window.testCostsFailure;
+            if (args.method === 'costs.price') result.models.find(model => model.id === args.params.modelId).price = args.params.price;
+            return result;
+          }
           if (args.method === 'config.get') {
             if (window.testConfigPending) await new Promise(resolve => { window.finishConfig = resolve; });
             return structuredClone(window.testConfig);
@@ -818,3 +835,81 @@ for (const [action, button, failure] of [
     await expect(actionButton).toBeEnabled();
   });
 }
+
+test('costs separate modes and models, preserve unknown amounts and save decimal prices', async ({ page }, testInfo) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: '成本统计', exact: true }).click();
+  const dialog = page.locator('#costs-dialog');
+  await expect(dialog.locator('#costs-message')).toHaveText('统计已更新。');
+  const totals = dialog.locator('#costs-content > .cost-totals');
+  await expect(totals).toContainText('任务执行');
+  await expect(totals).toContainText('陪伴模式');
+  await expect(totals).toContainText('¥0.0084');
+  await expect(dialog.locator('.cost-model')).toHaveCount(2);
+  await expect(dialog.locator('.cost-model').nth(1)).toContainText('暂无法估算');
+  await expect(dialog.locator('.cost-model').nth(1)).toContainText('用量未知 1 次');
+  await expect(dialog.locator('img')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('cost-statistics.png') });
+  const model = dialog.locator('.cost-model').first();
+  await model.getByText('修改单价', { exact: true }).click();
+  await model.getByLabel('输入（非缓存）').fill('0.00000001');
+  await model.getByLabel('输出', { exact: true }).fill('8');
+  await model.getByLabel('缓存输入').fill('0');
+  await page.evaluate(() => { window.testCostsFailure = '保存失败：磁盘已满'; });
+  await model.getByRole('button', { name: '保存单价' }).click();
+  await expect(dialog.locator('#costs-message')).toContainText('磁盘已满');
+  await expect(model.getByLabel('输入（非缓存）')).toHaveValue('0.00000001');
+  await page.evaluate(() => { window.testCostsFailure = null; });
+  await model.getByRole('button', { name: '保存单价' }).click();
+  await expect(dialog.locator('#costs-message')).toContainText('单价已保存');
+  const calls = await page.evaluate(() => window.testCalls.filter(call => call.args?.method === 'costs.price'));
+  expect(calls.at(-1).args.params).toEqual({ modelId: 'a'.repeat(64), price: { input: '0.00000001', output: '8', cached: '0' } });
+});
+
+test('costs retain incomplete usage warnings after refresh and price updates', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  const warning = '部分模型用量未能保存，累计费用可能偏低；任务执行和陪伴可继续使用。';
+  await page.evaluate(warning => { window.testCosts.warning = warning; }, warning);
+  await page.getByRole('button', { name: '成本统计', exact: true }).click();
+  const content = page.locator('#costs-content');
+  await expect(content.getByText(warning, { exact: true })).toBeVisible();
+  await expect(content.locator(':scope > .cost-totals')).toContainText('¥0.0084');
+  await page.getByRole('button', { name: '刷新统计' }).click();
+  await expect(page.locator('#costs-message')).toHaveText('统计已更新。');
+  await expect(content.getByText(warning, { exact: true })).toBeVisible();
+  const model = content.locator('.cost-model').first();
+  await model.getByText('修改单价', { exact: true }).click();
+  await model.getByRole('button', { name: '保存单价' }).click();
+  await expect(page.locator('#costs-message')).toContainText('单价已保存');
+  await expect(content.getByText(warning, { exact: true })).toBeVisible();
+});
+
+test('costs refresh clears old device data and ignores late responses after disconnect', async ({ page }) => {
+  await bridge(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: '成本统计', exact: true }).click();
+  await expect(page.locator('#costs-message')).toHaveText('统计已更新。');
+  await page.evaluate(() => { window.testCostsPending = true; });
+  await page.getByRole('button', { name: '刷新统计' }).click();
+  await expect(page.getByRole('button', { name: '刷新统计' })).toBeDisabled();
+  await page.evaluate(() => { window.testSnapshot.connected = false; });
+  await expect(page.locator('#costs-dialog')).not.toBeVisible();
+  await expect(page.getByRole('button', { name: '成本统计', exact: true })).toBeDisabled();
+  await page.evaluate(() => { window.finishCosts(); });
+  await expect(page.locator('#costs-content')).toBeEmpty();
+  await page.evaluate(() => { window.testSnapshot.connected = true; window.testCostsPending = false; window.testCosts.models = []; });
+  await page.getByRole('button', { name: '成本统计', exact: true }).click();
+  await expect(page.locator('#costs-content')).toContainText('还没有模型调用');
+});
+
+test('cost statistics fit a narrow window', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await bridge(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: '成本统计', exact: true }).click();
+  await expect(page.locator('#costs-message')).toHaveText('统计已更新。');
+  expect(await page.locator('#costs-dialog').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('cost-statistics-narrow.png') });
+});

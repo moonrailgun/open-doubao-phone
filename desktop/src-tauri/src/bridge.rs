@@ -342,7 +342,25 @@ fn validate_request(method: &str, params: &Value) -> Result<(), String> {
             }
             object.get("offset").and_then(Value::as_u64).ok_or("偏移无效")?;
         }
-        "records.list" | "status.get" | "config.get" | "apps.get" | "tts.get" if object.is_empty() => {}
+        "records.list" | "status.get" | "config.get" | "apps.get" | "tts.get" | "costs.get" if object.is_empty() => {}
+        "costs.price" if object.len() == 2 => {
+            let id = object.get("modelId").and_then(Value::as_str).ok_or("模型 ID 无效")?;
+            if id.len() != 64 || !id.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)) {
+                return Err("模型 ID 无效".into());
+            }
+            let price = object.get("price").and_then(Value::as_object).ok_or("单价格式无效")?;
+            if price.len() != 3 { return Err("单价字段不完整".into()); }
+            for field in ["input", "output", "cached"] {
+                let value = price.get(field).and_then(Value::as_str).ok_or("单价格式无效")?;
+                let parts: Vec<_> = value.split('.').collect();
+                if parts.len() > 2 || parts[0].is_empty() || parts[0].len() > 9
+                    || (parts[0].len() > 1 && parts[0].starts_with('0'))
+                    || !parts[0].bytes().all(|c| c.is_ascii_digit())
+                    || (parts.len() == 2 && (parts[1].is_empty() || parts[1].len() > 8 || !parts[1].bytes().all(|c| c.is_ascii_digit()))) {
+                    return Err("单价须为非负数，最多 9 位整数和 8 位小数".into());
+                }
+            }
+        }
         "apps.set" if object.len() == 1 => {
             let apps = object
                 .get("apps")
@@ -911,6 +929,24 @@ mod tests {
         ] {
             assert!(!private_address(ip.parse().unwrap()));
         }
+    }
+
+    #[test]
+    fn cost_requests_validate_decimal_prices_without_float_conversion() {
+        assert!(validate_request("costs.get", &json!({})).is_ok());
+        assert!(validate_request("costs.get", &json!({"extra":true})).is_err());
+        let mut params = json!({"modelId":"a".repeat(64),"price":{"input":"2.5","output":"0","cached":"0.00000001"}});
+        assert!(validate_request("costs.price", &params).is_ok());
+        for invalid in [json!(-1), json!("-1"), json!("NaN"), json!("1e3"), json!("01"), json!("1."), json!("1000000000"), json!("0.000000001"), Value::Null] {
+            params["price"]["input"] = invalid;
+            assert!(validate_request("costs.price", &params).is_err());
+        }
+        params["price"]["input"] = json!("2");
+        params["modelId"] = json!("bad");
+        assert!(validate_request("costs.price", &params).is_err());
+        params["modelId"] = json!("a".repeat(64));
+        params["price"]["extra"] = json!("0");
+        assert!(validate_request("costs.price", &params).is_err());
     }
 
     #[test]

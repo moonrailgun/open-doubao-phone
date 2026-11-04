@@ -1,6 +1,7 @@
 package com.moonrailgun.opendoubao.assistant.phone
 
 import android.accessibilityservice.AccessibilityService
+import org.json.JSONObject
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -219,6 +220,8 @@ class AssistantService : AccessibilityService() {
                 object : RemoteTasks {
                     override fun snapshot() = remoteSnapshot.value
                     override fun records() = vault.read().records
+                    override fun costs() = vault.modelCosts.snapshot()
+                    override fun savePrice(modelId: String, price: JSONObject) = vault.modelCosts.setPrice(modelId, price)
                     override fun config() = vault.read().config
                     override fun saveConfig(config: ModelConfig) {
                         check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务再修改模型配置" }

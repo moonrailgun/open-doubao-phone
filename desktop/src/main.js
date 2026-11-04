@@ -27,6 +27,8 @@ let modelRequest = 0;
 let appAccess = null;
 let appsSaving = false;
 let appsRequest = 0;
+let costsRequest = 0;
+let costsBusy = false;
 let ttsConfig = null;
 let shownRecord = null;
 let deleting = false;
@@ -171,6 +173,7 @@ function controls() {
   $('model-test').disabled = $('model-fields').disabled || modelTesting;
   $('model-test').textContent = modelTesting ? '正在测试…' : '测试连接';
   $('apps-open').disabled = !snapshot.connected;
+  $('costs-open').disabled = !snapshot.connected;
   $('apps-fields').disabled = !snapshot.connected || !appAccess || appsSaving || running || paused;
   $('apps-save').disabled = $('apps-fields').disabled || !appAccess.selected.size;
   $('apps-save').textContent = appsSaving ? '正在保存…' : running || paused ? '请先停止当前任务' : '保存到手机';
@@ -203,6 +206,8 @@ function render(next) {
     clearModelConfig();
     $('apps-dialog').close();
     clearApps();
+    $('costs-dialog').close();
+    clearCosts();
   }
   $('device-name').textContent = next.device?.name || '尚未绑定设备';
   $('connection-status').textContent = next.connected ? '已连接' : next.device ? '等待手机连接' : next.listening ? '可以绑定手机' : '连接服务未启动';
@@ -419,6 +424,100 @@ function dialogMessage(id, text, error = false) {
 }
 const modelMessage = (text, error) => dialogMessage('model-message', text, error);
 const appsMessage = (text, error) => dialogMessage('apps-message', text, error);
+function clearCosts() {
+  costsRequest += 1;
+  costsBusy = false;
+  $('costs-content').replaceChildren();
+  $('costs-since').textContent = '';
+  dialogMessage('costs-message', '');
+}
+function costSummary(title, data) {
+  const card = element('div', null, 'cost-summary');
+  card.append(element('h3', title), element('strong', data.amount == null ? '暂无法估算' : `已计价估算 ¥${data.amount}`),
+    element('p', `${data.calls} 次调用 · 输入 ${data.inputTokens} / 输出 ${data.outputTokens} Token`, 'muted'),
+    element('p', `输入含缓存 ${data.cachedTokens} Token`, 'muted'));
+  if (data.unknownCalls || data.unpricedCalls) card.append(element('p', `未计入金额：用量未知 ${data.unknownCalls} 次 · 未设单价 ${data.unpricedCalls} 次`, 'error'));
+  return card;
+}
+function renderCosts(data) {
+  const content = $('costs-content');
+  content.replaceChildren();
+  if (data.warning) content.append(element('p', data.warning, 'error'));
+  $('costs-since').textContent = data.since ? `累计自 ${new Date(data.since).toLocaleString('zh-CN')}` : '';
+  const totals = element('div', null, 'cost-totals');
+  for (const [mode, label] of [['total', '合计'], ['execution', '任务执行'], ['companion', '陪伴模式']]) totals.append(costSummary(label, data[mode]));
+  content.append(totals);
+  if (!data.models.length) content.append(element('p', '还没有模型调用。执行任务或开启陪伴后，会在这里按模型显示用量并设置单价。', 'muted'));
+  for (const model of data.models) {
+    const section = element('section', null, 'cost-model');
+    section.append(element('h3', model.model), element('p', model.endpoint, 'muted'));
+    const modes = element('div', null, 'cost-totals');
+    for (const [mode, label] of [['total', '模型合计'], ['execution', '任务执行'], ['companion', '陪伴模式']]) modes.append(costSummary(label, model[mode]));
+    section.append(modes);
+    const details = element('details');
+    details.name = 'cost-price';
+    details.append(element('summary', model.price ? '修改单价' : '设置单价'));
+    const form = element('form');
+    const fields = element('fieldset');
+    fields.append(element('legend', '单价 · 元 / 百万 Token'), element('p', '不区分缓存价格时填相同输入单价；明确免费时填 0。保存后重新估算历史用量。', 'muted'));
+    const inputs = element('div', null, 'cost-price-inputs');
+    for (const [key, title] of [['input', '输入（非缓存）'], ['output', '输出'], ['cached', '缓存输入']]) {
+      const label = element('label', title);
+      const input = element('input');
+      input.name = key;
+      input.inputMode = 'decimal';
+      input.required = true;
+      input.pattern = '(?:0|[1-9][0-9]{0,8})(?:\\.[0-9]{1,8})?';
+      input.title = '非负数，最多 9 位整数和 8 位小数';
+      input.value = model.price?.[key] ?? '';
+      label.append(input);
+      inputs.append(label);
+    }
+    const save = element('button', '保存单价', 'button primary');
+    save.type = 'submit';
+    fields.append(inputs, save);
+    form.append(fields);
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      if (costsBusy || !form.reportValidity()) return;
+      const price = Object.fromEntries(new FormData(form));
+      fetchCosts('costs.price', { modelId: model.id, price });
+    });
+    details.append(form);
+    section.append(details);
+    content.append(section);
+  }
+}
+async function fetchCosts(method = 'costs.get', params = {}) {
+  if (costsBusy || !snapshot.connected) return;
+  const currentSession = session;
+  const current = ++costsRequest;
+  costsBusy = true;
+  $('costs-refresh').disabled = true;
+  $('costs-content').querySelectorAll('fieldset').forEach(field => { field.disabled = true; });
+  dialogMessage('costs-message', method === 'costs.price' ? '正在保存单价…' : '正在读取统计…');
+  try {
+    const data = await invoke('request', { method, params });
+    if (current !== costsRequest || currentSession !== session) return;
+    renderCosts(data);
+    dialogMessage('costs-message', method === 'costs.price' ? '单价已保存，已重新估算。' : '统计已更新。');
+  } catch (error) {
+    if (current === costsRequest && currentSession === session) dialogMessage('costs-message', message(error), true);
+  } finally {
+    if (current === costsRequest && currentSession === session) {
+      costsBusy = false;
+      $('costs-refresh').disabled = false;
+      $('costs-content').querySelectorAll('fieldset').forEach(field => { field.disabled = false; });
+    }
+  }
+}
+$('costs-dialog').addEventListener('close', clearCosts);
+$('costs-open').addEventListener('click', () => {
+  clearCosts();
+  $('costs-dialog').showModal();
+  fetchCosts();
+});
+$('costs-refresh').addEventListener('click', () => fetchCosts());
 $('model-dialog').addEventListener('close', clearModelConfig);
 $('model-form').addEventListener('input', controls);
 $('model-open').addEventListener('click', async () => {
