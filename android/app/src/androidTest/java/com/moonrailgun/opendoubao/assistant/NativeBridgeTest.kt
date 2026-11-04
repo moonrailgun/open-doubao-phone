@@ -359,12 +359,16 @@ class NativeBridgeTest {
         val prior = field.get(service)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         val actions = mutableListOf<Action>()
+        val deciding = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<Unit>()
+        val stopped = CompletableDeferred<Unit>()
         val models = object : Models {
             override suspend fun isChat(goal: String, screen: Screen?) = false
             override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
             override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?) = Plan(context.packageName, listOf("read"), emptyList())
             override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision {
-                withContext(NonCancellable) { delay(1500) }
+                deciding.complete(Unit)
+                withContext(NonCancellable) { response.await() }
                 return Decision(Action.Back, false, Effect.UNKNOWN)
             }
             override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?) = ModelStep(Action.Wait)
@@ -378,12 +382,15 @@ class NativeBridgeTest {
         }
         val controller = TaskController(scope, phone, models)
         try {
-            withContext(Dispatchers.Main) {
+            val collector = withContext(Dispatchers.Main) {
                 field.set(service, controller)
                 controller.start("自动读取页面", setOf(context.packageName))
-                scope.launch { controller.state.collect { render.invoke(service, it) } }
+                scope.launch { controller.state.collect {
+                    render.invoke(service, it)
+                    if (it.status == TaskStatus.STOPPED) stopped.complete(Unit)
+                } }
             }
-            delay(300)
+            withTimeout(8000) { deciding.await() }
             val bitmap = instrumentation.getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).takeScreenshot()
             File(context.getExternalFilesDir(null), "qa-autonomy.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
@@ -399,8 +406,11 @@ class NativeBridgeTest {
                 assertTrue(buttons.single().performClick())
                 assertEquals(TaskStatus.STOPPED, controller.state.value.status)
             }
-            delay(1500)
-            assertEquals(listOf(Action.OpenApp(context.packageName)), actions)
+            response.complete(Unit)
+            withTimeout(5000) { stopped.await() }
+            collector.cancelAndJoin()
+            withTimeout(5000) { scope.coroutineContext[Job]!!.children.toList().joinAll() }
+            assertTrue("The current app stays open, and stopping discards the late Back action", actions.isEmpty())
             withContext(Dispatchers.Main) {
                 fun view(name: String) = AssistantService::class.java.getDeclaredField(name).apply { isAccessible = true }.get(service) as android.view.View
                 render.invoke(service, TaskState(status = TaskStatus.RUNNING))
@@ -412,6 +422,7 @@ class NativeBridgeTest {
                 assertEquals(android.view.View.VISIBLE, view("inputRow").visibility)
             }
         } finally {
+            response.complete(Unit)
             scope.cancel()
             withContext(Dispatchers.Main) { field.set(service, prior); render.invoke(service, TaskState()) }
         }
