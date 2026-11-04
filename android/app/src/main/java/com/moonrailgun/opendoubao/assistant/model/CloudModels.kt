@@ -1,6 +1,7 @@
 package com.moonrailgun.opendoubao.assistant.model
 
 import com.moonrailgun.opendoubao.assistant.core.*
+import com.moonrailgun.opendoubao.assistant.data.ModelCosts
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -70,7 +71,8 @@ private val sharedClient: OkHttpClient by lazy {
 }
 
 class HttpTransport(private val client: OkHttpClient = sharedClient,
-    private val secrets: List<String> = emptyList(), private val log: ((JSONObject) -> Unit)? = null) {
+    private val secrets: List<String> = emptyList(), private val log: ((JSONObject) -> Unit)? = null,
+    private val costs: ModelCosts? = null, private val costMode: String = "execution") {
     companion object {
         /**
          * Opens a connection to each endpoint's server ahead of a task, with a bare HEAD that carries no key. The model
@@ -109,6 +111,11 @@ class HttpTransport(private val client: OkHttpClient = sharedClient,
             .put("url", "${uri.scheme}://${uri.host}${if (uri.port < 0) "" else ":${uri.port}"}${uri.rawPath}")
             .put("body", requestBody))
         val received = AtomicReference(JSONObject())
+        val finishCost = try { costs?.let {
+            val address = URI(uri.scheme, null, uri.host, uri.port, redactModelSecrets(uri.path.orEmpty(), credentials), null, null)
+            it.start(costMode, address.toASCIIString(), redactModelSecrets(body.optString("model", "未知模型"), credentials))
+        } } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { costs?.markIncomplete(); null }
         var failure: Throwable? = null
         try {
             suspendCancellableCoroutine { continuation ->
@@ -122,8 +129,9 @@ class HttpTransport(private val client: OkHttpClient = sharedClient,
                         if (continuation.isActive) continuation.resumeWithException(IOException(networkError(e)))
                     }
                     override fun onResponse(call: Call, response: Response) {
+                        var usage: TokenUsage? = null
                         try {
-                            val text = response.use {
+                            val text = try { response.use {
                                 val details = JSONObject().put("status", it.code).put("requestId", it.header("x-request-id"))
                                     .put("contentType", it.header("content-type"))
                                 received.set(details)
@@ -134,6 +142,7 @@ class HttpTransport(private val client: OkHttpClient = sharedClient,
                                             val line = source.readUtf8Line() ?: break
                                             if (length + line.length >= 1_048_576) throw IOException("模型响应超过 1 MB 限制")
                                             append(line).append('\n')
+                                            if (line.startsWith("data:")) TokenUsage.parse(line.removePrefix("data:").trim())?.let { usage = it }
                                             lines(line)
                                         }
                                     } finally { received.set(JSONObject(details.toString()).put("body", toString())) }
@@ -144,10 +153,16 @@ class HttpTransport(private val client: OkHttpClient = sharedClient,
                                     throw e
                                 }
                                 val raw = source.readUtf8(minOf(source.buffer.size, 1_048_576))
+                                usage = TokenUsage.parse(raw)
                                 received.set(JSONObject(details.toString()).put("body", raw).put("truncated", oversized))
                                 if (!it.isSuccessful) throw IOException("模型服务返回 HTTP ${it.code}" + errorDetails(it, raw.take(8192)))
                                 if (oversized) throw IOException("模型响应超过 1 MB 限制")
                                 raw
+                            }.also { TokenUsage.parse(it)?.let { parsed -> usage = parsed } } }
+                            finally {
+                                try { finishCost?.invoke(usage) }
+                                catch (e: CancellationException) { throw e }
+                                catch (_: Exception) { costs?.markIncomplete() }
                             }
                             if (continuation.isActive) continuation.resume(text)
                         } catch (e: Exception) {
@@ -559,6 +574,7 @@ class CloudModels(private val config: ModelConfig, private val http: HttpTranspo
                     "Never claim to see an image or invent its contents; acknowledge missing information." else ""))
                 .put(JSONObject().put("role", "user").put("content", content)))
         val streamed = StringBuilder()
+        if (partial != null) body.put("stream_options", JSONObject().put("include_usage", true))
         val raw = http.post(config.chatEndpoint, config.chatKey, body, stage, lines = partial?.let { take -> { line: String ->
             val event = line.takeIf { it.startsWith("data:") }?.removePrefix("data:")?.trim()?.takeIf { it.startsWith("{") }
             val piece = event?.let { runCatching { JSONObject(it).getJSONArray("choices").getJSONObject(0).getJSONObject("delta").opt("content") }.getOrNull() }

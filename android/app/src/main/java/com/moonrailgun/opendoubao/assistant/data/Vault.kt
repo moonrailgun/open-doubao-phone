@@ -56,6 +56,7 @@ class Vault(context: Context) {
     private val file = AtomicFile(File(context.noBackupFilesDir, "assistant.enc"))
     private val alias = "open-doubao-v1"
     val modelCalls = ModelCallLog(File(context.noBackupFilesDir, "model-calls"), ::key)
+    val modelCosts = ModelCosts(File(context.noBackupFilesDir, "model-costs.enc"), ::key)
 
     private companion object {
         val cache = Guarded<Saved>()

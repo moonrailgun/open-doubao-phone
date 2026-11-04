@@ -293,7 +293,7 @@ object VoiceRuntime {
                 try { withTimeoutOrNull(15_000) {
                     val vault = Vault(context)
                     val config = vault.read().config
-                    CloudModels(config, HttpTransport(secrets = config.secrets, log = { vault.modelCalls.append(taskId, it) }))
+                    CloudModels(config, HttpTransport(secrets = config.secrets, log = { vault.modelCalls.append(taskId, it) }, costs = vault.modelCosts))
                         .spoken(result.goal, summary)
                 } }
                 catch (e: CancellationException) { throw e } catch (_: Exception) { null }

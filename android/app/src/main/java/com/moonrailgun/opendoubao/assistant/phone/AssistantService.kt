@@ -298,7 +298,7 @@ class AssistantService : AccessibilityService() {
         val apps = allowedApps(catalog, saved.excludedApps)
         val models = try {
             check(apps.isNotEmpty()) { "所有应用都被排除了，请至少留一个给助手操作" }
-            CloudModels(saved.config, HttpTransport(secrets = saved.config.secrets, log = { vault.modelCalls.append(taskId, it) }),
+            CloudModels(saved.config, HttpTransport(secrets = saved.config.secrets, log = { vault.modelCalls.append(taskId, it) }, costs = vault.modelCosts),
                 memory = saved.memory,
                 recent = if (fromBubble) emptyList() else saved.records.filter { it.status == "COMPLETED" }.take(3).map { PastTask(it.goal, it.result.take(600)) },
                 compactScreens = compactScreens(this), appLabels = catalog.associate { it.packageName to it.label },
@@ -466,9 +466,10 @@ class AssistantService : AccessibilityService() {
         requireUnlockedScreen()
         check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务" }
         if (companionState.value.active) return
-        val saved = Vault(this).read()
+        val vault = Vault(this)
+        val saved = vault.read()
         val config = saved.companion.modelConfig(saved.config)
-        val models = CloudModels(config)
+        val models = CloudModels(config, HttpTransport(secrets = config.secrets, costs = vault.modelCosts, costMode = "companion"))
         setBubbleActive(true)
         collapse()
         topDocked = true

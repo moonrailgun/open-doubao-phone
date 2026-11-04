@@ -73,6 +73,7 @@ class EarlyActionTest {
             models.fallback("goal", screen(), Plan("browser.app", listOf("read"), emptyList()), null, Evidence(emptyList()), "pixels")
         }
         assertTrue(sent!!.getBoolean("stream"))
+        assertTrue(sent!!.getJSONObject("stream_options").getBoolean("include_usage"))
         assertTrue(waitedForTheAction)
         assertEquals(listOf(Action.Click("0.1")), early.map { it.action })
         assertEquals(ModelStep(Action.Click("0.1"), observations = "飞书消息页"), step)

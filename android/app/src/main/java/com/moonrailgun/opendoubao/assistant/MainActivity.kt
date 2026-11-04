@@ -381,6 +381,7 @@ class MainActivity : ComponentActivity() {
                     }
                     1 -> {
                         PageTitle("任务记录", "本机保留最近 30 条，含每一步的执行日志。开启远程接收后，已绑定桌面也可读取。点开一条可查看和复制日志。")
+                        TextButton({ tab = SETTINGS; settingsTab = 6 }) { Text("成本统计") }
                         if (records.isEmpty()) Column(Modifier.fillMaxWidth().padding(vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(painterResource(R.drawable.lucide_history), null, Modifier.size(40.dp), tint = colors.outline)
@@ -410,7 +411,7 @@ class MainActivity : ComponentActivity() {
                     SETTINGS -> {
                         PageTitle("设置", "管理悬浮球，配置模型服务、执行方式、语音播报和远程连接。")
                         PrimaryScrollableTabRow(settingsTab, edgePadding = 0.dp) {
-                            listOf("概览", "模型", "语音", "桌面远程", "执行", "陪伴").forEachIndexed { index, title ->
+                            listOf("概览", "模型", "语音", "桌面远程", "执行", "陪伴", "成本").forEachIndexed { index, title ->
                                 Tab(settingsTab == index, { settingsTab = index }, text = { Text(title) })
                             }
                         }
@@ -482,6 +483,7 @@ class MainActivity : ComponentActivity() {
                             3 -> RemoteControls(service, refresh, vault) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                             4 -> ExecutionControls()
                             5 -> CompanionControls(vault, service) { message = it }
+                            6 -> CostControls(vault)
                         }
                         OutlinedButton({ startActivity(Intent(this@MainActivity, DebugActivity::class.java)) }, Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp)) { Text("调试") }
@@ -606,7 +608,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun Section(title: String, description: String, content: @Composable ColumnScope.() -> Unit) =
+@Composable internal fun Section(title: String, description: String, content: @Composable ColumnScope.() -> Unit) =
     Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
