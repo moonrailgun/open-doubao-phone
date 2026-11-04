@@ -5,7 +5,7 @@
 - Android and desktop: View cumulative model usage and estimated costs separately for task execution and companion mode, with a breakdown by model and provider address. Set input, output, and cached-input prices in CNY per million tokens; price changes recalculate accumulated usage. Calls without usage or prices are marked separately. Problems reading or saving statistics do not interrupt tasks or companion mode; unsaved usage is flagged because estimated totals may be too low. Statistics begin after upgrading and exclude speech recognition, speech synthesis, and connection tests.
 - Android: Drag and zoom a selected floating-bubble avatar in a circular preview before confirming the crop. Cancel to keep your current avatar. Crop adjustments survive screen rotation, and controls remain accessible in landscape with large text.
 - Android: Improve companion replies by combining your latest input and recent context with the current screen, including background and preferences you provide.
-- Android: Resume tasks paused before their target app opened without getting stuck or restarting a page that already opened.
+- Android: Open the main app directly from the top-right button in the floating-bubble menu. Opening it pauses tasks that use the phone screen, while tasks already running in the background continue. Resume also works if the task was paused before its target app opened. Tap outside the menu to collapse it.
 
 ## [1.3.0] - 2026-11-04
 

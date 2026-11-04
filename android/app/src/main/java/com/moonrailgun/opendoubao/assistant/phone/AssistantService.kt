@@ -743,17 +743,20 @@ class AssistantService : AccessibilityService() {
             more.setOnClickListener {
                 moreMenu?.dismiss()
                 moreMenu = PopupMenu(this@AssistantService, more).apply {
-                    if (!running) menu.add("打开 Open Doubao").setOnMenuItemClickListener {
-                        collapse()
-                        packageManager.getLaunchIntentForPackage(packageName)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                        true
-                    }
                     menu.add("新对话").setOnMenuItemClickListener { newConversation(); true }
                     show()
                 }
             }
             addView(more, LinearLayout.LayoutParams(dp(40), dp(40)))
-            addView(iconButton(R.drawable.lucide_minimize_2, "收起") { collapse() }, LinearLayout.LayoutParams(dp(40), dp(40)))
+            addView(iconButton(R.drawable.lucide_external_link, "打开主界面") {
+                if (virtual?.hasSession != true) {
+                    controller?.pauseForUser("已返回主界面；可点击继续恢复任务")
+                    // Reflect the pause before collapsing so the collector will not reopen the menu.
+                    controller?.state?.value?.let(::renderOverlay)
+                }
+                collapse()
+                packageManager.getLaunchIntentForPackage(packageName)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            }, LinearLayout.LayoutParams(dp(40), dp(40)))
         })
         card.addView(statusText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         val field = EditText(this).apply {

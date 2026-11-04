@@ -87,7 +87,7 @@ class BubbleLifecycleTest {
         }
         fun hidden() {
             assertTrue("Bubble must remain hidden", device.wait(Until.gone(bubble), 5000))
-            assertTrue("Expanded panel must also close", device.wait(Until.gone(By.desc("收起")), 5000))
+            assertTrue("Expanded panel must also close", device.wait(Until.gone(By.desc("打开主界面")), 5000))
             assertTrue(device.wait(Until.hasObject(By.text("启动悬浮球")), 5000))
         }
         try {
@@ -117,10 +117,10 @@ class BubbleLifecycleTest {
             assertTrue(device.wait(Until.hasObject(bubble), 5000))
             assertTrue(device.wait(Until.hasObject(By.text("退出悬浮球")), 5000))
             device.findObject(bubble).click()
-            val collapse = device.wait(Until.findObject(By.desc("收起")), 5000)
-            assertNotNull("Bubble should expand", collapse)
+            val openMain = device.wait(Until.findObject(By.desc("打开主界面")), 5000)
+            assertNotNull("Bubble should expand", openMain)
             assertFalse("Keep the exit action in the main app", device.hasObject(By.desc("退出悬浮球")))
-            val field = collapse.parent.parent.findObject(By.clazz("android.widget.EditText"))
+            val field = openMain.parent.parent.findObject(By.clazz("android.widget.EditText"))
             assertNotNull("Use the bubble input, not the app input underneath", field)
             field.click()
             await("Bubble input should open the keyboard") {

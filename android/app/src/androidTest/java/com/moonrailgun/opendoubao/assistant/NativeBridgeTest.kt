@@ -41,6 +41,7 @@ import com.moonrailgun.opendoubao.assistant.model.HttpTransport
 import com.moonrailgun.opendoubao.assistant.remote.RemoteCommands
 import com.moonrailgun.opendoubao.assistant.remote.RemoteReceiver
 import com.moonrailgun.opendoubao.assistant.phone.AssistantService
+import com.moonrailgun.opendoubao.assistant.phone.OffscreenPhone
 import com.moonrailgun.opendoubao.assistant.phone.allowedApps
 import com.moonrailgun.opendoubao.assistant.phone.loadAppCatalog
 import kotlinx.coroutines.*
@@ -518,6 +519,77 @@ class NativeBridgeTest {
         }
     }
 
+    @Test fun openingMainPausesPendingForegroundWorkButKeepsALiveVirtualSessionRunning() = runBlocking {
+        val service = fixture()
+        val render = AssistantService::class.java.getDeclaredMethod("renderOverlay", TaskState::class.java).apply { isAccessible = true }
+        val field = AssistantService::class.java.getDeclaredField("controller").apply { isAccessible = true }
+        val virtual = AssistantService::class.java.getDeclaredField("virtual").apply { isAccessible = true }
+        val prior = field.get(service)
+        val priorVirtual = virtual.get(service)
+        fun view(name: String) = AssistantService::class.java.getDeclaredField(name).apply { isAccessible = true }.get(service) as View
+        val page = withContext(Dispatchers.Main) { service.phone.observe() }
+        // No backend yet, a backend without a live session, and an actual background session.
+        for (session in listOf(null, false, true)) {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+            val planning = CompletableDeferred<Unit>()
+            val phone = object : Phone by service.phone {
+                override suspend fun observe() = page.copy(packageName = "launcher.app")
+                override suspend fun execute(action: Action, expected: Screen?, expectedImage: String?): Boolean = error("Planning is still pending")
+            }
+            val models = object : Models {
+                override suspend fun isChat(goal: String, screen: Screen?) = false
+                override suspend fun reply(goal: String, screen: Screen, image: String): Plan = error("Unexpected chat")
+                override suspend fun plan(goal: String, apps: Set<String>, launchableApps: Set<String>, screen: Screen?, image: String?): Plan {
+                    planning.complete(Unit)
+                    awaitCancellation()
+                }
+                override suspend fun decide(goal: String, screen: Screen, plan: Plan, candidates: List<Candidate>, previous: Previous?): Decision = error("Unexpected decision")
+                override suspend fun fallback(goal: String, screen: Screen, plan: Plan, previous: Previous?, evidence: Evidence, image: String?): ModelStep = error("Unexpected fallback")
+                override suspend fun summarize(goal: String, evidence: Evidence) = error("Unexpected summary")
+            }
+            val controller = TaskController(scope, phone, models)
+            var rendered: TaskStatus? = null
+            val monitor = instrumentation.addMonitor(MainActivity::class.java.name, null, true)
+            try {
+                withContext(Dispatchers.Main) {
+                    field.set(service, controller)
+                    virtual.set(service, session?.let { live -> object : OffscreenPhone, Phone by phone {
+                        override val hasSession = live
+                        override fun resume() = Unit
+                        override fun handOver() = Unit
+                        override fun close() = Unit
+                        override fun peek(parent: android.view.SurfaceControl, width: Int, height: Int, surface: android.view.Surface?): AutoCloseable? = null
+                    } })
+                    scope.launch { controller.state.collect { render.invoke(service, it); rendered = it.status } }
+                    controller.start("等待规划", setOf(context.packageName))
+                }
+                withTimeout(5000) { planning.await() }
+                val expected = if (session == true) TaskStatus.RUNNING else TaskStatus.PAUSED
+                withContext(Dispatchers.Main) {
+                    render.invoke(service, controller.state.value)
+                    view("bubble").performClick()
+                    val panel = view("panel") as android.widget.LinearLayout
+                    assertEquals(View.VISIBLE, panel.visibility)
+                    val header = panel.getChildAt(0) as android.widget.LinearLayout
+                    header.getChildAt(header.childCount - 1).performClick()
+                    assertEquals("Opening main must yield the foreground; session=$session", expected, controller.state.value.status)
+                    assertEquals(1, monitor.hits)
+                    assertEquals(View.GONE, panel.visibility)
+                }
+                withTimeout(1000) { while (withContext(Dispatchers.Main) { rendered != expected }) delay(10) }
+                withContext(Dispatchers.Main) {
+                    assertEquals("The pause notification must not reopen the menu", View.GONE, view("panel").visibility)
+                }
+            } finally {
+                scope.cancel()
+                instrumentation.removeMonitor(monitor)
+                withContext(Dispatchers.Main) {
+                    field.set(service, prior); virtual.set(service, priorVirtual); render.invoke(service, TaskState())
+                }
+            }
+        }
+    }
+
     @Test fun expandedOverlayDragsFromBlankSpaceAndKeepsItsControlsUsable() = runBlocking {
         val service = fixture()
         withContext(Dispatchers.Main) {
@@ -555,8 +627,8 @@ class NativeBridgeTest {
                 render.invoke(service, TaskState())
                 view("bubble").performClick()
                 delay(100)
-                val row = view("inputRow") as android.widget.LinearLayout
                 val field = view("input") as android.widget.EditText
+                val row = field.parent as android.widget.LinearLayout
                 val targets = listOf(
                     "card padding" to { point(panel, panel.width / 2f, panel.paddingTop / 2f) },
                     "empty header" to { point(view("statusLabel")) },
@@ -580,10 +652,18 @@ class NativeBridgeTest {
                 assertEquals(x, params.x)
                 assertEquals(y, params.y)
                 val header = panel.getChildAt(0) as android.widget.LinearLayout
-                gesture(point(header.getChildAt(header.childCount - 1)))
-                // Android posts performClick after ACTION_UP; let the main queue deliver it.
-                withTimeout(1000) { while (panel.visibility != View.GONE) delay(10) }
-                assertEquals("Collapse button still receives taps", View.GONE, panel.visibility)
+                val openMain = header.getChildAt(header.childCount - 1)
+                assertEquals("打开主界面", openMain.contentDescription)
+                val monitor = instrumentation.addMonitor(MainActivity::class.java.name, null, true)
+                try {
+                    gesture(point(openMain))
+                    // Android posts performClick after ACTION_UP; let the main queue deliver it.
+                    withTimeout(1000) { while (panel.visibility != View.GONE) delay(10) }
+                    assertEquals("Opening the main screen closes the panel", View.GONE, panel.visibility)
+                    assertEquals("The toolbar button launches the main activity", 1, monitor.hits)
+                } finally {
+                    instrumentation.removeMonitor(monitor)
+                }
                 render.invoke(service, TaskState(status = TaskStatus.RUNNING))
                 render.invoke(service, TaskState(status = TaskStatus.COMPLETED, result = (1..80).joinToString("\n") { "第 $it 行结果" }))
                 delay(100)
@@ -595,7 +675,7 @@ class NativeBridgeTest {
                 assertEquals("更多操作", more.contentDescription)
                 more.performClick()
                 val menu = AssistantService::class.java.getDeclaredField("moreMenu").apply { isAccessible = true }.get(service) as android.widget.PopupMenu
-                assertEquals(listOf("打开 Open Doubao", "新对话"), (0 until menu.menu.size()).map { menu.menu.getItem(it).title.toString() })
+                assertEquals(listOf("新对话"), (0 until menu.menu.size()).map { menu.menu.getItem(it).title.toString() })
                 menu.dismiss()
                 gesture(point(summary), 0f, -dp(60))
                 assertTrue("Summary keeps its scrolling gesture", summary.scrollY > 0)
