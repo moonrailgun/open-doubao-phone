@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
@@ -93,6 +94,33 @@ class CompanionOverlayTest {
             Settings.Secure.putString(resolver, Settings.Secure.ACCESSIBILITY_ENABLED, "1")
             await("Connect accessibility") { AssistantService.connected.value != null }
             val service = AssistantService.connected.value!!
+            fun bounds(name: String): Rect {
+                // The view's screen offset can lag behind window resizing or rotation.
+                var result = Rect()
+                await("The system and overlay must finish the same layout") {
+                    val frame = Rect()
+                    service.windows.firstOrNull { it.id == service.overlayWindowId }?.getBoundsInScreen(frame)
+                    var settled = false
+                    instrument.runOnMainSync {
+                        val root = field(service, "overlay") as View
+                        val view = field(service, name) as View
+                        assertTrue("$name must stay visible", view.isShown)
+                        val rootLocation = IntArray(2).also(root::getLocationOnScreen)
+                        settled = !root.isLayoutRequested && root.width == frame.width() && root.height == frame.height() &&
+                            rootLocation[0] == frame.left && rootLocation[1] == frame.top
+                        val location = IntArray(2).also(view::getLocationInWindow)
+                        location[0] += frame.left
+                        location[1] += frame.top
+                        result = Rect(location[0], location[1], location[0] + view.width, location[1] + view.height)
+                    }
+                    settled
+                }
+                return result
+            }
+            fun assertAnchor(expected: Rect) {
+                device.waitForIdle(1000)
+                assertEquals("Messages must not move or resize the avatar", expected, bounds("bubbleAvatar"))
+            }
             instrument.runOnMainSync { service.startCompanion() }
             assertNotNull(device.wait(Until.findObject(By.text("陪伴中")), 5000))
             instrument.runOnMainSync {
@@ -112,6 +140,7 @@ class CompanionOverlayTest {
                     })
                 } finally { ring.bounds = bounds; bitmap.recycle() }
             }
+            val dockedAvatar = bounds("bubbleAvatar")
             screenshot("companion-capsule")
             fun captureWithoutBlink(checkGesture: Boolean = false, uncoveredTap: Action.Tap? = null) = runBlocking {
                 withContext(Dispatchers.Main) {
@@ -178,6 +207,7 @@ class CompanionOverlayTest {
                     CompanionState(active = true, retrying = true, message = "暂时无法查看画面，稍后重试")
             }
             assertNotNull(device.wait(Until.findObject(By.text("稍后重试")), 5000))
+            assertAnchor(dockedAvatar)
             val comment = "这波配合很漂亮，先照顾后排再找机会推进。".repeat(5) + "完整结尾。"
             instrument.runOnMainSync {
                 val controller = field(service, "companion")

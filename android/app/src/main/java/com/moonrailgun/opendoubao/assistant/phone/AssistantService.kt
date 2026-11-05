@@ -635,6 +635,7 @@ class AssistantService : AccessibilityService() {
             text = "陪伴中"; textSize = 11f; setTextColor(Color.WHITE)
             includeFontPadding = false; gravity = Gravity.CENTER; isSingleLine = true
             setPadding(dp(6), 0, dp(8), 0)
+            minimumWidth = kotlin.math.ceil(paint.measureText("稍后重试")).toInt() + paddingLeft + paddingRight
             visibility = View.GONE
         }
         // While a task runs, a pill beside the ball names it and its current step.
@@ -1107,7 +1108,7 @@ class AssistantService : AccessibilityService() {
         val cutouts = metrics.windowInsets.displayCutout?.boundingRects.orEmpty()
             .filter { it.top < barHeight && it.bottom > 0 }.map { it.left until it.right }
         val size = minOf((28 * density).toInt(), barHeight - (4 * density).toInt())
-        val labelWidth = companionDockLabel?.let { kotlin.math.ceil(it.paint.measureText(it.text.toString())).toInt() + it.paddingLeft + it.paddingRight } ?: 0
+        val labelWidth = companionDockLabel?.minimumWidth ?: 0
         return bubbleDock(metrics.bounds.width(), barHeight, (28 * density).toInt(), (2 * density).toInt(), right, cutouts, size + labelWidth)
     }
 }
