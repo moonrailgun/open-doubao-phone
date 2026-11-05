@@ -668,7 +668,7 @@ class MainActivity : ComponentActivity() {
             SettingField("模型", config.model) { config = config.copy(model = it.trim()) }
             KeyField("API Key", config.key) { config = config.copy(key = it.trim()) }
         }
-        Text("截图会发送给所选模型。开启「Jev 多模态（实验）」时，还会先将本组截图和上次观察的画面交给 Jev 判断；变化不大时跳过评论模型，判断失败时继续评论。截图、摘要和陪伴评论不保存到任务记录。被排除的应用、密码页面和本应用不参与陪伴。",
+        Text("截图会适度压缩后发送给所选模型。开启「Jev 多模态（实验）」时，还会先将本组截图和上次观察的画面交给 Jev 判断；变化不大时跳过评论模型，判断失败时继续评论。截图、摘要和陪伴评论不保存到任务记录。被排除的应用、密码页面和本应用不参与陪伴。",
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Button({

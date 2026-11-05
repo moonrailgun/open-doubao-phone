@@ -116,7 +116,7 @@ class AssistantService : AccessibilityService() {
     private var companionWindowId: Int? = null
     private val companion = CompanionController(scope, capture = {
         requireUnlockedScreen()
-        captureCompanion(phone, packageName, Vault(this).read().excludedApps)
+        captureCompanion(phone, packageName, Vault(this).read().excludedApps, phone::companionScreenshot)
     }, speak = ::showCompanionComment)
     val companionState = companion.state
     private val remoteSnapshot = MutableStateFlow(RemoteSnapshot())

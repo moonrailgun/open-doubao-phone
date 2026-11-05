@@ -69,6 +69,8 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
 
     override suspend fun screenshot(screen: Screen): String = capture(screen)
 
+    internal suspend fun companionScreenshot(screen: Screen): String = capture(screen, companion = true)
+
     override fun sameImage(before: String, after: String, screen: Screen, region: Bounds) = screenshotsMatch(before, after, screen, region)
 
     private fun windows() = service.windowsOnAllDisplays[displayId] ?: emptyList()
@@ -88,7 +90,7 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
             "bounds=${Rect().also(window::getBoundsInScreen).toShortString()} active=${window.isActive} focused=${window.isFocused}"
     }.getOrDefault("window=unavailable")
 
-    private suspend fun capture(screen: Screen): String = captures.withLock {
+    private suspend fun capture(screen: Screen, companion: Boolean = false): String = captures.withLock {
         if (!screen.matchesForAction(observe())) throw ScreenChangedException()
         if (screen.protected) throw PhoneUnavailableException("密码页面不可截图")
         var captureWindow: AccessibilityWindowInfo? = null
@@ -160,7 +162,10 @@ class AndroidPhone(private val service: AssistantService, private val displayId:
             try {
                 if (!screen.matchesForAction(observe())) throw ScreenChangedException()
                 if (maskOverlay && excluded != service.overlayBounds()) throw ScreenChangedException()
-                return encodeScreenshot(bitmap, if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else bounds, bounds, screen, excluded)
+                return withContext(Dispatchers.Default) {
+                    encodeScreenshot(bitmap, if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else bounds,
+                        bounds, screen, excluded, companion)
+                }
             } finally { bitmap.recycle() }
         } catch (e: PhoneUnavailableException) {
             val version = runCatching { service.packageManager.getPackageInfo(service.packageName, 0).let {
@@ -399,18 +404,31 @@ internal fun screenshotsMatch(before: String, after: String, screen: Screen, reg
 }
 
 /** JPEG of [source] drawn at [bounds], black elsewhere, keeping the original display coordinate system. */
-internal fun encodeScreenshot(bitmap: Bitmap, source: Rect, bounds: Rect, screen: Screen, excluded: Rect? = null): String {
-    val ratio = minOf(1f, 1440f / maxOf(screen.width, screen.height))
-    val scaled = Bitmap.createBitmap((screen.width * ratio).toInt(), (screen.height * ratio).toInt(), Bitmap.Config.ARGB_8888)
+internal fun encodeScreenshot(bitmap: Bitmap, source: Rect, bounds: Rect, screen: Screen, excluded: Rect? = null,
+    companion: Boolean = false): String {
+    val ratio = minOf(1f, (if (companion) 1280f else 1440f) / maxOf(screen.width, screen.height))
+    var scaled = Bitmap.createBitmap((screen.width * ratio).toInt().coerceAtLeast(1),
+        (screen.height * ratio).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
     try {
         val canvas = Canvas(scaled)
         canvas.drawColor(Color.BLACK)
         canvas.scale(ratio, ratio)
         excluded?.let { canvas.clipOutRect(it) }
         canvas.drawBitmap(bitmap, source, bounds, null)
-        return ByteArrayOutputStream().use { output ->
-            if (!scaled.compress(Bitmap.CompressFormat.JPEG, 75, output)) throw PhoneUnavailableException("截图编码失败")
-            Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        ByteArrayOutputStream().use { output ->
+            while (true) {
+                for (quality in if (companion) listOf(75, 65, 55) else listOf(75)) {
+                    output.reset()
+                    if (!scaled.compress(Bitmap.CompressFormat.JPEG, quality, output)) throw PhoneUnavailableException("截图编码失败")
+                    if (!companion || output.size() <= 200 * 1024)
+                        return Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+                }
+                if (scaled.width == 1 && scaled.height == 1) throw PhoneUnavailableException("截图超过大小限制")
+                val smaller = Bitmap.createScaledBitmap(scaled, (scaled.width * .8f).toInt().coerceAtLeast(1),
+                    (scaled.height * .8f).toInt().coerceAtLeast(1), true)
+                scaled.recycle()
+                scaled = smaller
+            }
         }
     } finally { scaled.recycle() }
 }
