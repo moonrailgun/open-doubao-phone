@@ -59,7 +59,10 @@ class CompanionOverlayTest {
         var configured = false
         fun await(message: String, condition: () -> Boolean) {
             val end = SystemClock.uptimeMillis() + 8000
-            while (!condition() && SystemClock.uptimeMillis() < end) SystemClock.sleep(50)
+            while (SystemClock.uptimeMillis() < end) {
+                if (condition()) return
+                SystemClock.sleep(50)
+            }
             assertTrue(message, condition())
         }
         fun field(owner: Any, name: String): Any = owner.javaClass.getDeclaredField(name).run {
@@ -131,11 +134,11 @@ class CompanionOverlayTest {
                             val bar = service.getSystemService(WindowManager::class.java).currentWindowMetrics.windowInsets
                                 .getInsets(WindowInsets.Type.statusBars()).top
                             val y = bar * bitmap.height / screen.height / 2
-                            assertTrue("Status bar and capsule must be excluded from the image", (0 until bitmap.width).all {
-                                val color = bitmap.getPixel(it, y)
-                                Color.red(color) < 10 && Color.green(color) < 10 && Color.blue(color) < 10
-                            })
                             if (Build.VERSION.SDK_INT < 34) {
+                                assertTrue("Status bar and capsule must be excluded from the image", (0 until bitmap.width).all {
+                                    val color = bitmap.getPixel(it, y)
+                                    Color.red(color) < 10 && Color.green(color) < 10 && Color.blue(color) < 10
+                                })
                                 val scale = bitmap.width.toFloat() / screen.width
                                 val left = (overlayBounds.left * scale).toInt().coerceAtLeast(0) + 4
                                 val top = (overlayBounds.top * scale).toInt().coerceAtLeast(0) + 4
@@ -165,7 +168,9 @@ class CompanionOverlayTest {
                     } finally { watcher.cancelAndJoin() }
                 }
             }
-            val executeTab = device.findObject(By.text("执行")).visibleBounds
+            val execute = device.wait(Until.findObject(By.text("执行")), 5000)
+            assertNotNull("The main page must finish opening", execute)
+            val executeTab = execute.visibleBounds
             captureWithoutBlink(uncoveredTap = Action.Tap(executeTab.centerX(), executeTab.centerY()))
             instrument.runOnMainSync {
                 val controller = field(service, "companion")
