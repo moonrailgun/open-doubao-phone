@@ -21,7 +21,10 @@ class CompanionConfigTest {
 
     @Test fun oldSettingsDefaultToGeneralModelAndDedicatedSettingsRoundTrip() {
         val defaults = CompanionConfig.fromJson(null)
-        assertEquals(20, defaults.intervalSeconds)
+        assertEquals(10, defaults.intervalSeconds)
+        assertEquals(10, CompanionConfig.fromJson(JSONObject()).intervalSeconds)
+        assertEquals(20, CompanionConfig.fromJson(JSONObject().put("intervalSeconds", 20)).intervalSeconds)
+        for (seconds in 1..4) CompanionConfig(intervalSeconds = seconds).modelConfig(general)
         assertEquals("vision", defaults.modelConfig(general).chatModel)
         assertTrue(defaults.modelConfig(general).hasJev)
         assertTrue(defaults.modelConfig(general).jevVision)
@@ -44,7 +47,7 @@ class CompanionConfigTest {
     }
 
     @Test fun rejectsInvalidIntervalsAndIncompleteOrInsecureDedicatedModel() {
-        for (seconds in listOf(0, -1, 4, 301)) {
+        for (seconds in listOf(0, -1, 301)) {
             assertThrows(IllegalArgumentException::class.java) { CompanionConfig(intervalSeconds = seconds).modelConfig(general) }
         }
         for (config in listOf(CompanionConfig(useDedicatedModel = true),

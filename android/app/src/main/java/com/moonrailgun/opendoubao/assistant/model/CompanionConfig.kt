@@ -2,10 +2,10 @@ package com.moonrailgun.opendoubao.assistant.model
 
 import org.json.JSONObject
 
-data class CompanionConfig(val intervalSeconds: Int = 20, val useDedicatedModel: Boolean = false,
+data class CompanionConfig(val intervalSeconds: Int = 10, val useDedicatedModel: Boolean = false,
     val endpoint: String = "", val model: String = "", val key: String = "", val speechEnabled: Boolean = false) {
     fun modelConfig(general: ModelConfig): ModelConfig {
-        require(intervalSeconds in 5..300) { "陪伴请求间隔请填写 5–300 秒" }
+        require(intervalSeconds in 1..300) { "陪伴请求间隔请填写 1–300 秒" }
         return general.copy(jevKey = if (general.jevVision) general.jevKey else "",
             chatEndpoint = if (useDedicatedModel) endpoint else general.chatEndpoint,
             chatModel = if (useDedicatedModel) model else general.chatModel,
@@ -17,7 +17,7 @@ data class CompanionConfig(val intervalSeconds: Int = 20, val useDedicatedModel:
 
     companion object {
         fun fromJson(json: JSONObject?): CompanionConfig = if (json == null) CompanionConfig() else CompanionConfig(
-            json.optInt("intervalSeconds", 20), json.optBoolean("useDedicatedModel", false),
+            json.optInt("intervalSeconds", 10), json.optBoolean("useDedicatedModel", false),
             json.optString("endpoint"), json.optString("model"), json.optString("key"), json.optBoolean("speechEnabled", false))
     }
 }

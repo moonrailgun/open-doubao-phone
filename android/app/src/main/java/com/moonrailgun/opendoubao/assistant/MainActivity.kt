@@ -644,7 +644,7 @@ class MainActivity : ComponentActivity() {
     Section("陪伴节奏", "上一轮请求结束后，再等待这个间隔观察画面。画面没有明显变化时跳过评论，不重复打扰。") {
         OutlinedTextField(interval, { interval = it }, Modifier.fillMaxWidth(), label = { Text("请求间隔（秒）") },
             singleLine = true, shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            supportingText = { Text("默认 20 秒，可设为 5–300 秒。间隔越短，用量越大。") })
+            supportingText = { Text("默认 10 秒，可设为 1–300 秒。间隔越短，用量越大。") })
         Row(Modifier.fillMaxWidth().toggleable(config.speechEnabled, role = Role.Switch) {
             config = config.copy(speechEnabled = it)
         }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -673,7 +673,7 @@ class MainActivity : ComponentActivity() {
     }
     Button({
         try {
-            val next = config.copy(intervalSeconds = interval.trim().toIntOrNull() ?: error("请输入 5–300 秒的整数间隔"))
+            val next = config.copy(intervalSeconds = interval.trim().toIntOrNull() ?: error("请输入 1–300 秒的整数间隔"))
             next.modelConfig(vault.read().config)
             vault.update { it.copy(companion = next) }
             service?.stopCompanion()
