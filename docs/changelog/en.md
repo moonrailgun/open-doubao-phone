@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Website: Download the Android APK directly from the homepage.
 - Android and desktop: View cumulative model usage and estimated costs separately for task execution and companion mode, with a breakdown by model and provider address. Set input, output, and cached-input prices in CNY per million tokens; price changes recalculate accumulated usage. Calls without usage or prices are marked separately. Problems reading or saving statistics do not interrupt tasks or companion mode; unsaved usage is flagged because estimated totals may be too low. Statistics begin after upgrading and exclude speech recognition, speech synthesis, and connection tests.
 - Android: Keep the companion bubble in place while comments appear, disappear, or open for typing. Conversations expand above or below it without repeating its avatar, and the top capsule keeps its compact size. Drag the bubble to either edge even while the conversation is expanded. Long input leaves the Stop button visible above the keyboard.
 - Android: Drag and zoom a selected floating-bubble avatar in a circular preview before confirming the crop. Cancel to keep your current avatar. Crop adjustments survive screen rotation, and controls remain accessible in landscape with large text.
