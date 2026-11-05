@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Base64
+import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -105,9 +106,12 @@ class CompanionOverlayTest {
                         val root = field(service, "overlay") as View
                         val view = field(service, name) as View
                         assertTrue("$name must stay visible", view.isShown)
-                        val rootLocation = IntArray(2).also(root::getLocationOnScreen)
-                        settled = !root.isLayoutRequested && root.width == frame.width() && root.height == frame.height() &&
-                            rootLocation[0] == frame.left && rootLocation[1] == frame.top
+                        val params = field(service, "layout") as WindowManager.LayoutParams
+                        val expectedFrame = Rect()
+                        Gravity.apply(params.gravity, root.width, root.height,
+                            service.getSystemService(WindowManager::class.java).currentWindowMetrics.bounds,
+                            params.x, params.y, expectedFrame)
+                        settled = !root.isLayoutRequested && frame == expectedFrame
                         val location = IntArray(2).also(view::getLocationInWindow)
                         location[0] += frame.left
                         location[1] += frame.top
@@ -208,16 +212,21 @@ class CompanionOverlayTest {
             }
             assertNotNull(device.wait(Until.findObject(By.text("稍后重试")), 5000))
             assertAnchor(dockedAvatar)
-            val comment = "这波配合很漂亮，先照顾后排再找机会推进。".repeat(5) + "完整结尾。"
-            instrument.runOnMainSync {
-                val controller = field(service, "companion")
-                (field(controller, "mutable") as MutableStateFlow<CompanionState>).value =
-                    CompanionState(active = true, message = "陪伴中，等待下一次观察", comment = comment)
-                AssistantService::class.java.getDeclaredMethod("showCompanionComment", String::class.java).apply {
-                    isAccessible = true; invoke(service, comment)
+            val comment = "这波配合很漂亮，先照顾后排再找机会推进。".repeat(15) + "完整结尾。"
+            fun showComment(text: String) {
+                instrument.runOnMainSync {
+                    val controller = field(service, "companion")
+                    (field(controller, "mutable") as MutableStateFlow<CompanionState>).value =
+                        CompanionState(active = true, message = "陪伴中，等待下一次观察", comment = text)
+                    AssistantService::class.java.getDeclaredMethod("showCompanionComment", String::class.java).apply {
+                        isAccessible = true; invoke(service, text)
+                    }
                 }
+                assertNotNull(device.wait(Until.findObject(By.text(text)), 5000))
             }
-            assertNotNull(device.wait(Until.findObject(By.text(comment)), 5000))
+            showComment(comment)
+            assertAnchor(dockedAvatar)
+            assertTrue("Docked comments open below the capsule", bounds("taskPill").top > bounds("bubble").bottom)
             instrument.runOnMainSync {
                 val text = field(service, "taskStep") as TextView
                 assertTrue("Comment must wrap", text.lineCount > 1)
@@ -230,17 +239,136 @@ class CompanionOverlayTest {
             device.findObject(By.desc("Open Doubao 陪伴中，点按查看评论、输入或停止")).click()
             val send = device.wait(Until.findObject(By.desc("发送")), 5000)
             assertNotNull(send)
+            assertAnchor(dockedAvatar)
+            instrument.runOnMainSync {
+                assertFalse("A docked conversation must not repeat the avatar", (field(service, "statusIcon") as View).isShown)
+            }
             captureWithoutBlink(checkGesture = true)
             val input = send.parent.findObject(By.clazz("android.widget.EditText"))
             assertNotNull(input)
             input.click()
             input.text = "下一次请关注辅助的装备"
+            assertAnchor(dockedAvatar)
             screenshot("companion-input")
             device.findObject(By.desc("发送")).click()
             await("Input reaches companion even on an excluded page") { service.companionState.value.message.contains("已保留你的输入") }
             assertTrue(service.companionState.value.active)
             assertEquals("Input must not create an automation task", TaskStatus.IDLE, service.state.value.status)
             assertEquals(saved.records, vault.read().records)
+            assertAnchor(dockedAvatar)
+            showComment("短消息也保持原位")
+            assertAnchor(dockedAvatar)
+            assertTrue("Comments still dismiss automatically", device.wait(Until.gone(By.text("短消息也保持原位")), 7000))
+            assertAnchor(dockedAvatar)
+
+            for ((name, x, y) in listOf(
+                Triple("lower-left", 40, device.displayHeight * 3 / 4),
+                Triple("upper-left", 40, device.displayHeight / 4),
+                Triple("docked-left", 40, 20),
+                // Rotate last: UiAutomator can retain gesture coordinates from the previous orientation.
+                Triple("lower-right", device.displayWidth - 40, device.displayHeight * 3 / 4),
+            )) {
+                val beforeDrag = bounds("bubbleAvatar")
+                device.drag(beforeDrag.centerX(), beforeDrag.centerY(), x, y, 30)
+                device.waitForIdle(1000)
+                val anchor = bounds("bubbleAvatar")
+                assertEquals("$name must reach the requested screen edge", x > device.displayWidth / 2,
+                    anchor.centerX() > device.displayWidth / 2)
+                assertEquals("$name must reach the requested screen half", y > device.displayHeight / 2,
+                    anchor.centerY() > device.displayHeight / 2)
+                showComment(comment)
+                assertAnchor(anchor)
+                val dialogue = bounds("taskPill")
+                assertTrue("Comment must not cover the ball", !Rect.intersects(anchor, dialogue))
+                assertTrue("Comment stays on screen", dialogue.top >= 0 && dialogue.bottom <= device.displayHeight)
+                val trigger = device.findObject(By.desc("Open Doubao 陪伴中，点按查看评论、输入或停止"))
+                val triggerBounds = trigger.visibleBounds
+                trigger.click()
+                val sendAtAnchor = device.wait(Until.findObject(By.desc("发送")), 5000)
+                assertNotNull("$name click=$triggerBounds, ball=${bounds("bubbleAvatar")}, chip=${bounds("bubble")}, expanded=${field(service, "expanded")}", sendAtAnchor)
+                if (name == "lower-right") {
+                    for (targetX in listOf(40, device.displayWidth - 40)) {
+                        val before = bounds("bubbleAvatar")
+                        device.drag(before.centerX(), before.centerY(), targetX, before.centerY(), 30)
+                        device.waitForIdle(1000)
+                        val moved = bounds("bubbleAvatar")
+                        assertEquals("An expanded conversation must allow dragging to either edge",
+                            targetX > device.displayWidth / 2, moved.centerX() > device.displayWidth / 2)
+                        assertEquals("Horizontal dragging must keep the avatar's height", anchor.top, moved.top)
+                        val movedPanel = bounds("panel")
+                        assertTrue("The expanded conversation stays on screen after dragging",
+                            movedPanel.left >= 0 && movedPanel.right <= device.displayWidth)
+                    }
+                }
+                val editor = sendAtAnchor.parent
+                    .findObject(By.clazz("android.widget.EditText"))
+                assertAnchor(anchor)
+                editor.click()
+                editor.text = "位置检查"
+                assertAnchor(anchor)
+                val keyboardPackage = Settings.Secure.getString(resolver, Settings.Secure.DEFAULT_INPUT_METHOD).substringBefore('/')
+                val keyboard = device.wait(Until.findObject(By.pkg(keyboardPackage)), 5000)
+                assertNotNull("Typing must show the keyboard", keyboard)
+                val panelBounds = bounds("panel")
+                val screenMetrics = service.getSystemService(WindowManager::class.java).currentWindowMetrics
+                val keyboardTop = screenMetrics.bounds.height() - screenMetrics.windowInsets.getInsets(WindowInsets.Type.ime()).bottom
+                assertTrue("Input controls must stay above the keyboard", bounds("inputRow").bottom <= keyboardTop)
+                assertTrue("The whole panel must stay above the keyboard: $panelBounds, keyboardTop=$keyboardTop",
+                    panelBounds.bottom <= keyboardTop)
+                val shortInputHeight = bounds("inputRow").height()
+                val shortCommentHeight = bounds("statusText").height()
+                editor.text = "请详细分析双方现在的阵容和装备，并告诉我接下来应该优先保护谁以及怎样安排推进顺序。".repeat(5)
+                assertAnchor(anchor)
+                instrument.runOnMainSync {
+                    val text = field(service, "input") as TextView
+                    assertTrue("Long input must reach the four-line limit", text.lineCount >= 4)
+                }
+                assertTrue("Multiline input must grow", bounds("inputRow").height() > shortInputHeight)
+                val multilinePanel = bounds("panel")
+                assertTrue("Multiline input must keep the panel above the keyboard: $multilinePanel, keyboardTop=$keyboardTop",
+                    multilinePanel.top >= 0 && multilinePanel.bottom <= keyboardTop)
+                assertTrue("Stop must stay fully visible", bounds("stopButton").bottom <= keyboardTop)
+                screenshot("companion-$name")
+                editor.text = "位置检查"
+                assertAnchor(anchor)
+                assertEquals("Shortening the input restores its height", shortInputHeight, bounds("inputRow").height())
+                assertEquals("Shortening the input restores room for comments", shortCommentHeight, bounds("statusText").height())
+                instrument.runOnMainSync { (field(service, "input") as android.widget.EditText).text.clear() }
+                device.pressBack()
+                assertTrue(device.wait(Until.gone(By.pkg(keyboardPackage)), 5000))
+                device.findObject(By.desc("Open Doubao 陪伴中，点按查看评论、输入或停止")).click()
+                assertAnchor(anchor)
+                assertTrue(device.wait(Until.gone(By.text(comment)), 7000))
+                assertAnchor(anchor)
+                if (name == "lower-right") {
+                    try {
+                        device.setOrientationLeft()
+                        await("Rotation keeps the anchor on screen") {
+                            val rotated = bounds("bubbleAvatar")
+                            device.displayWidth > device.displayHeight && rotated.top >= 0 && rotated.bottom <= device.displayHeight &&
+                                rotated.top == field(service, "companionAnchorY") as Int
+                        }
+                        val landscapeAnchor = bounds("bubbleAvatar")
+                        screenshot("companion-rotation")
+                        showComment(comment)
+                        assertAnchor(landscapeAnchor)
+                        val landscapeComment = bounds("taskPill")
+                        assertTrue("Landscape comments stay on screen", landscapeComment.top >= 0 && landscapeComment.bottom <= device.displayHeight)
+                        assertTrue("Landscape comments stay beside the ball",
+                            landscapeAnchor.top - landscapeComment.bottom in 0..(8 * context.resources.displayMetrics.density).toInt())
+                        screenshot("companion-landscape")
+                        assertTrue(device.wait(Until.gone(By.text(comment)), 7000))
+                        assertAnchor(landscapeAnchor)
+                    } finally {
+                        device.setOrientationNatural()
+                        device.unfreezeRotation()
+                        device.waitForIdle(1000)
+                    }
+                }
+            }
+        } catch (failure: Throwable) {
+            screenshot("companion-failure")
+            throw failure
         } finally {
             try {
                 if (configured) {

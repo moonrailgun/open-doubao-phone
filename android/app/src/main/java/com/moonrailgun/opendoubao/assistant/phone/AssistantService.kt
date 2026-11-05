@@ -140,6 +140,8 @@ class AssistantService : AccessibilityService() {
     private var companionDockLabel: TextView? = null
     private var topDocked = false
     private var compactBubble = false
+    private var companionAnchorY: Int? = null
+    private var keyboardBottom = 0
     private var bubbleRing: BubbleRing? = null
     private var taskPill: View? = null
     private var taskGoal: TextView? = null
@@ -606,6 +608,12 @@ class AssistantService : AccessibilityService() {
                 return true
             }
         }.apply { setPadding(dp(8), dp(8), dp(8), dp(8)); visibility = View.GONE }
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            // This small window receives only its overlap; positioning needs the full screen inset.
+            val bottom = windows.currentWindowMetrics.windowInsets.getInsets(WindowInsets.Type.ime()).bottom
+            if (keyboardBottom != bottom) { keyboardBottom = bottom; applyOverlay() }
+            insets
+        }
         val ball = ImageView(this).apply {
             setImageResource(R.drawable.app_logo)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.WHITE) }
@@ -654,12 +662,11 @@ class AssistantService : AccessibilityService() {
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             addView(ball, LinearLayout.LayoutParams(dp(48), dp(48)))
             addView(companionDockLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            addView(taskPill, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(48)).apply { marginStart = dp(6) })
-            setOnClickListener { expanded = true; applyOverlay() }
+            setOnClickListener { expanded = !companionState.value.active || !expanded; typing = false; applyOverlay() }
         }
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         var onRight = true
-        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var dragging = false
+        var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var startCenterX = 0; var startAnchorY = 0; var dragging = false
         val drag = View.OnTouchListener { view, event ->
             val screen = windows.currentWindowMetrics.bounds
             when (event.actionMasked) {
@@ -669,34 +676,38 @@ class AssistantService : AccessibilityService() {
                     else if (expanded && !typing) collapse()
                     return@OnTouchListener false
                 }
-                MotionEvent.ACTION_DOWN -> { downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y; dragging = false }
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX; downY = event.rawY; startX = params.x; startY = params.y; dragging = false
+                    val location = IntArray(2).also(ball::getLocationOnScreen)
+                    startCenterX = location[0] + ball.width / 2
+                    startAnchorY = location[1]
+                }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - downX; val dy = event.rawY - downY
                     if (!dragging && dx * dx + dy * dy > slop * slop) dragging = true
                     if (dragging) {
-                        if (topDocked) {
+                        if (companionState.value.active) {
                             topDocked = false
-                            if (compactBubble) {
-                                startX = 0
-                                startY = -windows.currentWindowMetrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top
-                            }
-                            applyOverlay()
+                            val bars = windows.currentWindowMetrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+                            companionAnchorY = (startAnchorY + dy.toInt()).coerceIn(bars.top + dp(8), screen.height() - bars.bottom - dp(56))
                         }
                         // With END gravity x counts from the right edge, so moving right shrinks it.
                         params.x = (startX + (if (onRight) -dx else dx).toInt()).coerceIn(0, (screen.width() - root.width).coerceAtLeast(0))
-                        params.y = (startY + dy.toInt()).coerceIn(0, (screen.height() - root.height).coerceAtLeast(0))
+                        if (companionState.value.active) applyOverlay()
+                        else params.y = (startY + dy.toInt()).coerceIn(0, (screen.height() - root.height).coerceAtLeast(0))
                         windows.updateViewLayout(root, params)
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> when {
-                    dragging && view === chip -> {
-                        // Snap to the nearer edge; the gravity follows so the panel always opens toward the screen.
-                        val center = if (onRight) screen.width() - params.x - root.width / 2 else params.x + root.width / 2
+                    dragging && (view === chip || view === taskPill) -> {
+                        // Use the intended ball position; the wider dialogue can clamp the window before it crosses the screen.
+                        val center = startCenterX + event.rawX - downX
                         onRight = center > screen.width() / 2
                         params.gravity = Gravity.TOP or if (onRight) Gravity.END else Gravity.START
                         chip.layoutDirection = if (onRight) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
                         params.x = 0
-                        topDocked = companionState.value.active && params.y <= dp(16) && currentBubbleDock() != null
+                        val bar = windows.currentWindowMetrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top
+                        topDocked = companionState.value.active && (companionAnchorY ?: 0) <= bar + dp(24) && currentBubbleDock() != null
                         applyOverlay()
                         windows.updateViewLayout(root, params)
                     }
@@ -706,8 +717,11 @@ class AssistantService : AccessibilityService() {
             true
         }
         chip.setOnTouchListener(drag)
+        taskPill?.setOnTouchListener(drag)
+        taskPill?.setOnClickListener { chip.performClick() }
         root.setOnTouchListener(drag)
         root.addView(chip, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        root.addView(taskPill, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, dp(48)))
 
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -837,6 +851,10 @@ class AssistantService : AccessibilityService() {
                     LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4) })
             })
             addView(status)
+            addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+                // Finish the current layout before resizing a window anchored at its bottom edge.
+                if (companionState.value.active && bottom - top != oldBottom - oldTop) post { applyOverlay() }
+            }
         }
         card.addView(inputRow)
         handOverButton = Button(this).apply {
@@ -1032,8 +1050,9 @@ class AssistantService : AccessibilityService() {
         // An empty, untouchable window still keeps running tasks lit after the user exits the bubble.
         root.visibility = if (locked || !active && !lit) View.GONE else View.VISIBLE
         val voice = listening != null
-        bubble?.visibility = if (!active || expanded || voice) View.GONE else View.VISIBLE
-        taskPill?.visibility = if (running || companionState.value.active && showingCompanionComment) View.VISIBLE else View.GONE
+        val companionMode = companionState.value.active
+        bubble?.visibility = if (!active || !companionMode && (expanded || voice)) View.GONE else View.VISIBLE
+        taskPill?.visibility = if (active && !expanded && !voice && (running || companionMode && showingCompanionComment)) View.VISIBLE else View.GONE
         panel?.visibility = if (active && expanded && !voice) View.VISIBLE else View.GONE
         voiceCard?.visibility = if (active && voice) View.VISIBLE else View.GONE
         stopButton?.visibility = if (running || paused || companionState.value.active) View.VISIBLE else View.GONE
@@ -1052,52 +1071,96 @@ class AssistantService : AccessibilityService() {
         // prompt is seen (the screen slept 11 s into one on 2026-10-16), then may sleep: a paused task survives screen off.
         val flags = if (lit) focusFlags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             else focusFlags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
-        val dock = if (topDocked && companionState.value.active) currentBubbleDock() else null
-        val compact = dock != null && !expanded && !voice && !showingCompanionComment
+        val windows = getSystemService(WindowManager::class.java)
+        val metrics = windows.currentWindowMetrics
+        val bars = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+        val dock = if (topDocked && companionMode) currentBubbleDock() else null
+        val compact = dock != null
         companionDockLabel?.visibility = if (compact) View.VISIBLE else View.GONE
         val density = resources.displayMetrics.density
-        val companionComment = companionState.value.active
-        taskStep?.apply {
-            if (isSingleLine == companionComment) {
-                isSingleLine = !companionComment
-                ellipsize = if (companionComment) null else TextUtils.TruncateAt.END
-                movementMethod = if (companionComment) ScrollingMovementMethod.getInstance() else null
-                setOnClickListener(if (companionComment) View.OnClickListener { bubble?.performClick() } else null)
-                isClickable = companionComment
+        fun dp(value: Int) = (value * density).toInt()
+        val size = dock?.size ?: dp(48)
+        val padding = if (compact) 0 else dp(8)
+        val right = (params.gravity and Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT
+        val horizontal = if (right) Gravity.RIGHT else Gravity.LEFT
+        val bottom = metrics.bounds.height() - maxOf(bars.bottom, keyboardBottom)
+        val anchorY = dock?.top ?: (companionAnchorY ?: (bars.top + params.y + padding))
+            .coerceIn(bars.top + padding, metrics.bounds.height() - bars.bottom - size - padding)
+        val above = companionMode && !compact && anchorY > (bars.top + bottom) / 2
+        val gap = if (companionMode) size + dp(6) + if (above) (anchorY - bottom).coerceAtLeast(0) else 0 else 0
+        val room = if (above) minOf(anchorY, bottom) - bars.top - dp(14) else bottom - anchorY - size - dp(14)
+        // The ball owns the anchor; only the sibling dialogue grows above or below it.
+        fun position(view: View?, offset: Int = 0, beside: Int = 0) {
+            if (view == null) return
+            view.layoutParams = (view.layoutParams as FrameLayout.LayoutParams).apply {
+                gravity = horizontal or if (above) Gravity.BOTTOM else Gravity.TOP
+                topMargin = if (above) 0 else offset
+                bottomMargin = if (above) offset else 0
+                leftMargin = if (right) 0 else beside
+                rightMargin = if (right) beside else 0
             }
-            if (companionComment) maxHeight = getSystemService(WindowManager::class.java).currentWindowMetrics.bounds.height() / 3
+        }
+        position(bubble)
+        position(taskPill, gap, if (companionMode) 0 else dp(54))
+        position(panel, gap)
+        position(voiceCard, gap)
+        statusIcon?.visibility = if (companionMode) View.GONE else View.VISIBLE
+        statusLabel?.setPadding(if (companionMode) 0 else dp(8), 0, 0, 0)
+        taskStep?.apply {
+            if (isSingleLine == companionMode) {
+                isSingleLine = !companionMode
+                ellipsize = if (companionMode) null else TextUtils.TruncateAt.END
+                movementMethod = if (companionMode) ScrollingMovementMethod.getInstance() else null
+                setOnClickListener(if (companionMode) View.OnClickListener { bubble?.performClick() } else null)
+                isClickable = companionMode
+            }
+            if (companionMode) maxHeight = minOf(metrics.bounds.height() / 3, (room - dp(50)).coerceAtLeast(dp(24)))
+        }
+        if (companionMode) {
+            // The fixed reserve includes one input line; wrapping and dictation status need extra room.
+            val inputGrowth = ((inputRow?.height ?: 0) - dp(44)).coerceAtLeast(0)
+            statusText?.maxHeight = minOf(metrics.bounds.height() / 3, (room - dp(170) - inputGrowth).coerceAtLeast(dp(24)))
         }
         taskPill?.apply {
-            val verticalPadding = if (companionComment) (10 * density).toInt() else 0
+            val verticalPadding = if (companionMode) (10 * density).toInt() else 0
             setPadding((16 * density).toInt(), verticalPadding, (16 * density).toInt(), verticalPadding)
-            layoutParams = layoutParams.apply { height = if (companionComment) LinearLayout.LayoutParams.WRAP_CONTENT else (48 * density).toInt() }
+            layoutParams = layoutParams.apply { height = if (companionMode) FrameLayout.LayoutParams.WRAP_CONTENT else dp(48) }
         }
         if (compact != compactBubble || topDocked) {
             bubble?.background = if (compact) GradientDrawable().apply {
                 setColor(Color.rgb(28, 28, 30)); cornerRadius = 24 * density
             } else null
-            val padding = if (compact) 0 else (8 * density).toInt()
             root.setPadding(padding, padding, padding, padding)
             bubbleAvatar?.let { avatar ->
-                val size = if (compact) dock!!.size else (48 * density).toInt()
                 avatar.layoutParams = avatar.layoutParams.apply { width = size; height = size }
             }
-            params.setFitInsetsTypes(if (compact) 0 else WindowInsets.Type.systemBars())
-            params.layoutInDisplayCutoutMode = if (compact) WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-                else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
-            val right = (params.gravity and Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT
             params.x = if (compact) {
-                if (right) getSystemService(WindowManager::class.java).currentWindowMetrics.bounds.width() - dock!!.left - dock.width else dock!!.left
+                if (right) metrics.bounds.width() - dock!!.left - dock.width else dock!!.left
             } else 0
-            params.y = if (compact) dock!!.top else 0
+            if (!companionMode) params.y = 0
             compactBubble = compact
-            getSystemService(WindowManager::class.java).updateViewLayout(root, params)
         }
+        if (companionMode) {
+            companionAnchorY = anchorY
+            params.gravity = horizontal or if (above) Gravity.BOTTOM else Gravity.TOP
+            params.y = if (above) metrics.bounds.height() - anchorY - size - padding else anchorY - padding
+            if (!compact) params.x = maxOf(params.x, if (right) bars.right else bars.left)
+        } else if (companionAnchorY != null) {
+            params.gravity = horizontal or Gravity.TOP
+            params.y = (anchorY - bars.top - padding).coerceAtLeast(0)
+            companionAnchorY = null
+        }
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
+            if (companionMode) WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING else WindowManager.LayoutParams.SOFT_INPUT_ADJUST_UNSPECIFIED
+        // Companion positions use screen coordinates; keep system-bar fitting from shifting the anchor.
+        params.setFitInsetsTypes(if (companionMode) 0 else WindowInsets.Type.systemBars())
+        params.layoutInDisplayCutoutMode = if (companionMode) WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
         if (flags != params.flags) {
             if (!focusable) input?.let { getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(it.windowToken, 0) }
             params.flags = flags
-            getSystemService(WindowManager::class.java).updateViewLayout(root, params)
         }
+        windows.updateViewLayout(root, params)
     }
 
     private fun currentBubbleDock(): BubbleDock? {
