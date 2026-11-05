@@ -33,10 +33,11 @@ object JevVisionProtocol {
     }
 
     fun request(model: String, state: JSONObject, questions: JSONObject, image: String, native: Boolean,
-        previousImage: String? = null): JSONObject {
-        val images = linkedMapOf("screenshot" to image)
-        if (previousImage != null) images["previous_screenshot"] = previousImage
-        require(images.values.all { it.isNotBlank() }) { "Jev 多模态需要截图" }
+        previousImage: String? = null): JSONObject = request(model, state, questions,
+        linkedMapOf("screenshot" to image).apply { if (previousImage != null) put("previous_screenshot", previousImage) }, native)
+
+    fun request(model: String, state: JSONObject, questions: JSONObject, images: Map<String, String>, native: Boolean): JSONObject {
+        require(images.isNotEmpty() && images.values.all { it.isNotBlank() }) { "Jev 多模态需要截图" }
         val body = JSONObject().put("model", model).put("state", JSONObject(state.toString())).put("questions", questions)
         val input = body.getJSONObject("state")
         if (native) {

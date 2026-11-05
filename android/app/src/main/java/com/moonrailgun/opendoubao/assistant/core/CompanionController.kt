@@ -4,120 +4,215 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.math.abs
+import java.util.concurrent.atomic.AtomicLong
 
 data class CompanionState(val active: Boolean = false, val message: String = "", val comment: String = "",
     val retrying: Boolean = false)
 
 data class CompanionContext(val recentComments: List<String> = emptyList(),
-    val userMessages: List<String> = emptyList(), val manual: Boolean = false)
+    val userMessages: List<String> = emptyList(), val manual: Boolean = false, val summary: String = "")
+
+data class CompanionReply(val summary: String, val comment: String)
 
 internal fun companionScreenAllowed(screen: Screen, ownPackage: String, excluded: Set<String>): Boolean =
     screen.packageName != ownPackage && screen.packageName !in excluded && !screen.protected
 
 internal suspend fun captureCompanion(phone: Phone, ownPackage: String, excluded: Set<String>,
-    pixels: suspend (String) -> IntArray): CompanionFrame? {
+    screenshot: suspend (Screen) -> String = phone::screenshot): CompanionFrame? {
     val screen = phone.observe()
     if (!companionScreenAllowed(screen, ownPackage, excluded)) return null
-    // Games and videos may update text mid-capture; still require the same app, window and safe geometry.
-    val image = withContext(ScreenChangeOverride(true)) { phone.screenshot(screen) }
-    return CompanionFrame(screen.packageName, screen.width, screen.height, screen.rotation, image, pixels(image))
+    // Dynamic text is allowed; the screenshot provider still checks the app, window and geometry.
+    val image = withContext(ScreenChangeOverride(true)) { screenshot(screen) }
+    return CompanionFrame(screen.packageName, screen.width, screen.height, screen.rotation, image,
+        windowId = screen.windowId, windowBounds = screen.windowBounds)
 }
 
 data class CompanionFrame(val packageName: String, val width: Int, val height: Int, val rotation: Int,
-    val image: String, val pixels: IntArray) {
-    fun similarTo(other: CompanionFrame): Boolean {
-        if (packageName != other.packageName || width != other.width || height != other.height || rotation != other.rotation ||
-            pixels.isEmpty() || pixels.size != other.pixels.size) return false
-        // A coarse color grid ignores compression noise and tiny animations; compare to the last sent frame so changes accumulate.
-        val changed = pixels.indices.count { i ->
-            val a = pixels[i]; val b = other.pixels[i]
-            (abs((a shr 16 and 255) - (b shr 16 and 255)) + abs((a shr 8 and 255) - (b shr 8 and 255)) +
-                abs((a and 255) - (b and 255))) / 3 > 24
-        }
-        return changed <= pixels.size * 0.08
-    }
+    val image: String, val capturedAtMillis: Long = 0, val windowId: Int = -1, val windowBounds: Bounds? = null) {
+    fun sameScene(other: CompanionFrame): Boolean = packageName == other.packageName && width == other.width &&
+        height == other.height && rotation == other.rotation && windowId == other.windowId && windowBounds == other.windowBounds
 }
 
-/** Manual inputs and timed observations share one cancellable request loop. */
+/** Sampling continues during inference; automatic opportunities are dropped while the request loop is busy. */
 class CompanionController(private val scope: CoroutineScope, private val capture: suspend () -> CompanionFrame?,
-    private val speak: (String) -> Unit = {}) {
+    private val speak: (String) -> Unit = {}, private val now: () -> Long = { System.nanoTime() / 1_000_000 }) {
     private val mutable = MutableStateFlow(CompanionState())
     val state = mutable.asStateFlow()
     private var job: Job? = null
     private var inputs: Channel<String>? = null
     private val sessions = Mutex()
+    private val sceneVersion = AtomicLong()
+    private val observationVersion = AtomicLong()
+    @Volatile private var samplingPaused = false
 
-    fun start(intervalMillis: Long, unchanged: (suspend (CompanionFrame, CompanionFrame) -> Boolean)? = null,
-        comment: suspend (CompanionFrame, CompanionContext) -> String?) {
-        require(intervalMillis > 0)
+    fun invalidateScene() { sceneVersion.incrementAndGet(); invalidateFrames() }
+
+    fun invalidateFrames() { observationVersion.incrementAndGet() }
+
+    fun setSamplingPaused(paused: Boolean) {
+        if (samplingPaused == paused) return
+        samplingPaused = paused
+        invalidateFrames()
+    }
+
+    fun start(intervalMillis: Long, unchanged: (suspend (CompanionFrame, List<CompanionFrame>) -> Boolean)? = null,
+        comment: suspend (List<CompanionFrame>, CompanionContext) -> CompanionReply?) {
+        require(intervalMillis in 1_000..300_000)
         if (mutable.value.active) return
         val requests = Channel<String>(Channel.UNLIMITED)
         inputs = requests
         mutable.value = CompanionState(active = true, message = "切到游戏或视频，开始陪伴")
-        job = scope.launch { sessions.withLock {
-            var previous: CompanionFrame? = null
+        job = scope.launch { sessions.withLock { coroutineScope {
+            val started = now()
+            fun elapsed() = now() - started
+            val frameCount = minOf(5, (intervalMillis / 1000).toInt())
+            val captures = Mutex()
+            val frames = ArrayDeque<CompanionFrame>()
             val recent = ArrayDeque<String>()
             val userMessages = ArrayDeque<String>()
+            var previous: CompanionFrame? = null
+            var summary = ""
+            var scene = sceneVersion.get()
+            var generation = observationVersion.get()
+            var captureFailed = false
             var pending: String? = null
-            while (isActive) {
-                var captured = false
+            var waitingForResume = false
+            val observations = Channel<Unit>(Channel.RENDEZVOUS)
+
+            fun clearVisualContext() {
+                frames.clear(); previous = null; summary = ""; recent.clear()
+                scene = sceneVersion.get()
+                generation = observationVersion.incrementAndGet()
+            }
+            fun refreshScene() {
+                if (scene != sceneVersion.get()) clearVisualContext()
+                else if (generation != observationVersion.get()) {
+                    frames.clear()
+                    generation = observationVersion.get()
+                }
+            }
+            suspend fun sample() = captures.withLock {
+                refreshScene()
+                if (samplingPaused) return@withLock
+                val version = generation
                 try {
-                    val frame = capture()
+                    val captured = capture()
+                    val at = elapsed()
+                    val frame = captured?.copy(capturedAtMillis = at)
                     ensureActive()
-                    captured = true
-                    mutable.value = mutable.value.copy(retrying = false)
-                    val baseline = previous
-                    val similar = pending == null && frame != null && baseline != null &&
-                        if (unchanged == null) baseline.similarTo(frame) else {
-                            // Let the model judge localized changes that the coarse color grid can miss.
-                            (baseline.image == frame.image && baseline.packageName == frame.packageName &&
-                                baseline.width == frame.width && baseline.height == frame.height && baseline.rotation == frame.rotation) ||
-                                unchanged(baseline, frame)
-                        }
+                    if (version != observationVersion.get()) {
+                        refreshScene()
+                        return@withLock
+                    }
+                    val last = frames.lastOrNull() ?: previous
+                    if (frame == null || last != null && !last.sameScene(frame))
+                        clearVisualContext()
+                    if (frame != null) {
+                        // A manual refresh replaces this second's sample instead of padding the batch.
+                        if (frames.lastOrNull()?.capturedAtMillis?.div(1000) == at / 1000) frames.removeLast()
+                        frames.addLast(frame)
+                        while (frames.size > 5) frames.removeFirst()
+                        if (waitingForResume) observations.trySend(Unit)
+                    }
+                    if (captureFailed) mutable.value = mutable.value.copy(retrying = false, message = "陪伴中，等待下一次观察")
+                    captureFailed = false
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) {
                     ensureActive()
-                    when {
-                        frame == null -> mutable.value = mutable.value.copy(message = if (pending == null)
-                            "当前页面暂不评论，安静陪伴中" else "已保留你的输入，等回到可查看的页面再回复")
-                        similar -> mutable.value = mutable.value.copy(message = "画面变化不大，安静陪伴中")
-                        else -> {
-                            mutable.value = mutable.value.copy(message = "正在看看画面…")
-                            val manual = pending != null
-                            val reply = comment(frame, CompanionContext(recent.toList(), userMessages.toList(), manual))
-                            ensureActive()
-                            // Null discards a stale observation; an empty reply is the model choosing silence.
-                            if (reply != null) {
-                                previous = if (unchanged != null) frame else frame.copy(image = "")
-                                pending = null
-                            }
-                            mutable.value = mutable.value.copy(message = if (pending == null) "陪伴中，等待下一次观察"
-                                else "画面已变化，已保留你的输入，稍后再试")
-                            if (!reply.isNullOrBlank() && (manual || reply !in recent)) {
-                                recent.addLast(reply)
+                    if (version != observationVersion.get()) {
+                        refreshScene()
+                        return@withLock
+                    }
+                    clearVisualContext()
+                    captureFailed = true
+                    mutable.value = mutable.value.copy(retrying = true,
+                        message = "暂时无法查看画面，稍后重试；请收起键盘或其他浮层，并保持手机解锁")
+                }
+            }
+            fun valid(version: Long): Boolean = !samplingPaused && generation == version && observationVersion.get() == version && frames.lastOrNull()?.let {
+                elapsed() - it.capturedAtMillis <= 2000
+            } == true
+
+            launch {
+                var nextObservation = intervalMillis
+                while (isActive) {
+                    sample()
+                    val at = elapsed()
+                    if (at >= nextObservation) {
+                        observations.trySend(Unit)
+                        nextObservation = (at / intervalMillis + 1) * intervalMillis
+                    }
+                    delay(1000 - elapsed() % 1000)
+                }
+            }
+
+            while (isActive) {
+                val input = select<String?> {
+                    requests.onReceive { it }
+                    observations.onReceive { null }
+                }
+                if (input != null) {
+                    pending = input
+                    userMessages.addLast(input)
+                    while (userMessages.size > 8) userMessages.removeFirst()
+                    sample()
+                }
+                data class Observation(val frames: List<CompanionFrame>, val baseline: CompanionFrame?,
+                    val generation: Long, val context: CompanionContext)
+                val observation = captures.withLock {
+                    refreshScene()
+                    val batch = frames.filter { elapsed() - it.capturedAtMillis <= 5000 }.takeLast(frameCount)
+                    waitingForResume = batch.isEmpty() && pending != null && samplingPaused
+                    Observation(batch,
+                        previous, generation, CompanionContext(recent.toList(), userMessages.toList(), pending != null, summary))
+                }
+                val batch = observation.frames
+                if (batch.isEmpty()) {
+                    if (!captureFailed) mutable.value = mutable.value.copy(message = if (pending == null)
+                        "当前页面暂不评论，安静陪伴中" else "已保留你的输入，等回到可查看的页面再回复")
+                    continue
+                }
+                try {
+                    val baseline = observation.baseline
+                    // Exact equality is conservative: small subtitles and scores must reach a semantic judge.
+                    val similar = pending == null && baseline != null &&
+                        (batch.all { baseline.sameScene(it) && baseline.image == it.image } || unchanged?.invoke(baseline, batch) == true)
+                    ensureActive()
+                    if (!captures.withLock { valid(observation.generation) }) continue
+                    if (similar) {
+                        mutable.value = mutable.value.copy(retrying = false, message = "画面变化不大，安静陪伴中")
+                        continue
+                    }
+                    mutable.value = mutable.value.copy(retrying = false, message = "正在看看画面…")
+                    val reply = comment(batch, observation.context)
+                    ensureActive()
+                    captures.withLock {
+                        if (reply == null || !valid(observation.generation)) {
+                            mutable.value = mutable.value.copy(message = "画面已变化，稍后再试；你的输入已保留")
+                        } else {
+                            previous = batch.last()
+                            summary = reply.summary
+                            pending = null
+                            mutable.value = mutable.value.copy(retrying = false, message = "陪伴中，等待下一次观察")
+                            if (reply.comment.isNotBlank() && (observation.context.manual || reply.comment !in recent)) {
+                                recent.addLast(reply.comment)
                                 while (recent.size > 3) recent.removeFirst()
-                                mutable.value = mutable.value.copy(comment = reply)
-                                speak(reply)
+                                mutable.value = mutable.value.copy(comment = reply.comment)
+                                speak(reply.comment)
                             }
                         }
                     }
                 } catch (e: CancellationException) { throw e }
                 catch (_: Exception) {
                     ensureActive()
-                    // Never echo server text: it may contain credentials or private screen content.
-                    mutable.value = mutable.value.copy(retrying = true, message = if (captured)
-                        "本轮未成功，稍后重试；可检查模型配置和网络"
-                        else "暂时无法查看画面，稍后重试；请收起键盘或其他浮层，并保持手机解锁")
-                }
-                val input = withTimeoutOrNull(intervalMillis) { requests.receive() }
-                if (input != null) {
-                    pending = input
-                    userMessages.addLast(input)
-                    while (userMessages.size > 8) userMessages.removeFirst()
+                    // Never echo provider errors containing credentials or private screen content.
+                    mutable.value = mutable.value.copy(retrying = true, message = "本轮未成功，稍后重试；可检查模型配置和网络")
                 }
             }
-        } }
+        } } }
     }
 
     fun submit(text: String): Boolean = text.trim().takeIf { it.isNotEmpty() && mutable.value.active }

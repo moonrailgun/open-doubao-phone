@@ -641,10 +641,10 @@ class MainActivity : ComponentActivity() {
 @Composable private fun CompanionControls(vault: Vault, service: AssistantService?, report: (String) -> Unit) {
     var config by remember { mutableStateOf(vault.read().companion) }
     var interval by remember { mutableStateOf(config.intervalSeconds.toString()) }
-    Section("陪伴节奏", "上一轮请求结束后，再等待这个间隔观察画面。画面没有明显变化时跳过评论，不重复打扰。") {
+    Section("陪伴节奏", "每秒采集一张画面，按设定间隔结合最近最多 5 张截图、近期对话和摘要进行观察。间隔不足 5 秒时，截图张数随之减少；上一轮还没结束时跳过本轮，变化不大时安静陪伴。") {
         OutlinedTextField(interval, { interval = it }, Modifier.fillMaxWidth(), label = { Text("请求间隔（秒）") },
             singleLine = true, shape = RoundedCornerShape(14.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            supportingText = { Text("默认 10 秒，可设为 1–300 秒。间隔越短，用量越大。") })
+            supportingText = { Text("默认 10 秒，可设为 1–300 秒。开始后等待一个间隔再自动观察，主动输入会立即请求。间隔越短，用量越大。") })
         Row(Modifier.fillMaxWidth().toggleable(config.speechEnabled, role = Role.Switch) {
             config = config.copy(speechEnabled = it)
         }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -662,13 +662,13 @@ class MainActivity : ComponentActivity() {
             Switch(config.useDedicatedModel, null)
         }
         if (config.useDedicatedModel) {
-            SettingField("完整接口地址", config.endpoint, "支持图片输入的 Chat Completions 接口，通常以 /v1/chat/completions 结尾") {
+            SettingField("完整接口地址", config.endpoint, "支持多张图片输入的 Chat Completions 接口，通常以 /v1/chat/completions 结尾") {
                 config = config.copy(endpoint = it.trim())
             }
             SettingField("模型", config.model) { config = config.copy(model = it.trim()) }
             KeyField("API Key", config.key) { config = config.copy(key = it.trim()) }
         }
-        Text("截图会发送给所选模型。开启「Jev 多模态（实验）」时，还会先将前后两张截图交给 Jev 判断；变化不大时跳过评论模型，判断失败时继续评论。截图和陪伴评论不保存到任务记录。被排除的应用、密码页面和本应用不参与陪伴。",
+        Text("截图会发送给所选模型。开启「Jev 多模态（实验）」时，还会先将本组截图和上次观察的画面交给 Jev 判断；变化不大时跳过评论模型，判断失败时继续评论。截图、摘要和陪伴评论不保存到任务记录。被排除的应用、密码页面和本应用不参与陪伴。",
             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Button({

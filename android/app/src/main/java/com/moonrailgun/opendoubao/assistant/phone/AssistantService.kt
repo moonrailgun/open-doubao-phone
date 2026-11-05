@@ -39,6 +39,7 @@ import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -112,12 +113,10 @@ class AssistantService : AccessibilityService() {
     private var cancelCompanionSpeech: (() -> Unit)? = null
     private var companionPreview: Job? = null
     private var showingCompanionComment = false
+    private var companionWindowId: Int? = null
     private val companion = CompanionController(scope, capture = {
         requireUnlockedScreen()
-        if (conversing || typing || listening != null) null
-        else captureCompanion(phone, packageName, Vault(this).read().excludedApps) { image ->
-            withContext(Dispatchers.Default) { companionPixels(image) }
-        }
+        captureCompanion(phone, packageName, Vault(this).read().excludedApps)
     }, speak = ::showCompanionComment)
     val companionState = companion.state
     private val remoteSnapshot = MutableStateFlow(RemoteSnapshot())
@@ -173,12 +172,15 @@ class AssistantService : AccessibilityService() {
     private var paused = false
     private var pausedAt = 0L
     private var conversing = false
+        set(value) { field = value; updateCompanionSampling() }
     private var expanded = false
     private var typing = false
+        set(value) { field = value; updateCompanionSampling() }
     private var voiceCard: View? = null
     private var voiceWave: VoiceWaveView? = null
     private var voiceCaption: TextView? = null
     private var listening: Listening? = null
+        set(value) { field = value; updateCompanionSampling() }
     private var caption = ""
     private var captionQueued = false
     private val typeCaption = Runnable { captionQueued = false; stepCaption() }
@@ -478,14 +480,16 @@ class AssistantService : AccessibilityService() {
         setBubbleActive(true)
         collapse()
         topDocked = true
-        companion.start(saved.companion.intervalSeconds * 1000L, unchanged = if (config.jevVision) { previous, current ->
-            if (!companionFrameAvailable(current)) true
+        companionWindowId = runCatching { pickWindow(windows)?.id }.getOrNull()
+        updateCompanionSampling()
+        companion.start(saved.companion.intervalSeconds * 1000L, unchanged = if (config.jevVision) { previous, frames ->
+            if (!companionFrameAvailable(frames.last())) true
             else if (previous.packageName in Vault(this).read().excludedApps) false
-            else models.companionUnchanged(previous, current)
-        } else null) { frame, context ->
-            if (!companionFrameAvailable(frame)) return@start null
-            val reply = models.companionComment(frame, context)
-            if (companionFrameAvailable(frame)) reply else null
+            else models.companionUnchanged(previous, frames)
+        } else null) { frames, context ->
+            if (!companionFrameAvailable(frames.last())) return@start null
+            val reply = models.companionComment(frames, context)
+            if (companionFrameAvailable(frames.last())) reply else null
         }
         applyOverlay()
     }
@@ -493,7 +497,9 @@ class AssistantService : AccessibilityService() {
     private suspend fun companionFrameAvailable(frame: CompanionFrame): Boolean {
         requireUnlockedScreen()
         val current = phone.observe()
-        return current.packageName == frame.packageName && !conversing && !typing && listening == null &&
+        return current.packageName == frame.packageName && current.windowId == frame.windowId &&
+            current.windowBounds == frame.windowBounds && current.width == frame.width && current.height == frame.height &&
+            current.rotation == frame.rotation && !conversing && !typing && listening == null &&
             companionScreenAllowed(current, packageName, Vault(this).read().excludedApps)
     }
 
@@ -525,6 +531,7 @@ class AssistantService : AccessibilityService() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        companion.invalidateFrames()
         applyOverlay()
     }
 
@@ -543,8 +550,30 @@ class AssistantService : AccessibilityService() {
             getSystemService(KeyguardManager::class.java).isKeyguardLocked)) { "请先点亮并解锁手机" }
     }
 
+    private fun updateCompanionSampling() {
+        companion.setSamplingPaused(conversing || typing || listening != null ||
+            windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD })
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.packageName?.toString() != packageName && ::phone.isInitialized) phone.lastEvent = SystemClock.uptimeMillis()
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED &&
+            event?.packageName?.toString() != packageName && ::phone.isInitialized) phone.lastEvent = SystemClock.uptimeMillis()
+        if (event == null || !companionState.value.active) return
+        val windowChanged = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED && event.windowChanges and (
+                AccessibilityEvent.WINDOWS_CHANGE_ADDED or AccessibilityEvent.WINDOWS_CHANGE_REMOVED or
+                AccessibilityEvent.WINDOWS_CHANGE_BOUNDS or AccessibilityEvent.WINDOWS_CHANGE_ACTIVE or
+                AccessibilityEvent.WINDOWS_CHANGE_FOCUSED) != 0
+        if (windowChanged) {
+            val currentWindowId = runCatching { pickWindow(windows)?.id }.getOrNull()
+            val overlayId = overlayWindowId
+            // A departure and return can both happen before the next screenshot.
+            if (currentWindowId != companionWindowId) {
+                companionWindowId = currentWindowId
+                companion.invalidateScene()
+            } else if (overlayId < 0 || event.windowId != overlayId) companion.invalidateFrames()
+            updateCompanionSampling()
+        }
     }
     override fun onInterrupt() { stopCompanion(); controller?.fail("无障碍服务被系统中断") }
     override fun onUnbind(intent: Intent?): Boolean { disconnected(); return super.onUnbind(intent) }
