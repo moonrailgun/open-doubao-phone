@@ -1,0 +1,708 @@
+{
+  "research_date": "2026-11-06",
+  "report_timezone": "Asia/Shanghai",
+  "scope": "Public attention, distribution and onboarding evidence; not active users or retention.",
+  "github": {
+    "dsh_go": {
+      "repository": {
+        "source_url": "https://api.github.com/repos/ccch1mneyyy/dsh-Go",
+        "fetched_at": "2026-11-05T16:48:27.957760+00:00",
+        "data": {
+          "full_name": "ccch1mneyyy/dsh-Go",
+          "html_url": "https://github.com/ccch1mneyyy/dsh-Go",
+          "created_at": "2026-10-25T08:09:52Z",
+          "stargazers_count": 11217,
+          "forks_count": 512,
+          "description": "dsh-go — DeepSeek Harness 装进口袋：手机本机运行，也能遥控你的电脑。",
+          "homepage": "",
+          "topics": [
+            "ai-agent",
+            "android",
+            "android-app",
+            "coding-agent",
+            "deepseek",
+            "deepseek-harness",
+            "dsh",
+            "dsh-plugin",
+            "dsh-tui",
+            "flutter",
+            "llm"
+          ]
+        }
+      },
+      "releases": {
+        "source_url": "https://api.github.com/repos/ccch1mneyyy/dsh-Go/releases?per_page=100",
+        "fetched_at": "2026-11-05T16:48:29.341045+00:00",
+        "release_count": 12,
+        "apk_asset_download_count_sum": 147194,
+        "releases": [
+          {
+            "tag": "v1.0.11",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.11",
+            "published_at": "2026-11-05T07:14:37Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.11-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.11/dsh-go-1.0.11-arm64.apk",
+                "download_count": 12654,
+                "size_bytes": 194097985
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.11/SHA256SUMS",
+                "download_count": 642,
+                "size_bytes": 90
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.11/update.json",
+                "download_count": 4054,
+                "size_bytes": 14345
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.10",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.10",
+            "published_at": "2026-11-03T19:01:06Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.10-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.10/dsh-go-1.0.10-arm64.apk",
+                "download_count": 40007,
+                "size_bytes": 192768115
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.10/SHA256SUMS",
+                "download_count": 1658,
+                "size_bytes": 90
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.10/update.json",
+                "download_count": 13874,
+                "size_bytes": 16867
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.9",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.9",
+            "published_at": "2026-11-02T07:55:56Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.9-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.9/dsh-go-1.0.9-arm64.apk",
+                "download_count": 35045,
+                "size_bytes": 206084141
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.9/SHA256SUMS",
+                "download_count": 1237,
+                "size_bytes": 89
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.9/update.json",
+                "download_count": 11759,
+                "size_bytes": 18138
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.8",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.8",
+            "published_at": "2026-11-01T11:24:24Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.8-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.8/dsh-go-1.0.8-arm64.apk",
+                "download_count": 16007,
+                "size_bytes": 205180162
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.8/SHA256SUMS",
+                "download_count": 622,
+                "size_bytes": 89
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.8/update.json",
+                "download_count": 5063,
+                "size_bytes": 14414
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.7",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.7",
+            "published_at": "2026-10-31T10:46:17Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.7-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.7/dsh-go-1.0.7-arm64.apk",
+                "download_count": 14659,
+                "size_bytes": 204987160
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.7/SHA256SUMS",
+                "download_count": 619,
+                "size_bytes": 89
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.7/update.json",
+                "download_count": 6051,
+                "size_bytes": 1969
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.6",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.6",
+            "published_at": "2026-10-31T09:07:32Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.6-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.6/dsh-go-1.0.6-arm64.apk",
+                "download_count": 1450,
+                "size_bytes": 204974915
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.6/SHA256SUMS",
+                "download_count": 65,
+                "size_bytes": 89
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.6/update.json",
+                "download_count": 46,
+                "size_bytes": 3650
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.5",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.5",
+            "published_at": "2026-10-31T07:11:50Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.5-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.5/dsh-go-1.0.5-arm64.apk",
+                "download_count": 1990,
+                "size_bytes": 204970558
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.5/SHA256SUMS",
+                "download_count": 87,
+                "size_bytes": 89
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.5/update.json",
+                "download_count": 54,
+                "size_bytes": 3653
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.4",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.4",
+            "published_at": "2026-10-30T20:20:50Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.4-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.4/dsh-go-1.0.4-arm64.apk",
+                "download_count": 9729,
+                "size_bytes": 204959893
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.4/SHA256SUMS",
+                "download_count": 329,
+                "size_bytes": 89
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.4/update.json",
+                "download_count": 141,
+                "size_bytes": 4200
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.3",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.3",
+            "published_at": "2026-10-30T18:04:38Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.3-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.3/dsh-go-1.0.3-arm64.apk",
+                "download_count": 510,
+                "size_bytes": 204943907
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.3/SHA256SUMS",
+                "download_count": 39,
+                "size_bytes": 176
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.3/update.json",
+                "download_count": 26,
+                "size_bytes": 5316
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.2",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.2",
+            "published_at": "2026-10-30T10:04:33Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.2-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.2/dsh-go-1.0.2-arm64.apk",
+                "download_count": 7923,
+                "size_bytes": 187470730
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.2/SHA256SUMS",
+                "download_count": 449,
+                "size_bytes": 176
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.2/update.json",
+                "download_count": 199,
+                "size_bytes": 3288
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.1",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.1",
+            "published_at": "2026-10-30T05:41:24Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.1-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.1/dsh-go-1.0.1-arm64.apk",
+                "download_count": 4387,
+                "size_bytes": 187466510
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.1/SHA256SUMS",
+                "download_count": 217,
+                "size_bytes": 176
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.1/update.json",
+                "download_count": 96,
+                "size_bytes": 3600
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.0",
+            "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/tag/v1.0.0",
+            "published_at": "2026-10-30T03:44:20Z",
+            "assets": [
+              {
+                "name": "dsh-go-1.0.0-arm64.apk",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.0/dsh-go-1.0.0-arm64.apk",
+                "download_count": 2833,
+                "size_bytes": 187411346
+              },
+              {
+                "name": "SHA256SUMS",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.0/SHA256SUMS",
+                "download_count": 125,
+                "size_bytes": 176
+              },
+              {
+                "name": "update.json",
+                "url": "https://github.com/ccch1mneyyy/dsh-Go/releases/download/v1.0.0/update.json",
+                "download_count": 65,
+                "size_bytes": 10854
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "open_doubao": {
+      "repository": {
+        "source_url": "https://api.github.com/repos/moonrailgun/open-doubao-phone",
+        "fetched_at": "2026-11-05T16:48:27.992375+00:00",
+        "data": {
+          "full_name": "moonrailgun/open-doubao-phone",
+          "html_url": "https://github.com/moonrailgun/open-doubao-phone",
+          "created_at": "2026-10-10T15:44:20Z",
+          "stargazers_count": 33,
+          "forks_count": 5,
+          "description": null,
+          "homepage": "https://open-doubao.vercel.app",
+          "topics": []
+        }
+      },
+      "releases": {
+        "source_url": "https://api.github.com/repos/moonrailgun/open-doubao-phone/releases?per_page=100",
+        "fetched_at": "2026-11-05T16:48:28.969757+00:00",
+        "release_count": 5,
+        "apk_asset_download_count_sum": 86,
+        "releases": [
+          {
+            "tag": "v1.3.0",
+            "url": "https://github.com/moonrailgun/open-doubao-phone/releases/tag/v1.3.0",
+            "published_at": "2026-11-03T17:04:49Z",
+            "assets": [
+              {
+                "name": "open-doubao-phone-1.3.0.apk",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.3.0/open-doubao-phone-1.3.0.apk",
+                "download_count": 5,
+                "size_bytes": 227727879
+              },
+              {
+                "name": "Open.Doubao_1.3.0_aarch64.dmg",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.3.0/Open.Doubao_1.3.0_aarch64.dmg",
+                "download_count": 0,
+                "size_bytes": 6687138
+              },
+              {
+                "name": "Open.Doubao_1.3.0_amd64.AppImage",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.3.0/Open.Doubao_1.3.0_amd64.AppImage",
+                "download_count": 0,
+                "size_bytes": 84220408
+              },
+              {
+                "name": "Open.Doubao_1.3.0_amd64.deb",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.3.0/Open.Doubao_1.3.0_amd64.deb",
+                "download_count": 0,
+                "size_bytes": 6126706
+              },
+              {
+                "name": "Open.Doubao_1.3.0_x64-setup.exe",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.3.0/Open.Doubao_1.3.0_x64-setup.exe",
+                "download_count": 0,
+                "size_bytes": 3271919
+              },
+              {
+                "name": "Open.Doubao_1.3.0_x64.dmg",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.3.0/Open.Doubao_1.3.0_x64.dmg",
+                "download_count": 0,
+                "size_bytes": 6981287
+              }
+            ]
+          },
+          {
+            "tag": "v1.2.0",
+            "url": "https://github.com/moonrailgun/open-doubao-phone/releases/tag/v1.2.0",
+            "published_at": "2026-11-02T17:00:22Z",
+            "assets": [
+              {
+                "name": "open-doubao-phone-1.2.0.apk",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.2.0/open-doubao-phone-1.2.0.apk",
+                "download_count": 7,
+                "size_bytes": 227711495
+              },
+              {
+                "name": "Open.Doubao_1.2.0_aarch64.dmg",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.2.0/Open.Doubao_1.2.0_aarch64.dmg",
+                "download_count": 1,
+                "size_bytes": 6687137
+              },
+              {
+                "name": "Open.Doubao_1.2.0_amd64.AppImage",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.2.0/Open.Doubao_1.2.0_amd64.AppImage",
+                "download_count": 1,
+                "size_bytes": 84220408
+              },
+              {
+                "name": "Open.Doubao_1.2.0_amd64.deb",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.2.0/Open.Doubao_1.2.0_amd64.deb",
+                "download_count": 1,
+                "size_bytes": 6126710
+              },
+              {
+                "name": "Open.Doubao_1.2.0_x64-setup.exe",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.2.0/Open.Doubao_1.2.0_x64-setup.exe",
+                "download_count": 1,
+                "size_bytes": 3273503
+              },
+              {
+                "name": "Open.Doubao_1.2.0_x64.dmg",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.2.0/Open.Doubao_1.2.0_x64.dmg",
+                "download_count": 1,
+                "size_bytes": 6981301
+              }
+            ]
+          },
+          {
+            "tag": "v1.1.0",
+            "url": "https://github.com/moonrailgun/open-doubao-phone/releases/tag/v1.1.0",
+            "published_at": "2026-10-30T18:55:27Z",
+            "assets": [
+              {
+                "name": "open-doubao-phone-1.1.0.apk",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.1.0/open-doubao-phone-1.1.0.apk",
+                "download_count": 8,
+                "size_bytes": 227612531
+              },
+              {
+                "name": "Open.Doubao_1.1.0_aarch64.dmg",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.1.0/Open.Doubao_1.1.0_aarch64.dmg",
+                "download_count": 2,
+                "size_bytes": 6671520
+              },
+              {
+                "name": "Open.Doubao_1.1.0_amd64.AppImage",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.1.0/Open.Doubao_1.1.0_amd64.AppImage",
+                "download_count": 1,
+                "size_bytes": 84216312
+              },
+              {
+                "name": "Open.Doubao_1.1.0_amd64.deb",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.1.0/Open.Doubao_1.1.0_amd64.deb",
+                "download_count": 1,
+                "size_bytes": 6112656
+              },
+              {
+                "name": "Open.Doubao_1.1.0_x64-setup.exe",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.1.0/Open.Doubao_1.1.0_x64-setup.exe",
+                "download_count": 2,
+                "size_bytes": 3263563
+              },
+              {
+                "name": "Open.Doubao_1.1.0_x64.dmg",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.1.0/Open.Doubao_1.1.0_x64.dmg",
+                "download_count": 2,
+                "size_bytes": 6952250
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.1",
+            "url": "https://github.com/moonrailgun/open-doubao-phone/releases/tag/v1.0.1",
+            "published_at": "2026-10-20T15:56:39Z",
+            "assets": [
+              {
+                "name": "open-doubao-phone-1.0.1.apk",
+                "url": "https://github.com/moonrailgun/open-doubao-phone/releases/download/v1.0.1/open-doubao-phone-1.0.1.apk",
+                "download_count": 66,
+                "size_bytes": 307977639
+              }
+            ]
+          },
+          {
+            "tag": "v1.0.0",
+            "url": "https://github.com/moonrailgun/open-doubao-phone/releases/tag/v1.0.0",
+            "published_at": "2026-10-20T15:05:35Z",
+            "assets": []
+          }
+        ]
+      }
+    },
+    "dsh_tui": {
+      "repository": {
+        "source_url": "https://api.github.com/repos/ccch1mneyyy/dsh-tui",
+        "fetched_at": "2026-11-05T16:48:27.744626+00:00",
+        "data": {
+          "full_name": "ccch1mneyyy/dsh-TUI",
+          "html_url": "https://github.com/ccch1mneyyy/dsh-TUI",
+          "created_at": "2026-08-13T12:49:31Z",
+          "stargazers_count": 6987,
+          "forks_count": 344,
+          "description": "DSH's officially top-recommended TUI plugin — high performance, low overhead, cute pixel whale, smooth mouse interaction. One-command install via npm. / DSH 官方首推的 TUI 插件，高性能低占用，可爱像素鲸鱼，流畅鼠标交互，npm 一键安装",
+          "homepage": "https://dshtui.com/",
+          "topics": [
+            "claude-code",
+            "coding-agent",
+            "deepseek",
+            "deepseek-harness",
+            "dsh-plugin",
+            "ink",
+            "react",
+            "terminal",
+            "tui"
+          ]
+        }
+      }
+    }
+  },
+  "trendshift": {
+    "source_url": "https://trendshift.io/repositories/319451",
+    "observed_on": "2026-11-06",
+    "date_timezone": "Not verified; dates retained as reported by Trendshift.",
+    "rows": [
+      {
+        "date": "2026-10-25",
+        "stars_gained": 16,
+        "all_language_rank": null
+      },
+      {
+        "date": "2026-10-26",
+        "stars_gained": 21,
+        "all_language_rank": null
+      },
+      {
+        "date": "2026-10-27",
+        "stars_gained": 23,
+        "all_language_rank": null
+      },
+      {
+        "date": "2026-10-28",
+        "stars_gained": 22,
+        "all_language_rank": null
+      },
+      {
+        "date": "2026-10-29",
+        "stars_gained": 37,
+        "all_language_rank": null
+      },
+      {
+        "date": "2026-10-30",
+        "stars_gained": 2288,
+        "all_language_rank": 1
+      },
+      {
+        "date": "2026-10-31",
+        "stars_gained": 1143,
+        "all_language_rank": 12
+      },
+      {
+        "date": "2026-11-01",
+        "stars_gained": 1024,
+        "all_language_rank": 21
+      },
+      {
+        "date": "2026-11-02",
+        "stars_gained": 1219,
+        "all_language_rank": 22
+      },
+      {
+        "date": "2026-11-03",
+        "stars_gained": 1583,
+        "all_language_rank": null
+      },
+      {
+        "date": "2026-11-04",
+        "stars_gained": 1996,
+        "all_language_rank": null
+      },
+      {
+        "date": "2026-11-05",
+        "stars_gained": 1693,
+        "all_language_rank": null
+      }
+    ],
+    "reported_period_total_stars_gained": 11065,
+    "null_rank_means": "Not listed on the daily Trendshift table; not a GitHub Trending rank."
+  },
+  "bilibili": {
+    "source_url": "https://search.bilibili.com/all?keyword=DSH%20Go",
+    "fetched_at": "2026-11-05T16:54:31.508226+00:00",
+    "method": "Video cards and embedded Nuxt payload from public search HTML. Video API returned HTTP 412; videos were not watched.",
+    "videos": [
+      {
+        "bvid": "BV1EUxw6BErr",
+        "url": "https://www.bilibili.com/video/BV1EUxw6BErr/",
+        "title": "DSH Go首发测评，让你手机变成豆包手机的开源软件来了？",
+        "author_name": "SnowSalt落雪余盐",
+        "play_count_in_search_payload": 45036,
+        "published_at_from_search_payload": "2026-10-30T11:21:26+08:00",
+        "duration": "20:53"
+      },
+      {
+        "bvid": "BV1XnxP6vEdX",
+        "url": "https://www.bilibili.com/video/BV1XnxP6vEdX/",
+        "title": "核弹爆炸！DSH-Go终于公测！DSH最好用的APP ？！（非官方）【B站AI创造公开赛】",
+        "author_name": "黑鸦Heya",
+        "play_count_in_search_payload": 206356,
+        "published_at_from_search_payload": "2026-10-30T12:00:00+08:00",
+        "duration": "0:55"
+      }
+    ]
+  },
+  "local_audit": {
+    "repository": "moonrailgun/open-doubao-phone",
+    "commit": "f55ee82a9d94caa17606e8314db40951673b4c5c",
+    "files": [
+      "README.md",
+      "docs/guide.md",
+      "website/index.html"
+    ],
+    "live_site": "https://open-doubao.moonrailgun.com/",
+    "live_site_fetched_at": "2026-11-05T16:54:31.865245+00:00"
+  },
+  "qualitative_sources": [
+    {
+      "url": "https://github.com/ccch1mneyyy/dsh-Go/blob/v1.0.0/README.md",
+      "type": "historical_primary_document",
+      "raw_source": {
+        "fetched_at": "2026-11-05T16:54:31.302935+00:00",
+        "url": "https://raw.githubusercontent.com/ccch1mneyyy/dsh-Go/v1.0.0/README.md",
+        "final_url": "https://raw.githubusercontent.com/ccch1mneyyy/dsh-Go/v1.0.0/README.md"
+      }
+    },
+    {
+      "url": "https://go.dshtui.com/download",
+      "type": "primary_download_page",
+      "fetched_at": "2026-11-05T16:54:31.208645+00:00"
+    },
+    {
+      "url": "https://www.zhidx.com/p/606021.html",
+      "type": "reported_hands_on_article",
+      "reported_date": "2026-10-30",
+      "limits": "One article; syndicated copies are not independent evidence. TUI endorsement is not Go endorsement."
+    },
+    {
+      "url": "https://linux.do/t/topic/3048127",
+      "type": "open_doubao_launch_and_comments",
+      "post_time_utc": "2026-10-20T02:55:00Z",
+      "download_question_time_utc": "2026-10-20T03:08:00Z",
+      "limits": "Comment timestamps are minute-resolution; no audience conversion counts."
+    },
+    {
+      "url": "https://www.v2ex.com/t/1249919",
+      "type": "open_doubao_launch",
+      "limits": "No comparable live traffic measurement."
+    },
+    {
+      "url": "https://linux.do/t/topic/3113510",
+      "type": "dsh_user_discussion",
+      "limits": "Anecdotes, not representative retention."
+    },
+    {
+      "url": "https://www.zhihu.com/question/2099981630773400745",
+      "type": "identified_topic",
+      "limits": "Original page unavailable; no verified engagement counts."
+    },
+    {
+      "url": "https://blog.lf.edu.kg/posts/2026-11-03-20261103-1951",
+      "type": "secondary_hotlist_archive",
+      "limits": "Evidence of topic indexing only, not readership."
+    },
+    {
+      "url": "https://shouyou.3dmgame.com/android/572753.html",
+      "type": "third_party_open_doubao_listing",
+      "limits": "Not used for download, rating or install counts."
+    }
+  ],
+  "limitations": [
+    "GitHub API endpoints were fetched within the same batch, not an atomic server snapshot.",
+    "Asset download counts include repeat downloads and updates, omit unobserved distribution channels, and are not unique installs.",
+    "Repository totals and Trendshift daily observations use different collection and counting boundaries.",
+    "Bilibili views are not unique people or installs; uploaders have not been verified as independent of project authors.",
+    "No private traffic analytics, DAU, retention, revenue, paid promotion records or controlled product comparison were accessed.",
+    "Causal explanations and experimental thresholds in the report and playbook are hypotheses, not measured effect sizes."
+  ]
+}
