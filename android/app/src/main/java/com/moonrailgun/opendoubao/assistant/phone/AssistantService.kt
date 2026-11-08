@@ -218,6 +218,11 @@ class AssistantService : AccessibilityService() {
                     log = it.log + logLine("服务重新连接时任务仍未结束：进程可能被系统回收、强制停止或崩溃"))
             }))
         }
+        connectRemote()
+        connection.value = this
+    }
+
+    private fun connectRemote() {
         runCatching {
             val vault = Vault(this)
             remote = RemoteReceiver(scope, vault.read().remote, { config -> vault.write(vault.read().copy(remote = config)) },
@@ -277,7 +282,6 @@ class AssistantService : AccessibilityService() {
                     }
                 }, remoteSnapshot, android.os.Build.MODEL)
         }.onFailure { remoteError = it.message ?: "远程接收初始化失败" }
-        connection.value = this
     }
 
     private fun recordCrash(error: Throwable) {
@@ -587,6 +591,10 @@ class AssistantService : AccessibilityService() {
         scope.cancel()
         if (connection.value === this) connection.value = null
         runCatching { unregisterReceiver(lockReceiver) }
+        removeOverlay()
+    }
+
+    private fun removeOverlay() {
         voiceInput?.destroy(); voiceInput = null
         moreMenu?.dismiss()
         overlay?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
