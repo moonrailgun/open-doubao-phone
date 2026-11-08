@@ -6,6 +6,7 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
+import com.moonrailgun.opendoubao.assistant.AppLifecycleService
 
 /** Shell-only Binder delivery; ordinary apps cannot register a privileged backend. */
 class DisplayBridgeProvider : ContentProvider() {
@@ -13,6 +14,7 @@ class DisplayBridgeProvider : ContentProvider() {
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
         check(Binder.getCallingUid() == 2000 || Binder.getCallingUid() == 0) { "ADB only" }
         check(method == "attach" && shellBackend(context!!) == BACKEND_ADB) { "请先在设置中选择 ADB + scrcpy" }
+        check(!AppLifecycleService.isExited(context!!)) { "应用已退出，请重新打开 Open Doubao" }
         val binder = requireNotNull(extras?.getBinder("bridge"))
         // Provider.call executes with the shell caller's identity; attach must identify the actual app.
         val identity = Binder.clearCallingIdentity()

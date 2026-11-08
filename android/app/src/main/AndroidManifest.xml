@@ -36,6 +36,7 @@
         <activity android:name=".remote.PairingCaptureActivity" android:exported="false"
             android:screenOrientation="portrait" android:theme="@style/zxing_CaptureTheme"
             android:windowSoftInputMode="stateAlwaysHidden" />
+        <service android:name=".AppLifecycleService" android:exported="false" />
         <service android:name=".phone.AssistantService" android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>

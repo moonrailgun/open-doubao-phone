@@ -148,7 +148,14 @@ private val Examples = listOf(
 
 class MainActivity : ComponentActivity() {
     private var refreshVersion by mutableIntStateOf(0)
-    override fun onResume() { super.onResume(); refreshVersion++ }
+    override fun onResume() { super.onResume(); AppLifecycleService.open(this); refreshVersion++ }
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isFinishing) {
+            val app = applicationContext
+            mainExecutor.execute { AppLifecycleService.exitIfClosed(app) }
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

@@ -74,6 +74,8 @@ class HttpTransport(private val client: OkHttpClient = sharedClient,
     private val secrets: List<String> = emptyList(), private val log: ((JSONObject) -> Unit)? = null,
     private val costs: ModelCosts? = null, private val costMode: String = "execution") {
     companion object {
+        fun cancelAll() { sharedClient.dispatcher.cancelAll(); sharedClient.connectionPool.evictAll() }
+
         /**
          * Opens a connection to each endpoint's server ahead of a task, with a bare HEAD that carries no key. The model
          * router sits in us-east-2: a fresh TLS handshake there took 0.5–1 s and pushed the first Jev call of a task past

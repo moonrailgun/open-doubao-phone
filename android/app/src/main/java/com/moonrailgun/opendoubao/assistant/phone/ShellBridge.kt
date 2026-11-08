@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import com.moonrailgun.opendoubao.assistant.AppLifecycleService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import rikka.shizuku.Shizuku
@@ -49,6 +50,7 @@ object ShellBridge {
     }
 
     @Synchronized fun connect(binder: IBinder, backend: String) {
+        check(!initialized || !AppLifecycleService.isExited(context)) { "应用已退出，请重新打开 Open Doubao" }
         check(remote == null) { "已有连接，请先断开旧连接" }
         val service = IShellDisplay.Stub.asInterface(binder)
         service.attach(owner)
@@ -77,7 +79,7 @@ object ShellBridge {
     }
 
     @Synchronized fun refresh(requestPermission: Boolean = false) {
-        if (!initialized || shellBackend(context) != BACKEND_SHIZUKU) return
+        if (!initialized || AppLifecycleService.isExited(context) || shellBackend(context) != BACKEND_SHIZUKU) return
         runCatching {
             check(Build.VERSION.SDK_INT >= 34) { "普通系统虚拟屏需要 Android 14 或更新版本" }
             check(Shizuku.pingBinder()) { "请先安装并启动 Shizuku，再返回这里授权" }

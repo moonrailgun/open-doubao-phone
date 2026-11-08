@@ -11,6 +11,7 @@ import android.media.MediaRecorder
 import android.os.*
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
+import com.moonrailgun.opendoubao.assistant.AppLifecycleService
 import com.moonrailgun.opendoubao.assistant.core.Diagnostics
 import com.moonrailgun.opendoubao.assistant.core.TaskStatus
 import com.moonrailgun.opendoubao.assistant.data.Vault
@@ -84,6 +85,14 @@ object VoiceRuntime {
         else { mutableError.value = ""; startWake() }
     }
 
+    fun exit(context: Context) {
+        interruptWake()
+        taskWatcher?.cancel(); taskWatcher = null
+        cancel()
+        mutableState.value = "空闲"
+        context.stopService(Intent(context, VoiceService::class.java))
+    }
+
     private fun interruptWake() {
         wakeEpoch++
         wakeJob?.cancel(); wakeJob = null
@@ -96,6 +105,7 @@ object VoiceRuntime {
         context.startForegroundService(Intent(context, VoiceService::class.java))
     }
     private fun begin(context: Context, type: Int, status: String): Long? {
+        if (AppLifecycleService.isExited(context)) return null
         val id = requests.begin() ?: return null
         active = id
         interruptWake()
@@ -132,6 +142,7 @@ object VoiceRuntime {
 
     private fun startWake() {
         val context = context ?: return
+        if (AppLifecycleService.isExited(context)) return
         if (!assistantReady || !mutableEnabled.value || active != null || wakeJob != null || !hasMic(context) ||
             !context.getSystemService(UserManager::class.java).isUserUnlocked) return
         val prefs = context.getSharedPreferences("voice", Context.MODE_PRIVATE)

@@ -53,6 +53,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.compose.ui.graphics.toArgb
 import com.moonrailgun.opendoubao.assistant.R
+import com.moonrailgun.opendoubao.assistant.AppLifecycleService
 import com.moonrailgun.opendoubao.assistant.core.*
 import com.moonrailgun.opendoubao.assistant.data.Record
 import com.moonrailgun.opendoubao.assistant.data.Vault
@@ -106,6 +107,8 @@ class AssistantService : AccessibilityService() {
         }
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val reflections = SupervisorJob(scope.coroutineContext[Job])
+    private var eventTypes = 0
     /** Task record saves, off the main thread; one at a time and in order, so an older save never lands last. */
     private val saves = Dispatchers.IO.limitedParallelism(1)
     private val mutable = MutableStateFlow(TaskState())
@@ -199,13 +202,15 @@ class AssistantService : AccessibilityService() {
     }
 
     override fun onServiceConnected() {
+        eventTypes = serviceInfo.eventTypes
         ShellBridge.initialize(this)
         phone = AndroidPhone(this)
         locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
         registerReceiver(lockReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
         })
-        createOverlay()
+        if (!AppLifecycleService.isExited(this)) createOverlay()
+        else serviceInfo = serviceInfo.apply { eventTypes = 0 }
         scope.launch { companionState.collect { renderOverlay(state.value) } }
         scope.launch { VoiceRuntime.conversing.collect { conversing = it; ringBubble() } }
         scope.launch { VoiceRuntime.listening.collect { showListening(it) } }
@@ -223,6 +228,8 @@ class AssistantService : AccessibilityService() {
     }
 
     private fun connectRemote() {
+        if (AppLifecycleService.isExited(this) || remote != null) return
+        remoteError = ""
         runCatching {
             val vault = Vault(this)
             remote = RemoteReceiver(scope, vault.read().remote, { config -> vault.write(vault.read().copy(remote = config)) },
@@ -284,6 +291,24 @@ class AssistantService : AccessibilityService() {
         }.onFailure { remoteError = it.message ?: "远程接收初始化失败" }
     }
 
+    fun activate() {
+        if (AppLifecycleService.isExited(this)) return
+        serviceInfo = serviceInfo.apply { eventTypes = this@AssistantService.eventTypes }
+        if (overlay == null) createOverlay()
+        connectRemote()
+    }
+
+    fun exit() {
+        stopCompanion()
+        retireTask()
+        reflections.cancelChildren()
+        controller?.state?.value?.let { mutable.value = it; remoteSnapshot.value = RemoteSnapshot(taskId, it) }
+        remote?.close(); remote = null
+        removeOverlay()
+        serviceInfo = serviceInfo.apply { eventTypes = 0 }
+        // Keep the save queue alive until the final STOPPED record has reached disk.
+    }
+
     private fun recordCrash(error: Throwable) {
         val record = active ?: return
         if (state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) return
@@ -296,6 +321,7 @@ class AssistantService : AccessibilityService() {
     fun startTask(goal: String, taskId: String = UUID.randomUUID().toString()): String = startTask(goal, taskId, fromBubble = false)
 
     private fun startTask(goal: String, taskId: String, fromBubble: Boolean): String {
+        check(!AppLifecycleService.isExited(this)) { "应用已退出，请重新打开 Open Doubao" }
         requireUnlockedScreen()
         require(goal.isNotBlank() && goal.length <= 4000) { "请填写 1–4000 字的任务" }
         RemoteProtocol.uuid(taskId)
@@ -456,7 +482,7 @@ class AssistantService : AccessibilityService() {
     }
 
     /** Learns from a completed task once its result is shown; the outcome is appended to that task's log. */
-    private fun reflect(models: CloudModels, taskId: String, task: TaskState) = scope.launch {
+    private fun reflect(models: CloudModels, taskId: String, task: TaskState) = scope.launch(reflections) {
         val line = try {
             val ops = withTimeout(60_000) { models.remember(task.goal, task.result, Vault(this@AssistantService).read().memory) }
             "任务后记忆：" + if (ops.isEmpty()) "无变化" else withContext(saves) { remember(ops) }
@@ -474,6 +500,7 @@ class AssistantService : AccessibilityService() {
     }
 
     fun startCompanion() {
+        check(!AppLifecycleService.isExited(this)) { "应用已退出，请重新打开 Open Doubao" }
         requireUnlockedScreen()
         check(state.value.status !in setOf(TaskStatus.RUNNING, TaskStatus.PAUSED)) { "请先停止当前任务" }
         if (companionState.value.active) return
@@ -542,6 +569,7 @@ class AssistantService : AccessibilityService() {
     fun stop() { stopCompanion(); controller?.stop() }
 
     fun resume(ignoreScreenChanges: Boolean = false) {
+        check(!AppLifecycleService.isExited(this)) { "应用已退出，请重新打开 Open Doubao" }
         requireUnlockedScreen()
         if (controller?.state?.value?.status != TaskStatus.PAUSED) return
         collapse()
@@ -595,7 +623,9 @@ class AssistantService : AccessibilityService() {
     }
 
     private fun removeOverlay() {
+        mirror?.let { runCatching { it.close() } }; mirror = null
         voiceInput?.destroy(); voiceInput = null
+        voiceCaption?.removeCallbacks(typeCaption); captionQueued = false
         moreMenu?.dismiss()
         overlay?.let { runCatching { getSystemService(WindowManager::class.java).removeView(it) } }
         overlay = null
@@ -612,6 +642,7 @@ class AssistantService : AccessibilityService() {
             voiceInput?.cancel()
         }
         applyOverlay()
+        if (!active) AppLifecycleService.exitIfClosed(this)
     }
 
     val overlayWindowId: Int get() = overlay?.createAccessibilityNodeInfo()?.let {

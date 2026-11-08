@@ -7,6 +7,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.service.voice.VoiceInteractionService
 import com.moonrailgun.opendoubao.assistant.MainActivity
+import com.moonrailgun.opendoubao.assistant.AppLifecycleService
 import com.moonrailgun.opendoubao.assistant.R
 import kotlinx.coroutines.*
 
@@ -29,6 +30,11 @@ class VoiceService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (AppLifecycleService.isExited(this)) {
+            VoiceRuntime.exit(this)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         latestStart = startId
         // A sticky restart can arrive before VoiceInteractionService.onReady().
         if (intent == null) VoiceRuntime.assistantReady(this, VoiceInteractionService.isActiveService(
