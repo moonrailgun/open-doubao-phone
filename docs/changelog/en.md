@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-08
+
 - Android: Removing the app from recent apps and exiting the floating bubble now stops tasks, companion mode, voice listening and playback, and remote receiving, whichever you close first. They stay stopped until you reopen the app; settings and task history are preserved. Returning to the home screen alone does not exit the app.
 - Website: Download the Android APK directly from the homepage.
 - Android and desktop: View cumulative model usage and estimated costs separately for task execution and companion mode, with a breakdown by model and provider address. Set input, output, and cached-input prices in CNY per million tokens; price changes recalculate accumulated usage. Calls without usage or prices are marked separately. Problems reading or saving statistics do not interrupt tasks or companion mode; unsaved usage is flagged because estimated totals may be too low. Statistics begin after upgrading and exclude speech recognition, speech synthesis, and connection tests.
