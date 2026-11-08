@@ -35,8 +35,8 @@ esac
 ! git rev-parse -q --verify "refs/tags/v$version" > /dev/null || die "Tag v$version already exists"
 python3 scripts/changelog.py check "$version"
 
-read -r -p "Release $current -> $version (versionCode $((code - 1)) -> $code) on $(git branch --show-current)? [y/N] " answer
-[[ $answer == [yY] ]] || die "Aborted"
+read -r -p "Release $current -> $version (versionCode $((code - 1)) -> $code) on $(git branch --show-current)? [Y/n] " answer
+[[ ${answer:-y} == [yY] ]] || die "Aborted"
 
 notes=$(mktemp)
 trap 'rm -f "$notes"' EXIT
